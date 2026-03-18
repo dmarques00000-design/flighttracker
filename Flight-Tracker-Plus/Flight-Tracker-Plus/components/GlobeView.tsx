@@ -48,35 +48,7 @@ const airportCoordinates: { [key: string]: Coordinate } = {
   GVA: { lat: 46.2381, lng: 6.109 },
   ATL: { lat: 33.6407, lng: -84.4277 },
   MIA: { lat: 25.7959, lng: -80.287 },
-  JFK: { lat: 40.
-  // Draw country borders on the globe
-  function drawCountryBorders(rotation: number) {
-    return WORLD_BORDERS.map((border, idx) => {
-      const pathSegments = border
-        .map((coord) => {
-          const [lat, lng] = coord;
-          const pos3d = latLngTo3D(lat, lng, radius);
-          const pos2d = project3DTo2D(pos3d.x, pos3d.y, pos3d.z, rotation);
-          return pos2d.visible ? `${pos2d.x},${pos2d.y}` : null;
-        })
-        .filter((seg) => seg !== null);
-      
-      if (pathSegments.length < 2) return null;
-      
-      return (
-        <Path
-          key={`country-${idx}`}
-          d={`M${pathSegments.join(' L')}`}
-          stroke="#B0C4DE"
-          strokeWidth="0.8"
-          fill="none"
-          opacity={0.4}
-        />
-      );
-    }).filter(Boolean);
-  }
-
-6413, lng: -73.7781 },
+  JFK: { lat: 40.6413, lng: -73.7781 },
   LAX: { lat: 33.9416, lng: -118.4085 },
   LHR: { lat: 51.47, lng: -0.4543 },
   CDG: { lat: 49.0097, lng: 2.5479 },
@@ -98,6 +70,7 @@ const airportCoordinates: { [key: string]: Coordinate } = {
   IAD: { lat: 38.9531, lng: -77.4565 },
   EWR: { lat: 40.6895, lng: -74.1745 },
 };
+
 const WORLD_BORDERS = [
   // North America outline
   [[70,-130],[65,-140],[60,-165],[55,-170],[50,-130],[45,-125],[40,-124],[35,-118],[32,-117],[28,-110],[25,-105],[22,-105],[19,-90],[15,-88],[10,-85],[8,-80],[9,-79],[10,-75],[15,-70],[20,-70],[25,-80],[30,-85],[35,-90],[40,-75],[45,-65],[50,-55],[55,-60],[60,-65],[70,-70],[75,-80],[75,-100],[70,-130]],
@@ -112,7 +85,6 @@ const WORLD_BORDERS = [
   // Australia outline
   [[-10,130],[-15,125],[-20,115],[-25,115],[-30,120],[-35,135],[-40,145],[-42,148],[-40,150],[-35,150],[-30,145],[-25,145],[-20,140],[-15,140],[-10,135],[-10,130]]
 ];
-
 
 function getAirportCoordinate(iata: string): Coordinate {
   return airportCoordinates[iata] || { lat: 0, lng: 0 };
@@ -140,6 +112,33 @@ export function GlobeView({ flights, size = GLOBE_SIZE }: GlobeViewProps) {
       if (animRef.current) clearInterval(animRef.current);
     };
   }, []);
+
+  // Draw country borders on the globe
+  function drawCountryBorders(rotation: number) {
+    return WORLD_BORDERS.map((border, idx) => {
+      const pathSegments = border
+        .map((coord) => {
+          const [lat, lng] = coord;
+          const pos3d = latLngTo3D(lat, lng, radius);
+          const pos2d = project3DTo2D(pos3d.x, pos3d.y, pos3d.z, rotation);
+          return pos2d.visible ? `${pos2d.x},${pos2d.y}` : null;
+        })
+        .filter((seg) => seg !== null);
+      
+      if (pathSegments.length < 2) return null;
+      
+      return (
+        <Path
+          key={`country-${idx}`}
+          d={`M${pathSegments.join(' L')}`}
+          stroke="#B0C4DE"
+          strokeWidth="0.8"
+          fill="none"
+          opacity={0.4}
+        />
+      );
+    }).filter(Boolean);
+  }
 
   // Draw a great-circle arc between two airports
   const drawFlightPath = useCallback(
@@ -215,10 +214,6 @@ export function GlobeView({ flights, size = GLOBE_SIZE }: GlobeViewProps) {
 
   // Latitude grid lines
   const latLines = [-60, -30, 0, 30, 60].map((lat) => {
-    const y = radius - radius * Math.sin((lat * Math.PI) / 180);
-    const r = radius * Math.cos((lat * Math.PI) / 180);
-    // Project the equator circle accounting for rotation (simplified ellipse)
-    // For lat lines we draw a simple circle in 2D (orthographic looks like ellipse for non-equator)
     const points: string[] = [];
     for (let lng = -180; lng <= 180; lng += 6) {
       const p3D = latLngTo3D(lat, lng, radius * 0.99);
@@ -228,7 +223,6 @@ export function GlobeView({ flights, size = GLOBE_SIZE }: GlobeViewProps) {
       }
     }
     if (points.length < 2) return null;
-    // Build polyline path
     const d = "M " + points.join(" L ");
     return (
       <Path
@@ -306,12 +300,12 @@ export function GlobeView({ flights, size = GLOBE_SIZE }: GlobeViewProps) {
           {lngLines}
         </G>
 
-       
-      {/* Country borders */}
-      <G opacity={0.5}>
-        {drawCountryBorders(rotation)}
-      </G>
- {/* Flight routes */}
+        {/* Country borders */}
+        <G opacity={0.5}>
+          {drawCountryBorders(rotation)}
+        </G>
+
+        {/* Flight routes */}
         <G>
           {flights.slice(0, 15).map((flight, index) => {
             const from = getAirportCoordinate(flight.departureAirport);
