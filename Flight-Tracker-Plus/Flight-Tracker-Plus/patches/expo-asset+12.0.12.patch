@@ -1,4 +1,5 @@
 diff --git a/node_modules/expo-asset/build/AssetSources.js b/node_modules/expo-asset/build/AssetSources.js
+index 1234567..abcdefg 100644
 --- a/node_modules/expo-asset/build/AssetSources.js
 +++ b/node_modules/expo-asset/build/AssetSources.js
 @@ -34,8 +34,11 @@ export function selectAssetSource(meta) {
@@ -14,5 +15,3 @@ diff --git a/node_modules/expo-asset/build/AssetSources.js b/node_modules/expo-a
          : null;
      if (devServerUrl) {
          const baseUrl = new URL(meta.httpServerLocation + suffix, devServerUrl);
-
-
