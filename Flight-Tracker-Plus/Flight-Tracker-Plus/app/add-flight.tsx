@@ -19,6 +19,7 @@ import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { Colors } from "@/constants/colors";
 import { useFlights, Flight } from "@/context/flights";
 import { apiRequest } from "@/lib/query-client";
+import { DatePicker } from "@/components/DatePicker";
 
 interface FlightLookupResult {
   flightCode: string;
@@ -68,11 +69,7 @@ export default function AddFlightScreen() {
   async function handleLookup() {
     const trimCode = code.trim().toUpperCase();
     if (!trimCode) {
-      setError("Please enter a flight code (e.g. AA123)");
-      return;
-    }
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      setError("Please enter a valid date (YYYY-MM-DD)");
+      setError("Please enter a flight code (e.g. LX2819)");
       return;
     }
 
@@ -103,9 +100,8 @@ export default function AddFlightScreen() {
     if (!preview) return;
     setSaving(true);
     try {
-      // Check for duplicate flight
       const isDuplicate = flights.some(
-        (f) => f.code === preview.code && f.date === preview.date,
+        (f) => f.code === preview.flightCode && f.date === preview.date,
       );
 
       if (isDuplicate) {
@@ -149,7 +145,7 @@ export default function AddFlightScreen() {
               </Pressable>
             </View>
             <Text style={styles.subtitle}>
-              Enter your flight number and the date it flew.
+              Enter your flight number and tap the date to pick it from the calendar.
             </Text>
           </Animated.View>
 
@@ -166,29 +162,23 @@ export default function AddFlightScreen() {
                   setCode(t.toUpperCase());
                   setPreview(null);
                 }}
-                placeholder="e.g. AA123, BA456"
+                placeholder="e.g. LX2819, BA456"
                 placeholderTextColor={Colors.textSec}
                 autoCapitalize="characters"
                 autoCorrect={false}
-                returnKeyType="next"
+                returnKeyType="done"
                 maxLength={8}
               />
             </View>
 
             <View style={styles.field}>
               <Text style={styles.label}>Date</Text>
-              <TextInput
-                style={styles.input}
+              <DatePicker
                 value={date}
-                onChangeText={(t) => {
-                  setDate(t);
+                onChange={(d) => {
+                  setDate(d);
                   setPreview(null);
                 }}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={Colors.textSec}
-                keyboardType="numbers-and-punctuation"
-                returnKeyType="done"
-                maxLength={10}
               />
             </View>
           </Animated.View>
@@ -379,10 +369,6 @@ const styles = StyleSheet.create({
     gap: 16,
     marginBottom: 24,
   },
-  routeHintRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
   field: {
     gap: 8,
   },
@@ -410,6 +396,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.red + "18",
     borderRadius: 10,
     padding: 12,
+    marginBottom: 16,
   },
   errorText: {
     fontSize: 13,
@@ -438,6 +425,7 @@ const styles = StyleSheet.create({
     padding: 20,
     borderWidth: 1,
     borderColor: Colors.border,
+    marginTop: 20,
   },
   previewHeader: {
     flexDirection: "row",

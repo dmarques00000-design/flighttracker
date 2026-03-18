@@ -86,6 +86,7 @@ const AIRLINES: Record<string, string> = {
   PR: "Philippine Airlines",
   VN: "Vietnam Airlines",
   AI: "Air India",
+  TP: "TAP Air Portugal",
 };
 
 const AIRPORTS: Record<string, { city: string; lat: number; lon: number }> = {
@@ -138,6 +139,7 @@ const AIRPORTS: Record<string, { city: string; lat: number; lon: number }> = {
   OPO: { city: "Porto", lat: 41.2481, lon: -8.6814 },
   GVA: { city: "Geneva", lat: 46.2381, lon: 6.1089 },
   ZRH: { city: "Zurich", lat: 47.4647, lon: 8.5492 },
+  BSL: { city: "Basel", lat: 47.5896, lon: 7.5299 },
   VIE: { city: "Vienna", lat: 48.1103, lon: 16.5697 },
   BRU: { city: "Brussels", lat: 50.9014, lon: 4.4844 },
   CPH: { city: "Copenhagen", lat: 55.618, lon: 12.656 },
@@ -231,6 +233,17 @@ const AIRPORTS: Record<string, { city: string; lat: number; lon: number }> = {
   CTU: { city: "Chengdu", lat: 30.5786, lon: 103.9478 },
 };
 
+// Airline-code to known hub routes for deterministic route resolution
+const AIRLINE_HUB_ROUTES: Record<string, [string, string][]> = {
+  LX: [["GVA", "ZRH"], ["ZRH", "GVA"], ["ZRH", "LHR"], ["ZRH", "FRA"], ["GVA", "LHR"], ["ZRH", "JFK"], ["GVA", "JFK"]],
+  LH: [["FRA", "MUC"], ["MUC", "FRA"], ["FRA", "LHR"], ["FRA", "JFK"]],
+  BA: [["LHR", "CDG"], ["LHR", "JFK"], ["LHR", "DXB"]],
+  AF: [["CDG", "JFK"], ["CDG", "LHR"], ["CDG", "FCO"]],
+  TP: [["LIS", "OPO"], ["LIS", "LHR"], ["LIS", "CDG"], ["LIS", "JFK"]],
+  U2: [["LGW", "BCN"], ["LGW", "FCO"], ["LGW", "AMS"]],
+  FR: [["STN", "BCN"], ["STN", "FCO"], ["STN", "MAD"]],
+};
+
 const ROUTE_POOL: [string, string][] = [
   ["JFK", "LAX"],
   ["JFK", "LHR"],
@@ -280,6 +293,13 @@ const ROUTE_POOL: [string, string][] = [
   ["LHR", "AMS"],
   ["CDG", "FRA"],
   ["DXB", "DOH"],
+  ["GVA", "ZRH"],
+  ["ZRH", "GVA"],
+  ["ZRH", "LHR"],
+  ["ZRH", "FRA"],
+  ["GVA", "LHR"],
+  ["LIS", "OPO"],
+  ["LIS", "LHR"],
 ];
 
 const AIRCRAFT_POOL = [
@@ -332,6 +352,12 @@ function seededRandom(seed: number, index: number): number {
   return x - Math.floor(x);
 }
 
+function extractAirlineCode(code: string): string {
+  // Handle codes like LX2819 -> LX, AA123 -> AA, EJU1234 -> EJU
+  const match = code.match(/^([A-Z]{2,3})/);
+  return match ? match[1] : code.substring(0, 2);
+}
+
 function generateMockFlight(
   code: string,
   date: string,
@@ -339,13 +365,27 @@ function generateMockFlight(
   hintArr?: string,
 ) {
   const seed = deterministicSeed(code + date);
-  const routeIndex = seed % ROUTE_POOL.length;
-  const rawCode = code.replace(/[0-9]/g, "").toUpperCase();
-  const airlineCode = AIRLINES[rawCode] ? rawCode : rawCode.substring(0, 2);
+  const airlineCode = extractAirlineCode(code.toUpperCase());
   const airlineName = AIRLINES[airlineCode] || "Unknown Airlines";
 
-  const depIata = hintDep?.toUpperCase() || ROUTE_POOL[routeIndex][0];
-  const arrIata = hintArr?.toUpperCase() || ROUTE_POOL[routeIndex][1];
+  let depIata: string;
+  let arrIata: string;
+
+  if (hintDep && hintArr) {
+    depIata = hintDep.toUpperCase();
+    arrIata = hintArr.toUpperCase();
+  } else if (AIRLINE_HUB_ROUTES[airlineCode]) {
+    // Use airline-specific routes for better accuracy
+    const routes = AIRLINE_HUB_ROUTES[airlineCode];
+    const routeIndex = seed % routes.length;
+    depIata = routes[routeIndex][0];
+    arrIata = routes[routeIndex][1];
+  } else {
+    const routeIndex = seed % ROUTE_POOL.length;
+    depIata = ROUTE_POOL[routeIndex][0];
+    arrIata = ROUTE_POOL[routeIndex][1];
+  }
+
   const dep = AIRPORTS[depIata] || AIRPORTS["JFK"];
   const arr = AIRPORTS[arrIata] || AIRPORTS["LAX"];
 
@@ -397,12 +437,11 @@ async function lookupFromApi(code: string, date: string) {
   if (!apiKey) return null;
 
   try {
-    // Try IATA first, then ICAO as fallback
-    let res = await fetch(url);
-    // If IATA fails, try ICAO
+    const iataUrl = `https://airlabs.co/api/v9/flight?flight_iata=${code}&api_key=${apiKey}`;
+    let res = await fetch(iataUrl);
     if (!res.ok) {
-      url = `https://airlabs.co/api/v9/flight?flight_icao=${code}&api_key=${apiKey}`;
-      res = await fetch(url);
+      const icaoUrl = `https://airlabs.co/api/v9/flight?flight_icao=${code}&api_key=${apiKey}`;
+      res = await fetch(icaoUrl);
       if (!res.ok) return null;
     }
     const json = (await res.json()) as {
@@ -431,22 +470,20 @@ async function lookupFromApi(code: string, date: string) {
     if (!dep || !arr) return null;
 
     const airlineCode =
-      f.airline_iata || code.replace(/[0-9]/g, "").substring(0, 3);
+      f.airline_iata || extractAirlineCode(code);
     const distKm = haversineKm(dep.lat, dep.lon, arr.lat, arr.lon);
     const distMiles = Math.round(kmToMiles(distKm));
     const co2Kg = Math.round(distKm * 0.115);
 
-    // dep_time / arr_time from AirLabs are "HH:MM" already
     const depTime = f.dep_time ? f.dep_time.substring(0, 5) : "00:00";
     const arrTime = f.arr_time ? f.arr_time.substring(0, 5) : "00:00";
 
     const durationMinutes = f.duration ?? Math.round((distKm / 870) * 60 + 30);
     const delayMinutes = f.dep_delayed ?? f.arr_delayed ?? 0;
 
-    // Map AirLabs status to our status
     const rawStatus = f.status || "scheduled";
     const status: "on_time" | "delayed" =
-      rawStatus === "delayed" || delayMinutes > 15 ? "delayed" : "on_time";
+      rawStatus === "delayed" || (delayMinutes !== null && delayMinutes > 15) ? "delayed" : "on_time";
 
     return {
       flightCode: code,
