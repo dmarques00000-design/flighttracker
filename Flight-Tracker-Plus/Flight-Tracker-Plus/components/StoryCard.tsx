@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { Flight } from "@/context/flights";
+import { getCO2FunFact } from "@/utils/co2FunFact";
 
 export interface StoryCardProps {
   flights: Flight[];
@@ -33,21 +34,6 @@ function computeRank(n: number): number {
   if (n <= 25) return 91;
   if (n <= 40) return 96;
   return 99;
-}
-
-function getCO2FunFact(co2Kg: number): string {
-  const coffeeCups = Math.round(co2Kg / 0.021);
-  const netflixHours = Math.round(co2Kg / 0.055);
-  const beers = Math.round(co2Kg / 0.3);
-  const pizzas = Math.round(co2Kg / 0.5);
-  const donuts = Math.round(co2Kg / 0.06);
-  const burps = Math.round(co2Kg / 0.0001);
-  if (co2Kg < 5) return `${burps.toLocaleString()} burps worth of CO\u2082`;
-  if (co2Kg < 20) return `${donuts.toLocaleString()} donuts from the bakery`;
-  if (co2Kg < 50) return `${coffeeCups.toLocaleString()} cups of coffee`;
-  if (co2Kg < 100) return `${netflixHours.toLocaleString()} hrs of Netflix`;
-  if (co2Kg < 200) return `${beers.toLocaleString()} beers at the pub`;
-  return `${pizzas.toLocaleString()} pizza deliveries`;
 }
 
 function getTopRoutes(flights: Flight[]): { dep: string; arr: string }[] {
@@ -81,12 +67,7 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
 
   return (
     <View style={styles.card}>
-      <LinearGradient
-        colors={["#050B18", "#0B1D3F", "#050B18"]}
-        locations={[0, 0.5, 1]}
-        style={StyleSheet.absoluteFill}
-      />
-
+      <LinearGradient colors={["#050B18", "#0B1D3F", "#050B18"]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
       <View style={styles.decorCircle1} />
       <View style={styles.decorCircle2} />
 
@@ -126,24 +107,18 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
           )}
           <View style={styles.statRow}>
             <Ionicons name="time" size={14} color="#F59E0B" />
-            <Text style={styles.statText}>
-              {formatHours(flightMin)} in the air
-            </Text>
+            <Text style={styles.statText}>{formatHours(flightMin)} in the air</Text>
           </View>
           {delayMin > 0 && (
             <View style={styles.statRow}>
               <Ionicons name="hourglass" size={14} color="#EF4444" />
-              <Text style={styles.statText}>
-                {formatHours(delayMin)} delayed
-              </Text>
+              <Text style={styles.statText}>{formatHours(delayMin)} delayed</Text>
             </View>
           )}
           {verifiedCount > 0 && (
             <View style={styles.statRow}>
               <Ionicons name="checkmark-circle" size={14} color="#4F8EF0" />
-              <Text style={styles.statText}>
-                {verifiedCount} verified flight{verifiedCount !== 1 ? "s" : ""}
-              </Text>
+              <Text style={styles.statText}>{verifiedCount} verified flight{verifiedCount !== 1 ? "s" : ""}</Text>
             </View>
           )}
         </View>
@@ -193,72 +168,32 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
 }
 
 const styles = StyleSheet.create({
-  card: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
-    backgroundColor: "#050B18",
-    borderRadius: 24,
-    overflow: "hidden",
-    position: "relative",
-  },
-  decorCircle1: {
-    position: "absolute",
-    width: 300, height: 300, borderRadius: 150,
-    backgroundColor: "rgba(79,142,240,0.06)",
-    top: -80, right: -80,
-  },
-  decorCircle2: {
-    position: "absolute",
-    width: 200, height: 200, borderRadius: 100,
-    backgroundColor: "rgba(79,142,240,0.04)",
-    bottom: 40, left: -60,
-  },
-  inner: {
-    flex: 1,
-    paddingHorizontal: 36, paddingTop: 40, paddingBottom: 32,
-    justifyContent: "space-between",
-  },
+  card: { width: CARD_WIDTH, height: CARD_HEIGHT, backgroundColor: "#050B18", borderRadius: 24, overflow: "hidden", position: "relative" },
+  decorCircle1: { position: "absolute", width: 300, height: 300, borderRadius: 150, backgroundColor: "rgba(79,142,240,0.06)", top: -80, right: -80 },
+  decorCircle2: { position: "absolute", width: 200, height: 200, borderRadius: 100, backgroundColor: "rgba(79,142,240,0.04)", bottom: 40, left: -60 },
+  inner: { flex: 1, paddingHorizontal: 36, paddingTop: 40, paddingBottom: 32, justifyContent: "space-between" },
   topSection: { alignItems: "flex-start" },
   logoRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
   logoText: { fontSize: 11, color: "#4F8EF0", fontFamily: "DMSans_700Bold", letterSpacing: 2.5 },
   tagline: { fontSize: 22, color: "#F0F6FF", fontFamily: "DMSans_700Bold", letterSpacing: -0.3 },
   divider: { height: 1, backgroundColor: "rgba(79,142,240,0.15)" },
   mainSection: { alignItems: "center", paddingVertical: 4 },
-  periodLabel: {
-    fontSize: 13, color: "rgba(240,246,255,0.45)",
-    fontFamily: "DMSans_400Regular", letterSpacing: 1.5,
-    textTransform: "uppercase", marginBottom: 4,
-  },
+  periodLabel: { fontSize: 13, color: "rgba(240,246,255,0.45)", fontFamily: "DMSans_400Regular", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4 },
   bigNumber: { fontSize: 96, color: "#F0F6FF", fontFamily: "DMSans_700Bold", lineHeight: 104 },
-  bigLabel: {
-    fontSize: 14, color: "rgba(79,142,240,0.6)",
-    fontFamily: "DMSans_500Medium", letterSpacing: 4, marginTop: -4,
-  },
+  bigLabel: { fontSize: 14, color: "rgba(79,142,240,0.6)", fontFamily: "DMSans_500Medium", letterSpacing: 4, marginTop: -4 },
   statsSection: { gap: 10 },
   statRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   statText: { fontSize: 15, color: "rgba(240,246,255,0.75)", fontFamily: "DMSans_400Regular" },
-  funFactText: {
-    fontSize: 13,
-    color: "rgba(16,185,129,0.7)",
-    fontStyle: "italic",
-    fontFamily: "DMSans_400Regular",
-  },
+  funFactText: { fontSize: 13, color: "rgba(16,185,129,0.7)", fontStyle: "italic", fontFamily: "DMSans_400Regular" },
   routesSection: { gap: 8 },
-  routesTitle: {
-    fontSize: 10, color: "rgba(79,142,240,0.6)",
-    fontFamily: "DMSans_500Medium", letterSpacing: 2, marginBottom: 2,
-  },
+  routesTitle: { fontSize: 10, color: "rgba(79,142,240,0.6)", fontFamily: "DMSans_500Medium", letterSpacing: 2, marginBottom: 2 },
   routeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   routeText: { fontSize: 16, color: "#F0F6FF", fontFamily: "DMSans_700Bold", width: 40 },
   routeTextRight: { fontSize: 16, color: "#F0F6FF", fontFamily: "DMSans_700Bold", width: 40, textAlign: "right" },
   routeDots: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3 },
   dot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "rgba(79,142,240,0.35)" },
   rankSection: { alignItems: "center", gap: 6, paddingVertical: 2 },
-  rankBadge: {
-    backgroundColor: "rgba(79,142,240,0.15)",
-    borderWidth: 1, borderColor: "rgba(79,142,240,0.4)",
-    paddingHorizontal: 18, paddingVertical: 7, borderRadius: 20,
-  },
+  rankBadge: { backgroundColor: "rgba(79,142,240,0.15)", borderWidth: 1, borderColor: "rgba(79,142,240,0.4)", paddingHorizontal: 18, paddingVertical: 7, borderRadius: 20 },
   rankBadgeText: { fontSize: 14, color: "#4F8EF0", fontFamily: "DMSans_700Bold", letterSpacing: 2 },
   rankCaption: { fontSize: 11, color: "rgba(240,246,255,0.35)", fontFamily: "DMSans_400Regular", letterSpacing: 0.5 },
   footer: { alignItems: "center", paddingTop: 4 },

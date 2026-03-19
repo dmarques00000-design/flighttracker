@@ -17,6 +17,7 @@ import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { Colors } from "@/constants/colors";
 import { useFlights, Flight } from "@/context/flights";
 import GlobeView from "@/components/GlobeView";
+import { getCO2FunFact } from "@/utils/co2FunFact";
 
 const TODAY = new Date().toISOString().substring(0, 10);
 
@@ -55,21 +56,6 @@ function computeRank(flightCount: number): number {
   if (flightCount <= 25) return 91;
   if (flightCount <= 40) return 96;
   return 99;
-}
-
-function getCO2FunFact(co2Kg: number): string {
-  const coffeeCups = Math.round(co2Kg / 0.021);
-  const netflixHours = Math.round(co2Kg / 0.055);
-  const beers = Math.round(co2Kg / 0.3);
-  const pizzas = Math.round(co2Kg / 0.5);
-  const donuts = Math.round(co2Kg / 0.06);
-  const burps = Math.round(co2Kg / 0.0001);
-  if (co2Kg < 5) return `${burps.toLocaleString()} burps worth of CO\u2082`;
-  if (co2Kg < 20) return `${donuts.toLocaleString()} donuts from the bakery`;
-  if (co2Kg < 50) return `${coffeeCups.toLocaleString()} cups of coffee (worth it!)`;
-  if (co2Kg < 100) return `${netflixHours.toLocaleString()} hours of Netflix binging`;
-  if (co2Kg < 200) return `${beers.toLocaleString()} beers at the pub`;
-  return `${pizzas.toLocaleString()} pizza deliveries`;
 }
 
 function useFilteredStats(flights: Flight[], period: "all" | number) {
@@ -136,7 +122,6 @@ function FlightRow({ flight, isUpcoming }: { flight: Flight; isUpcoming: boolean
   );
 }
 
-// ─── Hamburger menu ──────────────────────────────────────────────────
 const MENU_ITEMS = [
   { id: "wallet",        icon: "wallet-outline",         label: "Link Apple Wallet",  sub: "Import boarding passes" },
   { id: "monthly-recap", icon: "calendar-outline",        label: "Monthly Recap",       sub: "Share your month in the air" },
@@ -238,7 +223,6 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.scroll, { paddingBottom: bottomPadding + 100 }]}
         contentInsetAdjustmentBehavior="automatic"
       >
-        {/* Header */}
         <Animated.View entering={FadeInDown.delay(0).springify()} style={styles.header}>
           <View>
             <Text style={styles.greeting}>Flight Log</Text>
@@ -265,7 +249,6 @@ export default function HomeScreen() {
 
         {hasFlights ? (
           <>
-            {/* Period filter */}
             <Animated.View entering={FadeInDown.delay(40).springify()} style={styles.periodRow}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.periodContent}>
                 <Pressable onPress={() => handlePeriodChange("all")} style={[styles.periodPill, period === "all" && styles.periodPillActive]}>
@@ -279,7 +262,6 @@ export default function HomeScreen() {
               </ScrollView>
             </Animated.View>
 
-            {/* Hero card */}
             <Animated.View entering={FadeInDown.delay(80).springify()} style={styles.heroCard}>
               <View style={styles.heroTopRow}>
                 <View>
@@ -299,16 +281,16 @@ export default function HomeScreen() {
                   <View style={styles.rankPill}><Text style={styles.rankPillText}>Top {100 - stats.rank}%</Text></View>
                 )}
               </View>
-              {stats.co2 > 0 && <Text style={styles.co2FunFact}>{getCO2FunFact(stats.co2)}</Text>}
+              {stats.co2 > 0 && (
+                <Text style={styles.co2FunFact}>\u{1F343} That\u2019s like {getCO2FunFact(stats.co2)}</Text>
+              )}
             </Animated.View>
 
-            {/* Globe */}
             <Animated.View entering={FadeInDown.delay(120).springify()} style={styles.globeContainer}>
               <Text style={styles.sectionTitle}>Your Flight Network</Text>
               <GlobeView flights={flights} />
             </Animated.View>
 
-            {/* Stats grid */}
             <Animated.View entering={FadeInDown.delay(140).springify()}>
               <Text style={styles.sectionTitle}>Statistics</Text>
               <View style={styles.statsGrid}>
@@ -319,7 +301,6 @@ export default function HomeScreen() {
               </View>
             </Animated.View>
 
-            {/* Upcoming */}
             {upcomingFlights.length > 0 && (
               <Animated.View entering={FadeInDown.delay(180).springify()} style={styles.section}>
                 <View style={styles.sectionRow}>
@@ -335,7 +316,6 @@ export default function HomeScreen() {
               </Animated.View>
             )}
 
-            {/* Past Flights */}
             {pastFlights.length > 0 && (
               <Animated.View entering={FadeInDown.delay(210).springify()} style={styles.section}>
                 <View style={styles.sectionRow}>
