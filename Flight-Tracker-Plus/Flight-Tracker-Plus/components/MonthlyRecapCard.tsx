@@ -33,6 +33,21 @@ function computeRank(n: number): number {
   if (n <= 40) return 96; return 99;
 }
 
+function getCO2FunFact(co2Kg: number): string {
+  const coffeeCups = Math.round(co2Kg / 0.021);
+  const netflixHours = Math.round(co2Kg / 0.055);
+  const beers = Math.round(co2Kg / 0.3);
+  const pizzas = Math.round(co2Kg / 0.5);
+  const donuts = Math.round(co2Kg / 0.06);
+  const burps = Math.round(co2Kg / 0.0001);
+  if (co2Kg < 5) return `${burps.toLocaleString()} burps worth of CO\u2082`;
+  if (co2Kg < 20) return `${donuts.toLocaleString()} donuts from the bakery`;
+  if (co2Kg < 50) return `${coffeeCups.toLocaleString()} cups of coffee`;
+  if (co2Kg < 100) return `${netflixHours.toLocaleString()} hrs of Netflix`;
+  if (co2Kg < 200) return `${beers.toLocaleString()} beers at the pub`;
+  return `${pizzas.toLocaleString()} pizza deliveries`;
+}
+
 function getTopRoutes(flights: Flight[]): { dep: string; arr: string; count: number }[] {
   const freq: Record<string, number> = {};
   flights.forEach((f) => {
@@ -68,21 +83,19 @@ export default function MonthlyRecapCard({ flights, month, year }: MonthlyRecapC
   const verifiedCount = flights.filter((f) => f.verified).length;
   const destinations = getUniqueDestinations(flights);
   const monthName = MONTH_NAMES[month];
+  const funFact = co2 > 0 ? getCO2FunFact(co2) : null;
 
   return (
     <View style={s.card}>
-      {/* Background gradient */}
       <LinearGradient
         colors={["#03081A", "#071535", "#03081A"]}
         locations={[0, 0.5, 1]}
         style={StyleSheet.absoluteFill}
       />
 
-      {/* Radial glow blobs — both use app accent blue only */}
       <View style={s.glow1} />
       <View style={s.glow2} />
 
-      {/* Star dots */}
       {STARS.map((st, i) => (
         <View key={i} style={[s.star, { top: st.t, left: st.l, width: st.r, height: st.r, borderRadius: st.r / 2, opacity: st.o }]} />
       ))}
@@ -111,7 +124,7 @@ export default function MonthlyRecapCard({ flights, month, year }: MonthlyRecapC
           )}
         </View>
 
-        {/* ── Stat grid: accent blue / amber / green / amber (no purple) ── */}
+        {/* ── Stat grid ── */}
         <View style={s.statGrid}>
           <StatBox icon="navigate" color="#4F8EF0" value={fmt(miles)} label="MILES" />
           <View style={s.statDivV} />
@@ -121,6 +134,14 @@ export default function MonthlyRecapCard({ flights, month, year }: MonthlyRecapC
           <View style={s.statDivV} />
           <StatBox icon="location" color="#4F8EF0" value={String(destinations)} label={destinations === 1 ? "DEST" : "DESTS"} />
         </View>
+
+        {/* ── CO2 fun fact ── */}
+        {funFact && (
+          <View style={s.funFactRow}>
+            <Ionicons name="leaf-outline" size={11} color="#10B981" />
+            <Text style={s.funFactText}>That\u2019s like {funFact}</Text>
+          </View>
+        )}
 
         {/* ── Top routes ── */}
         {topRoutes.length > 0 && (
@@ -206,32 +227,16 @@ const s = StyleSheet.create({
     overflow: "hidden",
   },
   glow1: {
-    position: "absolute",
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    backgroundColor: "rgba(79,142,240,0.08)",
-    top: -80,
-    right: -80,
+    position: "absolute", width: 320, height: 320, borderRadius: 160,
+    backgroundColor: "rgba(79,142,240,0.08)", top: -80, right: -80,
   },
   glow2: {
-    position: "absolute",
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: "rgba(79,142,240,0.04)",
-    bottom: 60,
-    left: -80,
+    position: "absolute", width: 240, height: 240, borderRadius: 120,
+    backgroundColor: "rgba(79,142,240,0.04)", bottom: 60, left: -80,
   },
-  star: {
-    position: "absolute",
-    backgroundColor: "#FFFFFF",
-  },
+  star: { position: "absolute", backgroundColor: "#FFFFFF" },
   inner: {
-    flex: 1,
-    paddingHorizontal: 32,
-    paddingTop: 36,
-    paddingBottom: 28,
+    flex: 1, paddingHorizontal: 32, paddingTop: 36, paddingBottom: 28,
     justifyContent: "space-between",
   },
   header: { alignItems: "flex-start", gap: 2 },
@@ -256,14 +261,28 @@ const s = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.04)",
     borderRadius: 16,
     borderWidth: 1, borderColor: "rgba(79,142,240,0.12)",
-    paddingVertical: 16, paddingHorizontal: 4,
-    alignItems: "center",
+    paddingVertical: 16, paddingHorizontal: 4, alignItems: "center",
   },
   statBox: { flex: 1, alignItems: "center", gap: 4 },
   statDivV: { width: 1, height: 36, backgroundColor: "rgba(79,142,240,0.15)" },
   statIcon: { width: 28, height: 28, borderRadius: 8, alignItems: "center", justifyContent: "center", marginBottom: 2 },
   statValue: { fontSize: 16, color: "#F0F6FF", fontFamily: "DMSans_700Bold", letterSpacing: -0.3 },
   statLabel: { fontSize: 9, color: "rgba(240,246,255,0.4)", fontFamily: "DMSans_500Medium", letterSpacing: 1.5 },
+
+  // CO2 fun fact
+  funFactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  funFactText: {
+    fontSize: 11,
+    color: "rgba(16,185,129,0.7)",
+    fontFamily: "DMSans_400Regular",
+    fontStyle: "italic",
+    flex: 1,
+  },
 
   routesBlock: { gap: 10 },
   sectionLabel: { fontSize: 9, color: "rgba(79,142,240,0.55)", fontFamily: "DMSans_700Bold", letterSpacing: 2.5, marginBottom: 2 },

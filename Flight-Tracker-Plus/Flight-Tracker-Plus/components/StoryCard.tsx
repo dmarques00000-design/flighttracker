@@ -35,6 +35,21 @@ function computeRank(n: number): number {
   return 99;
 }
 
+function getCO2FunFact(co2Kg: number): string {
+  const coffeeCups = Math.round(co2Kg / 0.021);
+  const netflixHours = Math.round(co2Kg / 0.055);
+  const beers = Math.round(co2Kg / 0.3);
+  const pizzas = Math.round(co2Kg / 0.5);
+  const donuts = Math.round(co2Kg / 0.06);
+  const burps = Math.round(co2Kg / 0.0001);
+  if (co2Kg < 5) return `${burps.toLocaleString()} burps worth of CO\u2082`;
+  if (co2Kg < 20) return `${donuts.toLocaleString()} donuts from the bakery`;
+  if (co2Kg < 50) return `${coffeeCups.toLocaleString()} cups of coffee`;
+  if (co2Kg < 100) return `${netflixHours.toLocaleString()} hrs of Netflix`;
+  if (co2Kg < 200) return `${beers.toLocaleString()} beers at the pub`;
+  return `${pizzas.toLocaleString()} pizza deliveries`;
+}
+
 function getTopRoutes(flights: Flight[]): { dep: string; arr: string }[] {
   const freq: Record<string, number> = {};
   flights.forEach((f) => {
@@ -62,6 +77,7 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
   const rank = computeRank(count);
   const topRoutes = getTopRoutes(flights);
   const verifiedCount = flights.filter((f) => f.verified).length;
+  const funFact = co2 > 0 ? getCO2FunFact(co2) : null;
 
   return (
     <View style={styles.card}>
@@ -102,6 +118,12 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
             <Ionicons name="leaf" size={14} color="#10B981" />
             <Text style={styles.statText}>{formatNum(co2)} kg CO\u2082</Text>
           </View>
+          {funFact && (
+            <View style={styles.statRow}>
+              <Ionicons name="leaf-outline" size={14} color="#10B981" />
+              <Text style={[styles.statText, styles.funFactText]}>That\u2019s like {funFact}</Text>
+            </View>
+          )}
           <View style={styles.statRow}>
             <Ionicons name="time" size={14} color="#F59E0B" />
             <Text style={styles.statText}>
@@ -181,166 +203,64 @@ const styles = StyleSheet.create({
   },
   decorCircle1: {
     position: "absolute",
-    width: 300,
-    height: 300,
-    borderRadius: 150,
+    width: 300, height: 300, borderRadius: 150,
     backgroundColor: "rgba(79,142,240,0.06)",
-    top: -80,
-    right: -80,
+    top: -80, right: -80,
   },
   decorCircle2: {
     position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
+    width: 200, height: 200, borderRadius: 100,
     backgroundColor: "rgba(79,142,240,0.04)",
-    bottom: 40,
-    left: -60,
+    bottom: 40, left: -60,
   },
   inner: {
     flex: 1,
-    paddingHorizontal: 36,
-    paddingTop: 40,
-    paddingBottom: 32,
+    paddingHorizontal: 36, paddingTop: 40, paddingBottom: 32,
     justifyContent: "space-between",
   },
-  topSection: {
-    alignItems: "flex-start",
-  },
-  logoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 6,
-  },
-  logoText: {
-    fontSize: 11,
-    color: "#4F8EF0",
-    fontFamily: "DMSans_700Bold",
-    letterSpacing: 2.5,
-  },
-  tagline: {
-    fontSize: 22,
-    color: "#F0F6FF",
-    fontFamily: "DMSans_700Bold",
-    letterSpacing: -0.3,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "rgba(79,142,240,0.15)",
-  },
-  mainSection: {
-    alignItems: "center",
-    paddingVertical: 4,
-  },
+  topSection: { alignItems: "flex-start" },
+  logoRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
+  logoText: { fontSize: 11, color: "#4F8EF0", fontFamily: "DMSans_700Bold", letterSpacing: 2.5 },
+  tagline: { fontSize: 22, color: "#F0F6FF", fontFamily: "DMSans_700Bold", letterSpacing: -0.3 },
+  divider: { height: 1, backgroundColor: "rgba(79,142,240,0.15)" },
+  mainSection: { alignItems: "center", paddingVertical: 4 },
   periodLabel: {
-    fontSize: 13,
-    color: "rgba(240,246,255,0.45)",
-    fontFamily: "DMSans_400Regular",
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    marginBottom: 4,
+    fontSize: 13, color: "rgba(240,246,255,0.45)",
+    fontFamily: "DMSans_400Regular", letterSpacing: 1.5,
+    textTransform: "uppercase", marginBottom: 4,
   },
-  bigNumber: {
-    fontSize: 96,
-    color: "#F0F6FF",
-    fontFamily: "DMSans_700Bold",
-    lineHeight: 104,
-  },
+  bigNumber: { fontSize: 96, color: "#F0F6FF", fontFamily: "DMSans_700Bold", lineHeight: 104 },
   bigLabel: {
-    fontSize: 14,
-    color: "rgba(79,142,240,0.6)",
-    fontFamily: "DMSans_500Medium",
-    letterSpacing: 4,
-    marginTop: -4,
+    fontSize: 14, color: "rgba(79,142,240,0.6)",
+    fontFamily: "DMSans_500Medium", letterSpacing: 4, marginTop: -4,
   },
-  statsSection: {
-    gap: 10,
-  },
-  statRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  statText: {
-    fontSize: 15,
-    color: "rgba(240,246,255,0.75)",
+  statsSection: { gap: 10 },
+  statRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  statText: { fontSize: 15, color: "rgba(240,246,255,0.75)", fontFamily: "DMSans_400Regular" },
+  funFactText: {
+    fontSize: 13,
+    color: "rgba(16,185,129,0.7)",
+    fontStyle: "italic",
     fontFamily: "DMSans_400Regular",
   },
-  routesSection: {
-    gap: 8,
-  },
+  routesSection: { gap: 8 },
   routesTitle: {
-    fontSize: 10,
-    color: "rgba(79,142,240,0.6)",
-    fontFamily: "DMSans_500Medium",
-    letterSpacing: 2,
-    marginBottom: 2,
+    fontSize: 10, color: "rgba(79,142,240,0.6)",
+    fontFamily: "DMSans_500Medium", letterSpacing: 2, marginBottom: 2,
   },
-  routeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  routeText: {
-    fontSize: 16,
-    color: "#F0F6FF",
-    fontFamily: "DMSans_700Bold",
-    width: 40,
-  },
-  routeTextRight: {
-    fontSize: 16,
-    color: "#F0F6FF",
-    fontFamily: "DMSans_700Bold",
-    width: 40,
-    textAlign: "right",
-  },
-  routeDots: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 3,
-  },
-  dot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: "rgba(79,142,240,0.35)",
-  },
-  rankSection: {
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 2,
-  },
+  routeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  routeText: { fontSize: 16, color: "#F0F6FF", fontFamily: "DMSans_700Bold", width: 40 },
+  routeTextRight: { fontSize: 16, color: "#F0F6FF", fontFamily: "DMSans_700Bold", width: 40, textAlign: "right" },
+  routeDots: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3 },
+  dot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "rgba(79,142,240,0.35)" },
+  rankSection: { alignItems: "center", gap: 6, paddingVertical: 2 },
   rankBadge: {
     backgroundColor: "rgba(79,142,240,0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(79,142,240,0.4)",
-    paddingHorizontal: 18,
-    paddingVertical: 7,
-    borderRadius: 20,
+    borderWidth: 1, borderColor: "rgba(79,142,240,0.4)",
+    paddingHorizontal: 18, paddingVertical: 7, borderRadius: 20,
   },
-  rankBadgeText: {
-    fontSize: 14,
-    color: "#4F8EF0",
-    fontFamily: "DMSans_700Bold",
-    letterSpacing: 2,
-  },
-  rankCaption: {
-    fontSize: 11,
-    color: "rgba(240,246,255,0.35)",
-    fontFamily: "DMSans_400Regular",
-    letterSpacing: 0.5,
-  },
-  footer: {
-    alignItems: "center",
-    paddingTop: 4,
-  },
-  footerText: {
-    fontSize: 11,
-    color: "rgba(240,246,255,0.2)",
-    fontFamily: "DMSans_400Regular",
-    letterSpacing: 1,
-  },
+  rankBadgeText: { fontSize: 14, color: "#4F8EF0", fontFamily: "DMSans_700Bold", letterSpacing: 2 },
+  rankCaption: { fontSize: 11, color: "rgba(240,246,255,0.35)", fontFamily: "DMSans_400Regular", letterSpacing: 0.5 },
+  footer: { alignItems: "center", paddingTop: 4 },
+  footerText: { fontSize: 11, color: "rgba(240,246,255,0.2)", fontFamily: "DMSans_400Regular", letterSpacing: 1 },
 });

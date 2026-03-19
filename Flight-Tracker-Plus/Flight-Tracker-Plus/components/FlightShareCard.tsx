@@ -5,7 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Flight } from "@/context/flights";
 
 export const FLIGHT_CARD_WIDTH = 375;
-export const FLIGHT_CARD_HEIGHT = 560;
+export const FLIGHT_CARD_HEIGHT = 600;
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
@@ -25,9 +25,25 @@ function formatHours(minutes: number): string {
   return `${h}h ${m}m`;
 }
 
+function getCO2FunFact(co2Kg: number): string {
+  const coffeeCups = Math.round(co2Kg / 0.021);
+  const netflixHours = Math.round(co2Kg / 0.055);
+  const beers = Math.round(co2Kg / 0.3);
+  const pizzas = Math.round(co2Kg / 0.5);
+  const donuts = Math.round(co2Kg / 0.06);
+  const burps = Math.round(co2Kg / 0.0001);
+  if (co2Kg < 5) return `${burps.toLocaleString()} burps worth of CO\u2082`;
+  if (co2Kg < 20) return `${donuts.toLocaleString()} donuts from the bakery`;
+  if (co2Kg < 50) return `${coffeeCups.toLocaleString()} cups of coffee`;
+  if (co2Kg < 100) return `${netflixHours.toLocaleString()} hrs of Netflix`;
+  if (co2Kg < 200) return `${beers.toLocaleString()} beers at the pub`;
+  return `${pizzas.toLocaleString()} pizza deliveries`;
+}
+
 export default function FlightShareCard({ flight }: { flight: Flight }) {
   const isDelayed = flight.status === "delayed";
   const km = Math.round(flight.distanceMiles * 1.60934).toLocaleString();
+  const funFact = getCO2FunFact(flight.co2Kg);
 
   return (
     <View style={styles.card}>
@@ -99,8 +115,7 @@ export default function FlightShareCard({ flight }: { flight: Flight }) {
         </View>
 
         <Text style={styles.duration}>
-          {formatHours(flight.durationMinutes)} · {flight.flightCode} ·{" "}
-          {flight.airline}
+          {formatHours(flight.durationMinutes)} \u00b7 {flight.flightCode} \u00b7 {flight.airline}
         </Text>
 
         <View style={styles.tearLine}>
@@ -125,7 +140,7 @@ export default function FlightShareCard({ flight }: { flight: Flight }) {
           <View style={styles.statItem}>
             <Ionicons name="leaf" size={14} color="#10B981" />
             <Text style={styles.statValue}>{flight.co2Kg} kg</Text>
-            <Text style={styles.statSub}>CO₂</Text>
+            <Text style={styles.statSub}>CO\u2082</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
@@ -135,6 +150,12 @@ export default function FlightShareCard({ flight }: { flight: Flight }) {
             </Text>
             <Text style={styles.statSub}>Aircraft</Text>
           </View>
+        </View>
+
+        {/* CO2 fun fact */}
+        <View style={styles.funFactRow}>
+          <Ionicons name="leaf-outline" size={11} color="#10B981" />
+          <Text style={styles.funFactText}>That\u2019s like {funFact}</Text>
         </View>
 
         <View style={styles.footer}>
@@ -184,163 +205,69 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  logoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  logoText: {
-    fontSize: 11,
-    color: "#4F8EF0",
-    fontFamily: "DMSans_700Bold",
-    letterSpacing: 2.5,
-  },
+  logoRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  logoText: { fontSize: 11, color: "#4F8EF0", fontFamily: "DMSans_700Bold", letterSpacing: 2.5 },
   statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
-    borderWidth: 1,
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 10, borderWidth: 1,
   },
-  statusDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-  },
-  statusText: {
-    fontSize: 11,
-    fontFamily: "DMSans_700Bold",
-    letterSpacing: 0.3,
-  },
-  routeSection: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  routeEnd: {
-    flex: 1,
-    gap: 4,
-  },
-  iata: {
-    fontSize: 42,
-    color: "#F0F6FF",
-    fontFamily: "DMSans_700Bold",
-    lineHeight: 46,
-  },
-  city: {
-    fontSize: 12,
-    color: "rgba(240,246,255,0.45)",
-    fontFamily: "DMSans_400Regular",
-  },
-  time: {
-    fontSize: 18,
-    color: "#F0F6FF",
-    fontFamily: "DMSans_700Bold",
-    marginTop: 4,
-  },
-  routeMid: {
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 6,
-    flex: 0.6,
-  },
-  routeLine: {
-    height: 1,
-    backgroundColor: "rgba(79,142,240,0.3)",
-    width: "100%",
-  },
+  statusDot: { width: 5, height: 5, borderRadius: 2.5 },
+  statusText: { fontSize: 11, fontFamily: "DMSans_700Bold", letterSpacing: 0.3 },
+  routeSection: { flexDirection: "row", alignItems: "center", gap: 12 },
+  routeEnd: { flex: 1, gap: 4 },
+  iata: { fontSize: 42, color: "#F0F6FF", fontFamily: "DMSans_700Bold", lineHeight: 46 },
+  city: { fontSize: 12, color: "rgba(240,246,255,0.45)", fontFamily: "DMSans_400Regular" },
+  time: { fontSize: 18, color: "#F0F6FF", fontFamily: "DMSans_700Bold", marginTop: 4 },
+  routeMid: { flexDirection: "column", alignItems: "center", gap: 6, flex: 0.6 },
+  routeLine: { height: 1, backgroundColor: "rgba(79,142,240,0.3)", width: "100%" },
   planeWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 34, height: 34, borderRadius: 17,
     backgroundColor: "rgba(79,142,240,0.15)",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(79,142,240,0.3)",
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1, borderColor: "rgba(79,142,240,0.3)",
   },
   duration: {
-    fontSize: 13,
-    color: "rgba(240,246,255,0.4)",
-    fontFamily: "DMSans_400Regular",
-    textAlign: "center",
-    letterSpacing: 0.3,
+    fontSize: 13, color: "rgba(240,246,255,0.4)",
+    fontFamily: "DMSans_400Regular", textAlign: "center", letterSpacing: 0.3,
   },
-  tearLine: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: -32,
-  },
+  tearLine: { flexDirection: "row", alignItems: "center", marginHorizontal: -32 },
   notchL: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: "#050B18",
-    marginLeft: -9,
-    borderWidth: 1,
-    borderColor: "rgba(79,142,240,0.2)",
+    width: 18, height: 18, borderRadius: 9,
+    backgroundColor: "#050B18", marginLeft: -9,
+    borderWidth: 1, borderColor: "rgba(79,142,240,0.2)",
   },
   notchR: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: "#050B18",
-    marginRight: -9,
-    borderWidth: 1,
-    borderColor: "rgba(79,142,240,0.2)",
+    width: 18, height: 18, borderRadius: 9,
+    backgroundColor: "#050B18", marginRight: -9,
+    borderWidth: 1, borderColor: "rgba(79,142,240,0.2)",
   },
-  dashes: {
-    flex: 1,
-    flexDirection: "row",
-    gap: 4,
-    paddingHorizontal: 8,
-    alignItems: "center",
-  },
-  dash: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "rgba(79,142,240,0.2)",
-  },
-  statsRow: {
+  dashes: { flex: 1, flexDirection: "row", gap: 4, paddingHorizontal: 8, alignItems: "center" },
+  dash: { flex: 1, height: 1, backgroundColor: "rgba(79,142,240,0.2)" },
+  statsRow: { flexDirection: "row", alignItems: "center" },
+  statItem: { flex: 1, alignItems: "center", gap: 4 },
+  statDivider: { width: 1, height: 48, backgroundColor: "rgba(79,142,240,0.15)" },
+  statValue: { fontSize: 16, color: "#F0F6FF", fontFamily: "DMSans_700Bold" },
+  statSub: { fontSize: 11, color: "rgba(240,246,255,0.35)", fontFamily: "DMSans_400Regular" },
+
+  // CO2 fun fact
+  funFactRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 2,
   },
-  statItem: {
+  funFactText: {
+    fontSize: 12,
+    color: "rgba(16,185,129,0.7)",
+    fontFamily: "DMSans_400Regular",
+    fontStyle: "italic",
+    textAlign: "center",
     flex: 1,
-    alignItems: "center",
-    gap: 4,
   },
-  statDivider: {
-    width: 1,
-    height: 48,
-    backgroundColor: "rgba(79,142,240,0.15)",
-  },
-  statValue: {
-    fontSize: 16,
-    color: "#F0F6FF",
-    fontFamily: "DMSans_700Bold",
-  },
-  statSub: {
-    fontSize: 11,
-    color: "rgba(240,246,255,0.35)",
-    fontFamily: "DMSans_400Regular",
-  },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  dateText: {
-    fontSize: 13,
-    color: "rgba(240,246,255,0.4)",
-    fontFamily: "DMSans_400Regular",
-  },
-  footerBrand: {
-    fontSize: 11,
-    color: "rgba(240,246,255,0.2)",
-    fontFamily: "DMSans_400Regular",
-    letterSpacing: 1,
-  },
+
+  footer: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  dateText: { fontSize: 13, color: "rgba(240,246,255,0.4)", fontFamily: "DMSans_400Regular" },
+  footerBrand: { fontSize: 11, color: "rgba(240,246,255,0.2)", fontFamily: "DMSans_400Regular", letterSpacing: 1 },
 });
