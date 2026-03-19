@@ -17,7 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { Colors } from "@/constants/colors";
-import { useFlights, Flight } from "@/context/flights";
+import { useFlights } from "@/context/flights";
 import { apiRequest } from "@/lib/query-client";
 import { DatePicker } from "@/components/DatePicker";
 
@@ -52,6 +52,21 @@ function todayStr(): string {
   return new Date().toISOString().substring(0, 10);
 }
 
+function formatDate(str: string): string {
+  try {
+    const [y, m, d] = str.split("-").map(Number);
+    const date = new Date(y, m - 1, d);
+    return date.toLocaleDateString("en-GB", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return str;
+  }
+}
+
 export default function AddFlightScreen() {
   const insets = useSafeAreaInsets();
   const { addFlight, flights } = useFlights();
@@ -72,11 +87,9 @@ export default function AddFlightScreen() {
       setError("Please enter a flight code (e.g. LX2819)");
       return;
     }
-
     setError("");
     setPreview(null);
     setLoading(true);
-
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const res = await apiRequest(
@@ -86,10 +99,8 @@ export default function AddFlightScreen() {
       const data = (await res.json()) as FlightLookupResult;
       setPreview(data);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (e) {
-      setError(
-        "Could not look up that flight. Please check the code and date.",
-      );
+    } catch {
+      setError("Could not look up that flight. Please check the code and date.");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setLoading(false);
@@ -101,18 +112,30 @@ export default function AddFlightScreen() {
     setSaving(true);
     try {
       const isDuplicate = flights.some(
-        (f) => f.code === preview.flightCode && f.date === preview.date,
+        (f) => f.flightCode === preview.flightCode && f.date === preview.date,
       );
-
       if (isDuplicate) {
         setError("This flight has already been added to your logbook.");
         setSaving(false);
         return;
       }
-
       await addFlight({
-        ...preview,
+        flightCode: preview.flightCode,
+        date: preview.date,
+        airline: preview.airline,
+        airlineCode: preview.airlineCode,
+        departureAirport: preview.departureAirport,
+        arrivalAirport: preview.arrivalAirport,
+        departureCity: preview.departureCity,
+        arrivalCity: preview.arrivalCity,
+        departureTime: preview.departureTime,
+        arrivalTime: preview.arrivalTime,
+        durationMinutes: preview.durationMinutes,
+        distanceMiles: preview.distanceMiles,
+        co2Kg: preview.co2Kg,
         status: preview.status || "on_time",
+        delayMinutes: preview.delayMinutes ?? 0,
+        aircraft: preview.aircraft,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.dismissAll();
@@ -122,6 +145,13 @@ export default function AddFlightScreen() {
       setSaving(false);
     }
   }
+
+  const dep = preview?.departureAirport || "—";
+  const arr = preview?.arrivalAirport || "—";
+  const depCity = preview?.departureCity || "";
+  const arrCity = preview?.arrivalCity || "";
+  const depTime = preview?.departureTime || "--:--";
+  const arrTime = preview?.arrivalTime || "--:--";
 
   return (
     <KeyboardAvoidingView
@@ -149,19 +179,13 @@ export default function AddFlightScreen() {
             </Text>
           </Animated.View>
 
-          <Animated.View
-            entering={FadeInDown.delay(80).springify()}
-            style={styles.form}
-          >
+          <Animated.View entering={FadeInDown.delay(80).springify()} style={styles.form}>
             <View style={styles.field}>
               <Text style={styles.label}>Flight Code</Text>
               <TextInput
                 style={styles.input}
                 value={code}
-                onChangeText={(t) => {
-                  setCode(t.toUpperCase());
-                  setPreview(null);
-                }}
+                onChangeText={(t) => { setCode(t.toUpperCase()); setPreview(null); }}
                 placeholder="e.g. LX2819, BA456"
                 placeholderTextColor={Colors.textSec}
                 autoCapitalize="characters"
@@ -170,26 +194,18 @@ export default function AddFlightScreen() {
                 maxLength={8}
               />
             </View>
-
             <View style={styles.field}>
               <Text style={styles.label}>Date</Text>
               <DatePicker
                 value={date}
-                onChange={(d) => {
-                  setDate(d);
-                  setPreview(null);
-                }}
+                onChange={(d) => { setDate(d); setPreview(null); }}
               />
             </View>
           </Animated.View>
 
           {error ? (
             <Animated.View entering={FadeIn} style={styles.errorBox}>
-              <Ionicons
-                name="alert-circle-outline"
-                size={16}
-                color={Colors.red}
-              />
+              <Ionicons name="alert-circle-outline" size={16} color={Colors.red} />
               <Text style={styles.errorText}>{error}</Text>
             </Animated.View>
           ) : null}
@@ -206,102 +222,87 @@ export default function AddFlightScreen() {
               <ActivityIndicator color={Colors.white} size="small" />
             ) : (
               <>
-                <Ionicons
-                  name="search-outline"
-                  size={18}
-                  color={Colors.white}
-                />
+                <Ionicons name="search-outline" size={18} color={Colors.white} />
                 <Text style={styles.lookupBtnText}>Look Up Flight</Text>
               </>
             )}
           </Pressable>
 
           {preview && (
-            <Animated.View
-              entering={FadeInDown.springify()}
-              style={styles.preview}
-            >
+            <Animated.View entering={FadeInDown.springify()} style={styles.preview}>
+
+              {/* Header row: code + status */}
               <View style={styles.previewHeader}>
-                <Text style={styles.previewCode}>{preview.flightCode}</Text>
-                <View
-                  style={[
-                    styles.statusBadge,
-                    {
-                      backgroundColor:
-                        preview.status === "delayed"
-                          ? Colors.red + "22"
-                          : Colors.green + "22",
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.statusText,
-                      {
-                        color:
-                          preview.status === "delayed"
-                            ? Colors.red
-                            : Colors.green,
-                      },
-                    ]}
-                  >
-                    {preview.status === "delayed"
-                      ? `Delayed +${preview.delayMinutes}m`
-                      : "On Time"}
+                <View>
+                  <Text style={styles.previewCode}>{preview.flightCode}</Text>
+                  <Text style={styles.previewAirline}>{preview.airline}</Text>
+                </View>
+                <View style={[
+                  styles.statusBadge,
+                  { backgroundColor: preview.status === "delayed" ? Colors.red + "22" : Colors.green + "22" },
+                ]}>
+                  <Text style={[
+                    styles.statusText,
+                    { color: preview.status === "delayed" ? Colors.red : Colors.green },
+                  ]}>
+                    {preview.status === "delayed" ? `Delayed +${preview.delayMinutes}m` : "On Time"}
                   </Text>
                 </View>
               </View>
 
-              <View style={styles.routeDisplay}>
+              {/* Date row */}
+              <View style={styles.dateRow}>
+                <Ionicons name="calendar-outline" size={13} color={Colors.textSec} />
+                <Text style={styles.dateText}>{formatDate(preview.date)}</Text>
+              </View>
+
+              <View style={styles.previewDivider} />
+
+              {/* Route */}
+              <View style={styles.routeRow}>
+                {/* Departure */}
                 <View style={styles.routeEnd}>
-                  <Text style={styles.iata}>{preview.departureAirport}</Text>
-                  <Text style={styles.routeCity}>{preview.departureCity}</Text>
-                  <Text style={styles.routeTime}>{preview.departureTime}</Text>
+                  <Text style={styles.iata}>{dep}</Text>
+                  <Text style={styles.routeCity}>{depCity}</Text>
+                  <Text style={styles.routeTime}>{depTime}</Text>
                 </View>
+
+                {/* Middle arrow */}
                 <View style={styles.routeMiddle}>
                   <View style={styles.routeLine} />
-                  <Ionicons name="airplane" size={18} color={Colors.accent} />
+                  <Ionicons name="airplane" size={20} color={Colors.accent} />
                   <View style={styles.routeLine} />
                 </View>
+
+                {/* Arrival */}
                 <View style={[styles.routeEnd, { alignItems: "flex-end" }]}>
-                  <Text style={styles.iata}>{preview.arrivalAirport}</Text>
-                  <Text style={styles.routeCity}>{preview.arrivalCity}</Text>
-                  <Text style={styles.routeTime}>{preview.arrivalTime}</Text>
+                  <Text style={styles.iata}>{arr}</Text>
+                  <Text style={styles.routeCity}>{arrCity}</Text>
+                  <Text style={styles.routeTime}>{arrTime}</Text>
                 </View>
               </View>
 
               <View style={styles.previewDivider} />
 
-              <Text style={styles.airlineText}>{preview.airline}</Text>
-              <Text style={styles.aircraftText}>{preview.aircraft}</Text>
+              {/* Aircraft + stats */}
+              <View style={styles.metaRow}>
+                <Ionicons name="airplane-outline" size={13} color={Colors.textSec} />
+                <Text style={styles.metaText}>{preview.aircraft}</Text>
+              </View>
 
               <View style={styles.statsRow}>
                 <View style={styles.statItem}>
-                  <Ionicons
-                    name="time-outline"
-                    size={14}
-                    color={Colors.textSec}
-                  />
-                  <Text style={styles.statItemText}>
-                    {formatHours(preview.durationMinutes)}
-                  </Text>
+                  <Ionicons name="time-outline" size={14} color={Colors.textSec} />
+                  <Text style={styles.statItemText}>{formatHours(preview.durationMinutes)}</Text>
                 </View>
+                <View style={styles.statDot} />
                 <View style={styles.statItem}>
-                  <Ionicons
-                    name="navigate-outline"
-                    size={14}
-                    color={Colors.textSec}
-                  />
-                  <Text style={styles.statItemText}>
-                    {preview.distanceMiles.toLocaleString()} mi
-                  </Text>
+                  <Ionicons name="navigate-outline" size={14} color={Colors.textSec} />
+                  <Text style={styles.statItemText}>{preview.distanceMiles.toLocaleString()} mi</Text>
                 </View>
+                <View style={styles.statDot} />
                 <View style={styles.statItem}>
-                  <Ionicons
-                    name="leaf-outline"
-                    size={14}
-                    color={Colors.green}
-                  />
+                  <Ionicons name="leaf-outline" size={14} color={Colors.green} />
                   <Text style={[styles.statItemText, { color: Colors.green }]}>
                     {preview.co2Kg} kg CO₂
                   </Text>
@@ -334,30 +335,21 @@ export default function AddFlightScreen() {
 }
 
 const styles = StyleSheet.create({
-  wrapper: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
+  wrapper: { flex: 1, backgroundColor: Colors.bg },
   container: {
     flex: 1,
     backgroundColor: Colors.surface,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
   },
-  scroll: {
-    padding: 24,
-  },
+  scroll: { padding: 24 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 6,
   },
-  title: {
-    fontSize: 24,
-    color: Colors.text,
-    fontFamily: "DMSans_700Bold",
-  },
+  title: { fontSize: 24, color: Colors.text, fontFamily: "DMSans_700Bold" },
   subtitle: {
     fontSize: 14,
     color: Colors.textSec,
@@ -365,13 +357,8 @@ const styles = StyleSheet.create({
     marginBottom: 28,
     lineHeight: 20,
   },
-  form: {
-    gap: 16,
-    marginBottom: 24,
-  },
-  field: {
-    gap: 8,
-  },
+  form: { gap: 16, marginBottom: 24 },
+  field: { gap: 8 },
   label: {
     fontSize: 13,
     color: Colors.textSec,
@@ -414,11 +401,9 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 4,
   },
-  lookupBtnText: {
-    fontSize: 16,
-    color: Colors.white,
-    fontFamily: "DMSans_700Bold",
-  },
+  lookupBtnText: { fontSize: 16, color: Colors.white, fontFamily: "DMSans_700Bold" },
+
+  // Preview card
   preview: {
     backgroundColor: Colors.card,
     borderRadius: 18,
@@ -430,91 +415,103 @@ const styles = StyleSheet.create({
   previewHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
+    alignItems: "flex-start",
+    marginBottom: 6,
   },
-  previewCode: {
-    fontSize: 18,
-    color: Colors.accent,
-    fontFamily: "DMSans_700Bold",
+  previewCode: { fontSize: 20, color: Colors.accent, fontFamily: "DMSans_700Bold" },
+  previewAirline: {
+    fontSize: 13,
+    color: Colors.textSec,
+    fontFamily: "DMSans_400Regular",
+    marginTop: 2,
   },
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
   },
-  statusText: {
-    fontSize: 12,
-    fontFamily: "DMSans_700Bold",
-  },
-  routeDisplay: {
+  statusText: { fontSize: 12, fontFamily: "DMSans_700Bold" },
+  dateRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 16,
+    gap: 5,
+    marginBottom: 14,
   },
-  routeEnd: {
-    flex: 1,
-  },
-  routeMiddle: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  routeLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.border,
-    width: 20,
-  },
-  iata: {
-    fontSize: 26,
-    color: Colors.text,
-    fontFamily: "DMSans_700Bold",
-  },
-  routeCity: {
-    fontSize: 12,
+  dateText: {
+    fontSize: 13,
     color: Colors.textSec,
     fontFamily: "DMSans_400Regular",
-    marginTop: 1,
-  },
-  routeTime: {
-    fontSize: 14,
-    color: Colors.text,
-    fontFamily: "DMSans_500Medium",
-    marginTop: 4,
   },
   previewDivider: {
     height: 1,
     backgroundColor: Colors.border,
     marginVertical: 14,
   },
-  airlineText: {
-    fontSize: 15,
-    color: Colors.text,
-    fontFamily: "DMSans_500Medium",
+
+  // Route
+  routeRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
-  aircraftText: {
-    fontSize: 13,
+  routeEnd: { flex: 1 },
+  routeMiddle: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    flex: 1,
+  },
+  routeLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.border,
+  },
+  iata: { fontSize: 28, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  routeCity: {
+    fontSize: 12,
     color: Colors.textSec,
     fontFamily: "DMSans_400Regular",
     marginTop: 2,
-    marginBottom: 14,
+  },
+  routeTime: {
+    fontSize: 15,
+    color: Colors.text,
+    fontFamily: "DMSans_600SemiBold" || "DMSans_500Medium",
+    marginTop: 6,
+  },
+
+  // Meta + stats
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginBottom: 10,
+  },
+  metaText: {
+    fontSize: 13,
+    color: Colors.textSec,
+    fontFamily: "DMSans_400Regular",
   },
   statsRow: {
     flexDirection: "row",
-    gap: 12,
+    alignItems: "center",
+    gap: 8,
     marginBottom: 18,
   },
   statItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
   },
   statItemText: {
     fontSize: 13,
     color: Colors.textSec,
     fontFamily: "DMSans_500Medium",
+  },
+  statDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: Colors.border,
   },
   saveBtn: {
     backgroundColor: Colors.accent,
@@ -525,9 +522,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
   },
-  saveBtnText: {
-    fontSize: 16,
-    color: Colors.white,
-    fontFamily: "DMSans_700Bold",
-  },
+  saveBtnText: { fontSize: 16, color: Colors.white, fontFamily: "DMSans_700Bold" },
 });
