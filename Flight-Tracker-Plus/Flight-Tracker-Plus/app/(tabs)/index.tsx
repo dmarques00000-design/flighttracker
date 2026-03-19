@@ -136,11 +136,12 @@ function FlightRow({ flight, isUpcoming }: { flight: Flight; isUpcoming: boolean
   );
 }
 
-// ─── Hamburger menu ───────────────────────────────────────────────────────────
+// ─── Hamburger menu ──────────────────────────────────────────────────
 const MENU_ITEMS = [
-  { id: "wallet",  icon: "wallet-outline",       label: "Link Apple Wallet",  sub: "Import boarding passes" },
-  { id: "share",   icon: "share-social-outline",  label: "Share Year Recap",   sub: "Post to social media" },
-  { id: "add",     icon: "add-circle-outline",    label: "Add Flight",         sub: "Log a flight manually" },
+  { id: "wallet",        icon: "wallet-outline",         label: "Link Apple Wallet",  sub: "Import boarding passes" },
+  { id: "monthly-recap", icon: "calendar-outline",        label: "Monthly Recap",       sub: "Share your month in the air" },
+  { id: "share",         icon: "share-social-outline",   label: "Share Year Recap",   sub: "Post to social media" },
+  { id: "add",           icon: "add-circle-outline",     label: "Add Flight",         sub: "Log a flight manually" },
 ];
 
 function HamburgerMenu({ visible, onClose, onSelect }: { visible: boolean; onClose: () => void; onSelect: (id: string) => void }) {
@@ -209,6 +210,7 @@ export default function HomeScreen() {
   function handleMenuSelect(id: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (id === "wallet") router.push("/wallet-import");
+    else if (id === "monthly-recap") router.push("/monthly-recap");
     else if (id === "share") router.push("/share");
     else if (id === "add") router.push("/add-flight");
   }
@@ -254,7 +256,6 @@ export default function HomeScreen() {
               style={({ pressed }) => [styles.menuBtn, { opacity: pressed ? 0.7 : 1 }]}
               hitSlop={8}
             >
-              {/* Three-line hamburger */}
               <View style={styles.burgerLine} />
               <View style={[styles.burgerLine, { width: 14 }]} />
               <View style={[styles.burgerLine, { width: 10 }]} />
@@ -378,15 +379,13 @@ const styles = StyleSheet.create({
   menuBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center", gap: 4 },
   burgerLine: { width: 18, height: 2, borderRadius: 1, backgroundColor: Colors.text },
 
-  // Dropdown menu
   menuOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.18)" },
   menuCard: {
     position: "absolute", top: 90, right: 20,
-    width: 250,
+    width: 260,
     backgroundColor: Colors.card,
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderWidth: 1, borderColor: Colors.border,
     overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
