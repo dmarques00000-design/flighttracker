@@ -20,6 +20,8 @@ export interface Flight {
   delayMinutes: number;
   aircraft: string;
   addedAt: string;
+  /** true when the flight was imported from an Apple Wallet boarding pass */
+  verified: boolean;
 }
 
 interface FlightStats {
@@ -93,7 +95,12 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
     AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
       if (raw) {
         try {
-          setFlights(JSON.parse(raw) as Flight[]);
+          const parsed = JSON.parse(raw) as Flight[];
+          const migrated = parsed.map((f) => ({
+            ...f,
+            verified: f.verified ?? false,
+          }));
+          setFlights(migrated);
         } catch {
           setFlights([]);
         }
