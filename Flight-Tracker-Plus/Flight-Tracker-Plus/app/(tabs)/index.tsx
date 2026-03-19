@@ -282,7 +282,7 @@ export default function HomeScreen() {
                 )}
               </View>
               {stats.co2 > 0 && (
-                <Text style={styles.co2FunFact}>\u{1F343} That\u2019s like {getCO2FunFact(stats.co2)}</Text>
+                <Text style={styles.co2FunFact}>{"\uD83C\uDF43"} That\u2019s like {getCO2FunFact(stats.co2)}</Text>
               )}
             </Animated.View>
 
