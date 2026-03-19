@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   Platform,
   ScrollView,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -16,12 +16,15 @@ import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { Colors } from "@/constants/colors";
 import { useFlights, Flight } from "@/context/flights";
 
+const TODAY = new Date().toISOString().substring(0, 10);
+
 const MONTHS = [
   "January","February","March","April","May","June",
   "July","August","September","October","November","December",
 ];
 
 type GroupBy = "month" | "year" | "all";
+type TimeFilter = "all" | "upcoming" | "past" | number;
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
@@ -31,11 +34,18 @@ function formatDate(dateStr: string): string {
 function groupFlights(
   flights: Flight[],
   groupBy: GroupBy,
-  yearFilter: number | "all"
+  timeFilter: TimeFilter
 ): { title: string; data: Flight[] }[] {
-  let filtered = yearFilter === "all"
-    ? [...flights]
-    : flights.filter((f) => f.date.startsWith(String(yearFilter)));
+  let filtered: Flight[];
+  if (timeFilter === "upcoming") {
+    filtered = flights.filter((f) => f.date >= TODAY).sort((a, b) => a.date.localeCompare(b.date));
+  } else if (timeFilter === "past") {
+    filtered = flights.filter((f) => f.date < TODAY).sort((a, b) => b.date.localeCompare(a.date));
+  } else if (timeFilter === "all") {
+    filtered = [...flights];
+  } else {
+    filtered = flights.filter((f) => f.date.startsWith(String(timeFilter)));
+  }
 
   if (groupBy === "all") {
     return filtered.length > 0 ? [{ title: "All Flights", data: filtered }] : [];
@@ -53,7 +63,6 @@ function groupFlights(
       .map(([year, data]) => ({ title: String(year), data }));
   }
 
-  // month grouping
   const map = new Map<string, Flight[]>();
   filtered.forEach((f) => {
     const y = parseInt(f.date.substring(0, 4), 10);
@@ -63,7 +72,7 @@ function groupFlights(
     map.get(key)!.push(f);
   });
   return Array.from(map.entries())
-    .sort((a, b) => b[0].localeCompare(a[0]))
+    .sort((a, b) => (timeFilter === "upcoming" ? a[0].localeCompare(b[0]) : b[0].localeCompare(a[0])))
     .map(([key, data]) => {
       const y = parseInt(key.substring(0, 4), 10);
       const m = parseInt(key.substring(5), 10) - 1;
@@ -71,39 +80,12 @@ function groupFlights(
     });
 }
 
-function FlightItem({
-  flight,
-  onDelete,
-  index,
-}: {
-  flight: Flight;
-  onDelete: () => void;
-  index: number;
-}) {
+function FlightItem({ flight, onDelete, index }: { flight: Flight; onDelete: () => void; index: number }) {
   const [confirming, setConfirming] = useState(false);
 
-  function handleTrash() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setConfirming(true);
-  }
-
-  function handleConfirmDelete() {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    setConfirming(false);
-    onDelete();
-  }
-
-  function handlePress() {
-    if (confirming) { setConfirming(false); return; }
-    router.push({ pathname: "/flight/[id]", params: { id: flight.id } });
-  }
-
   return (
-    <Pressable onPress={handlePress}>
-      <Animated.View
-        entering={FadeInDown.delay(index * 30).springify()}
-        style={styles.card}
-      >
+    <Pressable onPress={() => { if (confirming) { setConfirming(false); return; } router.push({ pathname: "/flight/[id]", params: { id: flight.id } }); }}>
+      <Animated.View entering={FadeInDown.delay(index * 30).springify()} style={styles.card}>
         <View style={styles.cardMain}>
           <View style={styles.routeCol}>
             <View style={styles.routeRow}>
@@ -114,9 +96,11 @@ function FlightItem({
             <Text style={styles.meta}>{flight.flightCode} \u00b7 {formatDate(flight.date)}</Text>
           </View>
           <View style={styles.rightCol}>
-            <View style={[styles.statusDot, { backgroundColor: flight.status === "delayed" ? Colors.red : Colors.green }]} />
+            <View style={[styles.statusDot, {
+              backgroundColor: flight.date >= TODAY ? Colors.accent : flight.status === "delayed" ? Colors.red : Colors.green
+            }]} />
             {!confirming && (
-              <Pressable onPress={handleTrash} hitSlop={14} style={styles.trashBtn}>
+              <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setConfirming(true); }} hitSlop={14} style={styles.trashBtn}>
                 <Ionicons name="trash-outline" size={16} color={Colors.textSec} />
               </Pressable>
             )}
@@ -127,7 +111,7 @@ function FlightItem({
             <Pressable onPress={() => setConfirming(false)} style={styles.cancelBtn}>
               <Text style={styles.cancelText}>Cancel</Text>
             </Pressable>
-            <Pressable onPress={handleConfirmDelete} style={styles.deleteBtn}>
+            <Pressable onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); setConfirming(false); onDelete(); }} style={styles.deleteBtn}>
               <Ionicons name="trash" size={14} color={Colors.white} />
               <Text style={styles.deleteText}>Remove</Text>
             </Pressable>
@@ -141,11 +125,18 @@ function FlightItem({
 export default function FlightsScreen() {
   const insets = useSafeAreaInsets();
   const { flights, removeFlight } = useFlights();
+  const params = useLocalSearchParams<{ filter?: string }>();
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
   const [groupBy, setGroupBy] = useState<GroupBy>("month");
-  const [yearFilter, setYearFilter] = useState<number | "all">(new Date().getFullYear());
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>(new Date().getFullYear());
+
+  // Apply filter from navigation params (e.g. from home screen "See all")
+  useEffect(() => {
+    if (params.filter === "upcoming") setTimeFilter("upcoming");
+    else if (params.filter === "past") setTimeFilter("past");
+  }, [params.filter]);
 
   const years = useMemo(() => {
     const set = new Set<number>();
@@ -156,15 +147,27 @@ export default function FlightsScreen() {
     return Array.from(set).sort((a, b) => b - a);
   }, [flights]);
 
+  const hasUpcoming = useMemo(() => flights.some((f) => f.date >= TODAY), [flights]);
+  const hasPast = useMemo(() => flights.some((f) => f.date < TODAY), [flights]);
+
   const sections = useMemo(
-    () => groupFlights(flights, groupBy, yearFilter),
-    [flights, groupBy, yearFilter]
+    () => groupFlights(flights, groupBy, timeFilter),
+    [flights, groupBy, timeFilter]
   );
+
+  const totalShown = sections.reduce((s, sec) => s + sec.data.length, 0);
 
   function handleAdd() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push("/add-flight");
   }
+
+  const TIME_FILTERS: { key: TimeFilter; label: string; show: boolean }[] = [
+    { key: "upcoming", label: "\u23F0 Upcoming", show: hasUpcoming },
+    { key: "past", label: "\u2713 Past", show: hasPast },
+    { key: "all", label: "All Time", show: true },
+    ...years.map((y) => ({ key: y as TimeFilter, label: String(y), show: true })),
+  ];
 
   const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
     { key: "month", label: "By Month" },
@@ -185,36 +188,28 @@ export default function FlightsScreen() {
           <View style={styles.header}>
             <View style={styles.headerTop}>
               <Text style={styles.title}>All Flights</Text>
-              <Text style={styles.count}>{flights.length} logged</Text>
+              <Text style={styles.count}>{totalShown} flight{totalShown !== 1 ? "s" : ""}</Text>
             </View>
 
-            {/* Year filter */}
-            {years.length > 1 && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.filterRow}
-                style={{ marginBottom: 10, marginHorizontal: -20 }}
-              >
-                <View style={{ paddingLeft: 20 }} />
+            {/* Time filter chips */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterRow}
+              style={{ marginBottom: 12, marginHorizontal: -20 }}
+            >
+              <View style={{ paddingLeft: 20 }} />
+              {TIME_FILTERS.filter((f) => f.show).map((opt) => (
                 <Pressable
-                  onPress={() => { Haptics.selectionAsync(); setYearFilter("all"); }}
-                  style={[styles.filterPill, yearFilter === "all" && styles.filterPillActive]}
+                  key={String(opt.key)}
+                  onPress={() => { Haptics.selectionAsync(); setTimeFilter(opt.key); }}
+                  style={[styles.filterPill, timeFilter === opt.key && styles.filterPillActive]}
                 >
-                  <Text style={[styles.filterText, yearFilter === "all" && styles.filterTextActive]}>All Time</Text>
+                  <Text style={[styles.filterText, timeFilter === opt.key && styles.filterTextActive]}>{opt.label}</Text>
                 </Pressable>
-                {years.map((y) => (
-                  <Pressable
-                    key={y}
-                    onPress={() => { Haptics.selectionAsync(); setYearFilter(y); }}
-                    style={[styles.filterPill, yearFilter === y && styles.filterPillActive]}
-                  >
-                    <Text style={[styles.filterText, yearFilter === y && styles.filterTextActive]}>{y}</Text>
-                  </Pressable>
-                ))}
-                <View style={{ paddingRight: 20 }} />
-              </ScrollView>
-            )}
+              ))}
+              <View style={{ paddingRight: 20 }} />
+            </ScrollView>
 
             {/* Group by toggle */}
             <View style={styles.groupRow}>
@@ -224,9 +219,7 @@ export default function FlightsScreen() {
                   onPress={() => { Haptics.selectionAsync(); setGroupBy(opt.key); }}
                   style={[styles.groupBtn, groupBy === opt.key && styles.groupBtnActive]}
                 >
-                  <Text style={[styles.groupText, groupBy === opt.key && styles.groupTextActive]}>
-                    {opt.label}
-                  </Text>
+                  <Text style={[styles.groupText, groupBy === opt.key && styles.groupTextActive]}>{opt.label}</Text>
                 </Pressable>
               ))}
             </View>
@@ -245,13 +238,21 @@ export default function FlightsScreen() {
             <View style={styles.emptyIcon}>
               <Ionicons name="airplane-outline" size={36} color={Colors.textSec} />
             </View>
-            <Text style={styles.emptyTitle}>No flights yet</Text>
-            <Text style={styles.emptySub}>
-              Add your first flight to start building your logbook.
+            <Text style={styles.emptyTitle}>
+              {timeFilter === "upcoming" ? "No upcoming flights" : timeFilter === "past" ? "No past flights" : "No flights yet"}
             </Text>
-            <Pressable onPress={handleAdd} style={({ pressed }) => [styles.emptyBtn, { opacity: pressed ? 0.8 : 1 }]}>
-              <Text style={styles.emptyBtnText}>Add Flight</Text>
-            </Pressable>
+            <Text style={styles.emptySub}>
+              {timeFilter === "upcoming"
+                ? "Add a future flight to see it here."
+                : timeFilter === "past"
+                ? "Flights with past dates will appear here."
+                : "Add your first flight to start building your logbook."}
+            </Text>
+            {timeFilter !== "upcoming" && timeFilter !== "past" && (
+              <Pressable onPress={handleAdd} style={({ pressed }) => [styles.emptyBtn, { opacity: pressed ? 0.8 : 1 }]}>
+                <Text style={styles.emptyBtnText}>Add Flight</Text>
+              </Pressable>
+            )}
           </Animated.View>
         )}
         renderItem={({ item, index }) => (
@@ -278,66 +279,20 @@ const styles = StyleSheet.create({
   headerTop: { marginBottom: 16 },
   title: { fontSize: 30, color: Colors.text, fontFamily: "DMSans_700Bold" },
   count: { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 },
-
   filterRow: { gap: 8, flexDirection: "row", paddingVertical: 2 },
-  filterPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: Colors.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
+  filterPill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border },
   filterPillActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
   filterText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
   filterTextActive: { color: Colors.white },
-
-  groupRow: {
-    flexDirection: "row",
-    backgroundColor: Colors.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 3,
-    marginBottom: 14,
-  },
-  groupBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: "center",
-    borderRadius: 10,
-  },
+  groupRow: { flexDirection: "row", backgroundColor: Colors.card, borderRadius: 12, borderWidth: 1, borderColor: Colors.border, padding: 3, marginBottom: 14 },
+  groupBtn: { flex: 1, paddingVertical: 8, alignItems: "center", borderRadius: 10 },
   groupBtnActive: { backgroundColor: Colors.accent },
   groupText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
   groupTextActive: { color: Colors.white, fontFamily: "DMSans_700Bold" },
-
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  sectionHeaderText: {
-    fontSize: 15,
-    color: Colors.text,
-    fontFamily: "DMSans_700Bold",
-  },
-  sectionCount: {
-    fontSize: 12,
-    color: Colors.textSec,
-    fontFamily: "DMSans_400Regular",
-  },
-
-  card: {
-    backgroundColor: Colors.card,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
+  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 8 },
+  sectionHeaderText: { fontSize: 15, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  sectionCount: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
+  card: { backgroundColor: Colors.card, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 13, marginBottom: 8, borderWidth: 1, borderColor: Colors.border },
   cardMain: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   routeCol: { flex: 1, gap: 4 },
   routeRow: { flexDirection: "row", alignItems: "center" },
@@ -346,52 +301,16 @@ const styles = StyleSheet.create({
   rightCol: { flexDirection: "row", alignItems: "center", gap: 12 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
   trashBtn: { padding: 4 },
-  confirmRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
-  cancelBtn: {
-    flex: 1, paddingVertical: 8, borderRadius: 8,
-    backgroundColor: Colors.surface, alignItems: "center",
-  },
+  confirmRow: { flexDirection: "row", gap: 8, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.border },
+  cancelBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: Colors.surface, alignItems: "center" },
   cancelText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
-  deleteBtn: {
-    flex: 1, paddingVertical: 8, borderRadius: 8,
-    backgroundColor: Colors.red, alignItems: "center",
-    flexDirection: "row", justifyContent: "center", gap: 5,
-  },
+  deleteBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: Colors.red, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5 },
   deleteText: { fontSize: 13, color: Colors.white, fontFamily: "DMSans_700Bold" },
-  fab: {
-    position: "absolute",
-    right: 20,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: Colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: Colors.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 6,
-  },
+  fab: { position: "absolute", right: 20, width: 52, height: 52, borderRadius: 26, backgroundColor: Colors.accent, alignItems: "center", justifyContent: "center", shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 6 },
   empty: { paddingTop: 60, alignItems: "center", paddingHorizontal: 20 },
-  emptyIcon: {
-    width: 72, height: 72, borderRadius: 20,
-    backgroundColor: Colors.card, alignItems: "center",
-    justifyContent: "center", marginBottom: 16,
-    borderWidth: 1, borderColor: Colors.border,
-  },
+  emptyIcon: { width: 72, height: 72, borderRadius: 20, backgroundColor: Colors.card, alignItems: "center", justifyContent: "center", marginBottom: 16, borderWidth: 1, borderColor: Colors.border },
   emptyTitle: { fontSize: 20, color: Colors.text, fontFamily: "DMSans_700Bold", marginBottom: 8 },
-  emptySub: {
-    fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular",
-    textAlign: "center", lineHeight: 20, marginBottom: 24,
-  },
+  emptySub: { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 20, marginBottom: 24 },
   emptyBtn: { backgroundColor: Colors.accent, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
   emptyBtnText: { fontSize: 15, color: Colors.white, fontFamily: "DMSans_700Bold" },
 });

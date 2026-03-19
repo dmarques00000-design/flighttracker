@@ -16,6 +16,8 @@ import { Colors } from "@/constants/colors";
 import { useFlights, Flight } from "@/context/flights";
 import GlobeView from "@/components/GlobeView";
 
+const TODAY = new Date().toISOString().substring(0, 10);
+
 function formatHours(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
@@ -28,6 +30,19 @@ function formatNumber(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
   return String(n);
+}
+
+function daysUntil(dateStr: string): number {
+  const diff = new Date(dateStr + "T00:00:00").getTime() - new Date(TODAY + "T00:00:00").getTime();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+function formatDateShort(dateStr: string): string {
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function computeRank(flightCount: number): number {
@@ -73,17 +88,7 @@ function useFilteredStats(flights: Flight[], period: "all" | number) {
   }, [flights, period]);
 }
 
-function StatCard({
-  label,
-  value,
-  icon,
-  accent,
-}: {
-  label: string;
-  value: string;
-  icon: string;
-  accent: string;
-}) {
+function StatCard({ label, value, icon, accent }: { label: string; value: string; icon: string; accent: string }) {
   return (
     <View style={styles.statCard}>
       <View style={[styles.statIcon, { backgroundColor: accent + "1A" }]}>
@@ -92,6 +97,66 @@ function StatCard({
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
+  );
+}
+
+// Shared flight row used by both Upcoming and Past sections
+function FlightRow({
+  flight,
+  isUpcoming,
+}: {
+  flight: Flight;
+  isUpcoming: boolean;
+}) {
+  const days = isUpcoming ? daysUntil(flight.date) : null;
+
+  return (
+    <Pressable
+      onPress={() => router.push({ pathname: "/flight/[id]", params: { id: flight.id } })}
+      style={({ pressed }) => [styles.flightCard, { opacity: pressed ? 0.8 : 1 }]}
+    >
+      {/* Left accent bar */}
+      <View style={[styles.flightAccentBar, { backgroundColor: isUpcoming ? Colors.accent : Colors.green }]} />
+
+      <View style={styles.flightCardInner}>
+        {/* Route row */}
+        <View style={styles.flightRouteRow}>
+          <Text style={styles.flightAirport}>{flight.departureAirport}</Text>
+          <View style={styles.flightArrowWrap}>
+            <View style={styles.flightArrowLine} />
+            <Ionicons name="airplane" size={12} color={isUpcoming ? Colors.accent : Colors.green} />
+            <View style={styles.flightArrowLine} />
+          </View>
+          <Text style={styles.flightAirport}>{flight.arrivalAirport}</Text>
+        </View>
+
+        {/* Meta row */}
+        <View style={styles.flightMetaRow}>
+          <Text style={styles.flightMeta}>
+            {flight.flightCode} \u00b7 {formatDateShort(flight.date)}
+          </Text>
+          {isUpcoming && days !== null ? (
+            <View style={[
+              styles.countdownPill,
+              { backgroundColor: days === 0 ? Colors.accent : days <= 7 ? Colors.amber + "22" : Colors.accentDim },
+            ]}>
+              <Text style={[
+                styles.countdownText,
+                { color: days === 0 ? Colors.white : days <= 7 ? Colors.amber : Colors.accent },
+              ]}>
+                {days === 0 ? "Today!" : days === 1 ? "Tomorrow" : `In ${days} days`}
+              </Text>
+            </View>
+          ) : (
+            <View style={[styles.countdownPill, { backgroundColor: Colors.green + "18" }]}>
+              <Text style={[styles.countdownText, { color: Colors.green }]}>
+                {flight.status === "delayed" ? "Delayed" : flight.status === "cancelled" ? "Cancelled" : "Completed"}
+              </Text>
+            </View>
+          )}
+        </View>
+      </View>
+    </Pressable>
   );
 }
 
@@ -112,11 +177,27 @@ export default function HomeScreen() {
     return Array.from(set).sort((a, b) => b - a);
   }, [flights]);
 
+  // upcoming = date >= today, sorted soonest first
+  const upcomingFlights = useMemo(
+    () =>
+      flights
+        .filter((f) => f.date >= TODAY)
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .slice(0, 3),
+    [flights]
+  );
+
+  // past = date < today, sorted most-recent first
+  const pastFlights = useMemo(
+    () =>
+      flights
+        .filter((f) => f.date < TODAY)
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .slice(0, 3),
+    [flights]
+  );
+
   const stats = useFilteredStats(flights, period);
-  const recentFlights = useMemo(() => {
-    if (period === "all") return flights.slice(0, 3);
-    return flights.filter((f) => f.date.startsWith(String(period))).slice(0, 3);
-  }, [flights, period]);
   const hasFlights = flights.length > 0;
 
   function handleAdd() {
@@ -171,9 +252,7 @@ export default function HomeScreen() {
                   onPress={() => handlePeriodChange("all")}
                   style={[styles.periodPill, period === "all" && styles.periodPillActive]}
                 >
-                  <Text style={[styles.periodText, period === "all" && styles.periodTextActive]}>
-                    All Time
-                  </Text>
+                  <Text style={[styles.periodText, period === "all" && styles.periodTextActive]}>All Time</Text>
                 </Pressable>
                 {years.map((y) => (
                   <Pressable
@@ -181,9 +260,7 @@ export default function HomeScreen() {
                     onPress={() => handlePeriodChange(y)}
                     style={[styles.periodPill, period === y && styles.periodPillActive]}
                   >
-                    <Text style={[styles.periodText, period === y && styles.periodTextActive]}>
-                      {y}
-                    </Text>
+                    <Text style={[styles.periodText, period === y && styles.periodTextActive]}>{y}</Text>
                   </Pressable>
                 ))}
               </ScrollView>
@@ -247,62 +324,57 @@ export default function HomeScreen() {
             <Animated.View entering={FadeInDown.delay(180).springify()}>
               <Text style={styles.sectionTitle}>Statistics</Text>
               <View style={styles.statsGrid}>
-                <StatCard
-                  label="Miles Flown"
-                  value={formatNumber(stats.miles)}
-                  icon="globe-outline"
-                  accent={Colors.accent}
-                />
-                <StatCard
-                  label="CO\u2082 Emitted"
-                  value={`${formatNumber(stats.co2)}kg`}
-                  icon="leaf-outline"
-                  accent={Colors.green}
-                />
-                <StatCard
-                  label="Time in Air"
-                  value={formatHours(stats.flightMin)}
-                  icon="time-outline"
-                  accent={Colors.amber}
-                />
-                <StatCard
-                  label="Delay Time"
-                  value={stats.delayMin > 0 ? formatHours(stats.delayMin) : "\u2014"}
-                  icon="hourglass-outline"
-                  accent={Colors.red}
-                />
+                <StatCard label="Miles Flown" value={formatNumber(stats.miles)} icon="globe-outline" accent={Colors.accent} />
+                <StatCard label="CO\u2082 Emitted" value={`${formatNumber(stats.co2)}kg`} icon="leaf-outline" accent={Colors.green} />
+                <StatCard label="Time in Air" value={formatHours(stats.flightMin)} icon="time-outline" accent={Colors.amber} />
+                <StatCard label="Delay Time" value={stats.delayMin > 0 ? formatHours(stats.delayMin) : "\u2014"} icon="hourglass-outline" accent={Colors.red} />
               </View>
             </Animated.View>
 
-            {/* Recent flights */}
-            {recentFlights.length > 0 && (
-              <Animated.View entering={FadeInDown.delay(240).springify()}>
+            {/* ── Upcoming Flights ─────────────────────────────────── */}
+            {upcomingFlights.length > 0 && (
+              <Animated.View entering={FadeInDown.delay(220).springify()} style={styles.section}>
                 <View style={styles.sectionRow}>
-                  <Text style={styles.sectionTitle}>Recent</Text>
-                  <Pressable onPress={() => router.push("/(tabs)/flights")} hitSlop={10}>
+                  <View style={styles.sectionTitleRow}>
+                    <View style={[styles.sectionDot, { backgroundColor: Colors.accent }]} />
+                    <Text style={styles.sectionTitle}>Upcoming</Text>
+                  </View>
+                  <Pressable
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      router.push({ pathname: "/(tabs)/flights", params: { filter: "upcoming" } });
+                    }}
+                    hitSlop={10}
+                  >
                     <Text style={styles.seeAll}>See all</Text>
                   </Pressable>
                 </View>
-                {recentFlights.map((f) => (
+                {upcomingFlights.map((f) => (
+                  <FlightRow key={f.id} flight={f} isUpcoming={true} />
+                ))}
+              </Animated.View>
+            )}
+
+            {/* ── Past Flights ─────────────────────────────────────── */}
+            {pastFlights.length > 0 && (
+              <Animated.View entering={FadeInDown.delay(260).springify()} style={styles.section}>
+                <View style={styles.sectionRow}>
+                  <View style={styles.sectionTitleRow}>
+                    <View style={[styles.sectionDot, { backgroundColor: Colors.green }]} />
+                    <Text style={styles.sectionTitle}>Past Flights</Text>
+                  </View>
                   <Pressable
-                    key={f.id}
-                    onPress={() => router.push({ pathname: "/flight/[id]", params: { id: f.id } })}
-                    style={({ pressed }) => [styles.recentCard, { opacity: pressed ? 0.8 : 1 }]}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      router.push({ pathname: "/(tabs)/flights", params: { filter: "past" } });
+                    }}
+                    hitSlop={10}
                   >
-                    <View style={styles.recentRoute}>
-                      <Text style={styles.recentAirport}>{f.departureAirport}</Text>
-                      <Ionicons name="arrow-forward" size={14} color={Colors.textSec} style={{ marginHorizontal: 6 }} />
-                      <Text style={styles.recentAirport}>{f.arrivalAirport}</Text>
-                    </View>
-                    <View style={styles.recentMeta}>
-                      <Text style={styles.recentCode}>{f.flightCode} \u00b7 {f.date}</Text>
-                      <View style={[styles.statusBadge, { backgroundColor: f.status === "delayed" ? Colors.red + "22" : Colors.green + "22" }]}>
-                        <Text style={[styles.statusText, { color: f.status === "delayed" ? Colors.red : Colors.green }]}>
-                          {f.status === "delayed" ? "Delayed" : "On Time"}
-                        </Text>
-                      </View>
-                    </View>
+                    <Text style={styles.seeAll}>See all</Text>
                   </Pressable>
+                </View>
+                {pastFlights.map((f) => (
+                  <FlightRow key={f.id} flight={f} isUpcoming={false} />
                 ))}
               </Animated.View>
             )}
@@ -339,187 +411,75 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 20,
   },
-  greeting: {
-    fontSize: 13,
-    color: Colors.textSec,
-    fontFamily: "DMSans_400Regular",
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-  },
+  greeting: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_400Regular", letterSpacing: 0.6, textTransform: "uppercase" },
   title: { fontSize: 30, color: Colors.text, fontFamily: "DMSans_700Bold", marginTop: 2 },
-  addBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  addBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.accent, alignItems: "center", justifyContent: "center" },
+
   periodRow: { marginBottom: 16, marginHorizontal: -20 },
   periodContent: { paddingHorizontal: 20, gap: 8, flexDirection: "row" },
-  periodPill: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: Colors.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
+  periodPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border },
   periodPillActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
   periodText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
   periodTextActive: { color: Colors.white },
 
-  // Share banner — light card style
-  shareBanner: {
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 14,
-    backgroundColor: Colors.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
+  shareBanner: { borderRadius: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 14, marginBottom: 14, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border },
   shareBannerLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
-  shareIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: Colors.accentDim,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  shareIconWrap: { width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.accentDim, alignItems: "center", justifyContent: "center" },
   shareBannerTitle: { fontSize: 15, color: Colors.text, fontFamily: "DMSans_700Bold" },
   shareBannerSub: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 1 },
 
-  // Hero card — light card style, no dark gradient
-  heroCard: {
-    backgroundColor: Colors.card,
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  heroTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  heroLabel: {
-    fontSize: 13,
-    color: Colors.textSec,
-    fontFamily: "DMSans_400Regular",
-    letterSpacing: 0.2,
-    marginBottom: 2,
-  },
+  heroCard: { backgroundColor: Colors.card, borderRadius: 20, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: Colors.border },
+  heroTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  heroLabel: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_400Regular", letterSpacing: 0.2, marginBottom: 2 },
   heroNum: { fontSize: 52, color: Colors.text, fontFamily: "DMSans_700Bold", lineHeight: 60 },
-  heroIconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: Colors.accentDim,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  heroIconWrap: { width: 52, height: 52, borderRadius: 14, backgroundColor: Colors.accentDim, alignItems: "center", justifyContent: "center" },
   heroDivider: { height: 1, backgroundColor: Colors.border, marginVertical: 14 },
   heroBottomRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   heroStat: { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
   heroDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: Colors.border },
-  co2FunFact: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    fontFamily: "DMSans_400Regular",
-    marginTop: 6,
-    fontStyle: "italic",
-  },
-  rankPill: {
-    backgroundColor: Colors.accentDim,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 10,
-  },
+  co2FunFact: { fontSize: 11, color: Colors.textMuted, fontFamily: "DMSans_400Regular", marginTop: 6, fontStyle: "italic" },
+  rankPill: { backgroundColor: Colors.accentDim, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 },
   rankPillText: { fontSize: 12, color: Colors.accent, fontFamily: "DMSans_700Bold" },
 
-  sectionTitle: {
-    fontSize: 12,
-    color: Colors.textSec,
-    fontFamily: "DMSans_500Medium",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    marginBottom: 12,
-  },
-  sectionRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-    marginTop: 8,
-  },
+  sectionTitle: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase" },
+  sectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  sectionTitleRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+  sectionDot: { width: 6, height: 6, borderRadius: 3 },
+  section: { marginBottom: 8 },
   seeAll: { fontSize: 13, color: Colors.accent, fontFamily: "DMSans_500Medium" },
-  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 },
-  statCard: {
-    flex: 1,
-    minWidth: "44%",
-    backgroundColor: Colors.card,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  statIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
-  },
+
+  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 24 },
+  statCard: { flex: 1, minWidth: "44%", backgroundColor: Colors.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.border },
+  statIcon: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", marginBottom: 10 },
   statValue: { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold" },
   statLabel: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 },
-  recentCard: {
+
+  // Flight card (used by both Upcoming and Past)
+  flightCard: {
+    flexDirection: "row",
     backgroundColor: Colors.card,
     borderRadius: 14,
-    padding: 14,
     marginBottom: 8,
     borderWidth: 1,
     borderColor: Colors.border,
+    overflow: "hidden",
   },
-  recentRoute: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
-  recentAirport: { fontSize: 18, color: Colors.text, fontFamily: "DMSans_700Bold" },
-  recentMeta: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  recentCode: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  statusText: { fontSize: 11, fontFamily: "DMSans_500Medium" },
-  globeContainer: { marginTop: 4, marginBottom: 20, alignItems: "center" },
+  flightAccentBar: { width: 3 },
+  flightCardInner: { flex: 1, paddingHorizontal: 14, paddingVertical: 13 },
+  flightRouteRow: { flexDirection: "row", alignItems: "center", marginBottom: 7 },
+  flightAirport: { fontSize: 18, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  flightArrowWrap: { flex: 1, flexDirection: "row", alignItems: "center", marginHorizontal: 8, gap: 3 },
+  flightArrowLine: { flex: 1, height: 1, backgroundColor: Colors.border },
+  flightMetaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  flightMeta: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
+  countdownPill: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 8 },
+  countdownText: { fontSize: 11, fontFamily: "DMSans_700Bold" },
+
+  globeContainer: { marginTop: 4, marginBottom: 24, alignItems: "center" },
   emptyState: { flex: 1, alignItems: "center", paddingTop: 60, paddingHorizontal: 20 },
-  emptyIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 24,
-    backgroundColor: Colors.card,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
+  emptyIcon: { width: 80, height: 80, borderRadius: 24, backgroundColor: Colors.card, alignItems: "center", justifyContent: "center", marginBottom: 20, borderWidth: 1, borderColor: Colors.border },
   emptyTitle: { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold", marginBottom: 10 },
-  emptyText: {
-    fontSize: 15,
-    color: Colors.textSec,
-    fontFamily: "DMSans_400Regular",
-    textAlign: "center",
-    lineHeight: 22,
-    marginBottom: 28,
-  },
-  emptyBtn: {
-    backgroundColor: Colors.accent,
-    paddingHorizontal: 28,
-    paddingVertical: 16,
-    borderRadius: 30,
-  },
+  emptyText: { fontSize: 15, color: Colors.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 22, marginBottom: 28 },
+  emptyBtn: { backgroundColor: Colors.accent, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30 },
   emptyBtnText: { fontSize: 15, color: Colors.white, fontFamily: "DMSans_700Bold" },
 });
