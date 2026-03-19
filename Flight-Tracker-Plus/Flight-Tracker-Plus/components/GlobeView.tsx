@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
-import { View, StyleSheet, Dimensions } from "react-native";
-import Svg, { Circle, Path, G, Defs, RadialGradient, Stop } from "react-native-svg";
+import { View, StyleSheet, Dimensions, PanResponder } from "react-native";
+import Svg, {
+  Circle, Path, G, Defs, RadialGradient, LinearGradient, Stop, Ellipse,
+} from "react-native-svg";
 import { Colors } from "@/constants/colors";
 import { Flight } from "@/context/flights";
 
@@ -10,7 +12,7 @@ const GLOBE_SIZE = Math.min(screenWidth * 0.9, 400);
 interface Coord { lat: number; lng: number; }
 
 function latLngTo3D(lat: number, lng: number, r: number) {
-  const phi = (90 - lat) * (Math.PI / 180);
+  const phi   = (90 - lat)  * (Math.PI / 180);
   const theta = (lng + 180) * (Math.PI / 180);
   return {
     x: -(r * Math.sin(phi) * Math.cos(theta)),
@@ -22,6 +24,19 @@ function latLngTo3D(lat: number, lng: number, r: number) {
 function project(x: number, y: number, z: number, rot: number) {
   const cr = Math.cos(rot), sr = Math.sin(rot);
   return { sx: x * cr - z * sr, sy: y, visible: x * sr + z * cr > 0 };
+}
+
+/** Great-circle angular distance in radians between two lat/lng pairs */
+function greatCircleAngle(a: Coord, b: Coord): number {
+  const toR = Math.PI / 180;
+  const lat1 = a.lat * toR, lat2 = b.lat * toR;
+  const dLng = (b.lng - a.lng) * toR;
+  return Math.acos(
+    Math.max(-1, Math.min(1,
+      Math.sin(lat1) * Math.sin(lat2) +
+      Math.cos(lat1) * Math.cos(lat2) * Math.cos(dLng)
+    ))
+  );
 }
 
 const AIRPORTS: Record<string, Coord> = {
@@ -44,386 +59,415 @@ const AIRPORTS: Record<string, Coord> = {
 
 function getCoord(iata: string): Coord { return AIRPORTS[iata] ?? { lat: 0, lng: 0 }; }
 
-// High-detail country polygons  [lat, lng][]  — one closed ring per shape
-// Sourced from Natural Earth 110m simplified + hand-tuned
+// ─── Country polygons (same as before) ───────────────────────────────────────
 const COUNTRIES: [number,number][][] = [
-// ── North America ──────────────────────────────────────────────────────────
-// USA lower 48
 [[49,-95],[49,-123],[47,-124],[46,-124],[43,-124],[40,-124],[38,-123],[36,-122],[34,-121],[32,-117],[31,-117],[30,-104],[29,-99],[27,-97],[26,-97],[25,-97],[26,-97],[25,-80],[26,-80],[28,-81],[30,-81],[32,-81],[34,-78],[36,-76],[37,-76],[38,-75],[39,-74],[40,-74],[41,-72],[42,-70],[44,-68],[45,-67],[47,-68],[47,-70],[47,-67],[48,-70],[48,-67],[46,-64],[46,-62],[45,-61],[44,-66],[42,-70],[41,-70],[41,-72],[40,-74],[38,-75],[36,-76],[34,-78],[32,-81],[30,-85],[28,-82],[26,-80],[25,-80],[24,-82],[24,-84],[25,-86],[28,-88],[29,-90],[29,-89],[29,-92],[29,-94],[28,-96],[27,-97],[28,-97],[30,-99],[30,-97],[29,-97],[30,-104],[31,-106],[31,-109],[31,-111],[33,-114],[33,-117],[34,-117],[35,-120],[36,-121],[38,-123],[39,-124],[40,-124],[42,-124],[43,-124],[46,-124],[47,-124],[48,-124],[49,-123],[49,-115],[49,-110],[49,-104],[49,-100],[49,-96],[49,-95]],
-// Florida peninsula
 [[25,-80],[24,-82],[24,-84],[25,-87],[28,-88],[28,-85],[26,-82],[26,-80],[25,-80]],
-// Alaska
 [[71,-156],[70,-162],[66,-166],[63,-166],[59,-164],[57,-158],[55,-160],[57,-136],[58,-137],[59,-136],[60,-141],[63,-141],[65,-141],[68,-141],[69,-141],[71,-141],[71,-156]],
-// Aleutian stub
 [[55,-162],[54,-164],[53,-168],[53,-163],[55,-162]],
-// Canada
 [[49,-95],[49,-86],[47,-84],[46,-84],[44,-77],[43,-79],[44,-76],[44,-75],[45,-73],[45,-71],[47,-70],[47,-68],[47,-67],[46,-64],[46,-62],[45,-61],[44,-66],[43,-66],[44,-67],[45,-64],[46,-62],[46,-60],[47,-54],[48,-54],[49,-56],[50,-56],[52,-56],[53,-57],[54,-60],[55,-60],[57,-61],[59,-64],[60,-64],[62,-64],[63,-64],[64,-65],[64,-66],[65,-65],[65,-70],[65,-75],[66,-78],[66,-82],[68,-84],[70,-84],[72,-82],[74,-80],[76,-78],[78,-76],[79,-74],[80,-74],[83,-74],[83,-68],[82,-64],[82,-58],[80,-56],[78,-54],[77,-60],[76,-64],[74,-80],[72,-80],[70,-78],[72,-75],[74,-72],[76,-70],[78,-70],[80,-66],[82,-64],[82,-60],[80,-56],[78,-52],[76,-52],[75,-58],[73,-60],[72,-64],[70,-64],[68,-64],[68,-70],[66,-74],[64,-78],[64,-84],[62,-84],[60,-84],[58,-84],[58,-78],[60,-76],[62,-76],[64,-78],[64,-84],[62,-84],[60,-84],[58,-84],[58,-78],[56,-76],[56,-80],[54,-82],[52,-82],[50,-78],[50,-84],[52,-88],[52,-92],[50,-92],[50,-96],[51,-98],[52,-100],[52,-96],[50,-96],[50,-90],[52,-86],[52,-82],[50,-80],[49,-86],[49,-95]],
-// Baffin Island
 [[73,-80],[70,-80],[68,-75],[68,-78],[70,-80],[72,-78],[73,-80]],
-// Newfoundland
 [[47,-54],[47,-56],[49,-56],[50,-54],[49,-53],[47,-54]],
-// Mexico
 [[30,-110],[29,-111],[28,-113],[27,-110],[24,-104],[20,-105],[18,-104],[16,-96],[15,-88],[16,-89],[16,-92],[18,-91],[18,-90],[20,-87],[21,-87],[22,-90],[23,-89],[21,-86],[20,-87],[21,-90],[22,-90],[23,-89],[22,-85],[24,-81],[25,-77],[28,-82],[30,-85],[32,-100],[30,-104],[31,-106],[31,-109],[31,-111],[33,-114],[33,-117],[32,-117],[31,-117],[30,-104],[29,-99],[27,-97],[26,-97],[25,-97],[26,-97],[28,-96],[29,-94],[29,-92],[29,-89],[28,-88],[25,-86],[24,-84],[24,-82],[25,-80],[26,-80],[28,-81],[30,-85],[30,-84],[29,-90],[30,-93],[30,-95],[29,-94],[30,-97],[30,-99],[29,-97],[28,-97],[29,-99],[30,-104],[31,-106],[31,-109],[31,-111],[33,-114],[33,-117],[32,-117],[30,-110]],
-// Cuba
 [[23,-74],[22,-77],[20,-77],[20,-75],[22,-73],[23,-74]],
-// Hispaniola
 [[20,-72],[18,-74],[18,-71],[20,-69],[20,-72]],
-// Jamaica
 [[18,-78],[17,-78],[17,-76],[18,-76],[18,-78]],
-// Central America
 [[8,-77],[8,-79],[9,-79],[10,-84],[10,-88],[13,-88],[14,-90],[15,-92],[16,-92],[16,-88],[15,-83],[12,-83],[10,-77],[8,-77]],
-// Colombia
 [[12,-72],[11,-74],[10,-75],[8,-77],[6,-77],[4,-77],[2,-78],[0,-78],[0,-76],[2,-74],[1,-72],[2,-68],[4,-68],[5,-70],[6,-72],[8,-72],[8,-74],[10,-75],[12,-72]],
-// Venezuela
 [[12,-72],[10,-61],[11,-63],[12,-64],[11,-66],[12,-68],[12,-72]],
-// Brazil
 [[5,-52],[5,-50],[3,-50],[1,-50],[0,-50],[0,-52],[-1,-52],[-1,-54],[-2,-54],[-4,-56],[-5,-56],[-5,-60],[-8,-60],[-8,-64],[-10,-68],[-12,-70],[-14,-70],[-14,-74],[-16,-70],[-18,-70],[-20,-64],[-20,-58],[-22,-54],[-24,-48],[-28,-50],[-30,-50],[-32,-52],[-34,-54],[-32,-52],[-30,-52],[-28,-50],[-26,-48],[-24,-44],[-22,-42],[-20,-40],[-18,-38],[-14,-38],[-12,-38],[-10,-36],[-8,-35],[-5,-35],[-2,-38],[-1,-44],[0,-48],[1,-50],[3,-50],[5,-52]],
-// Peru
 [[-2,-78],[0,-78],[0,-76],[2,-74],[-2,-68],[-4,-70],[-8,-74],[-10,-76],[-14,-76],[-16,-74],[-18,-70],[-16,-70],[-14,-70],[-12,-70],[-10,-68],[-8,-74],[-4,-76],[-2,-78]],
-// Argentina + Chile
 [[-22,-68],[-24,-68],[-26,-68],[-28,-68],[-30,-70],[-32,-70],[-34,-72],[-36,-72],[-38,-72],[-40,-72],[-42,-72],[-44,-72],[-46,-74],[-48,-74],[-50,-74],[-52,-72],[-54,-68],[-56,-68],[-54,-64],[-52,-60],[-50,-60],[-48,-66],[-46,-66],[-44,-66],[-42,-64],[-40,-62],[-38,-60],[-36,-58],[-34,-58],[-32,-54],[-28,-52],[-24,-50],[-22,-58],[-22,-68]],
-// Bolivia
 [[-10,-68],[-12,-70],[-14,-70],[-16,-70],[-18,-68],[-18,-64],[-16,-62],[-14,-60],[-12,-62],[-10,-66],[-10,-68]],
-// Paraguay
 [[-18,-64],[-20,-62],[-22,-62],[-24,-58],[-22,-56],[-20,-58],[-18,-58],[-18,-64]],
-// Uruguay
 [[-30,-58],[-32,-54],[-34,-54],[-34,-58],[-32,-58],[-30,-58]],
-// Ecuador
 [[0,-78],[-2,-78],[-4,-76],[-4,-80],[0,-80],[0,-78]],
-// Guyana + Suriname + French Guiana
 [[8,-60],[8,-58],[6,-58],[4,-58],[2,-56],[2,-52],[4,-52],[6,-52],[8,-52],[8,-60]],
-
-// ── Europe ──────────────────────────────────────────────────────────────────
-// Norway
 [[71,28],[70,30],[68,28],[65,14],[63,8],[60,5],[58,6],[60,10],[62,14],[65,14],[68,18],[70,22],[71,26],[71,28]],
-// Norway coast (jagged)
 [[70,22],[68,16],[66,14],[64,10],[62,6],[60,5],[59,5],[58,6],[58,8],[60,10],[62,8],[64,10],[66,14],[68,16],[70,22]],
-// Sweden
 [[69,28],[67,22],[65,18],[63,18],[61,18],[59,18],[57,12],[56,12],[56,14],[58,16],[60,18],[62,18],[64,18],[66,20],[68,22],[70,24],[69,28]],
-// Finland
 [[70,28],[68,28],[65,28],[63,28],[60,26],[60,24],[62,24],[64,26],[66,28],[68,28],[70,28]],
-// Denmark
 [[57,10],[56,8],[55,8],[55,10],[56,12],[57,12],[57,10]],
-// UK
 [[58,-4],[57,-2],[56,0],[53,0],[51,2],[51,0],[51,-3],[50,-5],[50,-4],[51,-1],[53,-4],[55,-6],[57,-4],[58,-4]],
-// Ireland
 [[55,-8],[54,-10],[52,-10],[52,-8],[54,-6],[55,-8]],
-// Iceland
 [[66,-14],[64,-24],[63,-22],[63,-18],[64,-12],[66,-10],[66,-14]],
-// France
 [[51,2],[50,2],[49,0],[48,-2],[47,-2],[46,-2],[44,-1],[44,2],[43,4],[44,6],[44,8],[46,8],[47,8],[48,8],[49,8],[50,4],[51,4],[51,2]],
-// Spain
 [[44,-8],[43,-8],[43,-4],[44,0],[43,4],[40,4],[38,0],[36,-5],[36,-6],[38,-8],[40,-8],[42,-8],[44,-8]],
-// Portugal
 [[42,-7],[40,-8],[38,-8],[37,-8],[36,-8],[36,-6],[38,-8],[40,-7],[42,-7]],
-// Germany
 [[55,8],[54,8],[53,8],[52,6],[50,6],[48,8],[48,12],[50,14],[52,14],[54,14],[55,12],[55,8]],
-// Netherlands
 [[53,6],[52,4],[51,4],[52,6],[53,6]],
-// Belgium
 [[51,4],[50,4],[50,6],[51,6],[51,4]],
-// Switzerland
 [[48,8],[46,6],[46,8],[46,10],[48,10],[48,8]],
-// Austria
 [[48,10],[48,14],[48,16],[47,16],[47,10],[48,10]],
-// Italy
 [[47,12],[45,8],[44,8],[42,12],[40,18],[38,16],[38,14],[40,14],[42,14],[44,12],[46,12],[47,14],[47,12]],
-// Sardinia
 [[41,8],[39,8],[39,10],[41,10],[41,8]],
-// Sicily
 [[38,12],[37,12],[37,14],[38,16],[38,12]],
-// Czech Republic
 [[52,12],[50,12],[48,14],[50,18],[52,16],[52,12]],
-// Slovakia
 [[50,18],[48,18],[48,22],[50,22],[50,18]],
-// Poland
 [[54,14],[52,14],[50,18],[50,22],[52,24],[54,24],[54,22],[52,22],[54,14]],
-// Hungary
 [[48,16],[46,16],[46,22],[48,22],[48,16]],
-// Romania
 [[48,22],[46,22],[44,28],[44,30],[46,30],[48,28],[48,22]],
-// Bulgaria
 [[44,22],[42,22],[42,28],[44,28],[44,22]],
-// Serbia + Croatia + Bosnia
 [[46,14],[44,14],[42,20],[44,22],[46,20],[46,14]],
-// Greece mainland
 [[42,20],[40,22],[38,22],[36,22],[36,26],[38,28],[40,26],[42,26],[42,20]],
-// Greece (Peloponnese)
 [[38,22],[36,22],[37,24],[38,22]],
-// Crete
 [[35,24],[35,26],[36,26],[35,24]],
-// Ukraine
 [[52,22],[50,22],[48,22],[46,32],[48,38],[50,38],[52,36],[52,22]],
-// Belarus
 [[54,24],[52,24],[50,24],[52,28],[54,28],[54,24]],
-// Baltic states
 [[58,22],[56,22],[54,22],[54,26],[56,26],[58,24],[58,22]],
-// Sweden Lapland coast
 [[70,24],[68,22],[66,20],[68,20],[70,22],[70,24]],
-
-// ── Russia ──────────────────────────────────────────────────────────────────
-// European Russia
 [[72,54],[68,54],[64,60],[60,60],[56,58],[54,58],[54,36],[56,34],[58,28],[60,28],[62,30],[64,30],[66,30],[68,32],[70,30],[72,32],[72,54]],
-// Russia Asia west
 [[72,54],[68,54],[64,60],[60,60],[56,60],[56,80],[60,80],[64,78],[68,74],[72,72],[72,54]],
-// Russia Asia central
 [[72,72],[68,74],[64,78],[60,80],[56,80],[56,100],[60,100],[64,100],[68,100],[72,100],[72,72]],
-// Russia Asia east
 [[72,100],[68,100],[64,100],[60,100],[56,100],[56,120],[60,130],[64,140],[68,148],[72,140],[72,120],[72,100]],
-// Kamchatka
 [[60,162],[55,158],[52,160],[54,164],[56,164],[58,162],[60,162]],
-// Russia far east coast
 [[68,140],[64,140],[60,140],[58,140],[56,136],[58,130],[60,130],[64,136],[68,140]],
-// Sakhalin
 [[54,142],[50,142],[50,144],[52,144],[54,142]],
-
-// ── Middle East ──────────────────────────────────────────────────────────────
-// Turkey
 [[42,26],[40,26],[38,26],[36,28],[36,36],[38,42],[40,44],[42,44],[42,40],[40,38],[38,40],[36,40],[36,36],[38,30],[40,28],[42,28],[42,26]],
-// Syria + Lebanon
 [[37,36],[34,36],[33,36],[36,38],[36,42],[37,42],[37,36]],
-// Iraq
 [[37,40],[34,38],[30,46],[30,50],[32,48],[36,44],[37,42],[37,40]],
-// Iran
 [[38,44],[36,44],[34,48],[26,54],[26,60],[28,62],[32,62],[36,62],[38,58],[38,54],[38,44]],
-// Saudi Arabia
 [[30,36],[28,34],[22,36],[14,42],[12,44],[16,50],[20,56],[22,56],[26,56],[28,50],[30,46],[30,38],[30,36]],
-// Yemen
 [[14,42],[12,44],[12,50],[16,52],[18,52],[18,48],[16,44],[14,42]],
-// Oman
 [[22,56],[18,52],[20,56],[22,60],[24,60],[26,56],[22,56]],
-// UAE + Qatar + Kuwait
 [[24,54],[24,56],[26,56],[28,48],[26,48],[24,50],[24,54]],
-// Israel + Palestine + Jordan
 [[33,35],[30,34],[28,34],[30,36],[32,38],[33,36],[33,35]],
-// Afghanistan
 [[38,60],[36,62],[32,62],[28,62],[30,68],[34,70],[36,72],[38,68],[38,60]],
-// Pakistan
 [[36,72],[34,70],[30,68],[26,68],[24,68],[24,72],[26,74],[28,70],[30,72],[32,74],[34,72],[36,72]],
-
-// ── Central + South Asia ────────────────────────────────────────────────────
-// Kazakhstan
 [[54,58],[52,56],[50,52],[46,52],[46,60],[48,66],[50,72],[52,76],[54,74],[54,66],[54,58]],
-// Uzbekistan + Turkmenistan
 [[42,56],[40,52],[38,56],[38,60],[40,60],[42,60],[42,56]],
-// India
 [[36,74],[34,74],[32,74],[28,72],[24,68],[22,68],[20,70],[14,74],[8,76],[8,78],[10,80],[12,80],[16,82],[20,86],[24,88],[26,90],[28,98],[30,96],[32,78],[34,78],[36,76],[36,74]],
-// Sri Lanka
 [[10,80],[8,80],[8,82],[10,82],[10,80]],
-// Nepal + Bhutan
 [[28,80],[28,82],[28,88],[28,92],[30,92],[30,80],[28,80]],
-// Bangladesh
 [[26,88],[22,88],[22,92],[24,92],[26,92],[26,88]],
-// Myanmar
 [[28,98],[22,98],[16,98],[14,98],[16,102],[20,100],[22,100],[24,100],[26,98],[28,96],[28,98]],
-// Thailand
 [[20,100],[14,100],[8,100],[6,100],[6,102],[10,100],[14,102],[18,102],[20,102],[20,100]],
-// Vietnam + Cambodia + Laos
 [[22,102],[16,102],[12,108],[10,106],[12,108],[14,110],[16,108],[20,104],[22,104],[22,102]],
-// Malaysia (peninsula)
 [[6,100],[2,104],[2,106],[4,104],[6,102],[6,100]],
-// Borneo (Malaysia + Indonesia)
 [[8,114],[2,108],[0,108],[0,116],[2,118],[4,118],[8,116],[8,114]],
-// Indonesia Sumatra
 [[6,96],[0,96],[-2,102],[-4,104],[-4,106],[0,106],[2,106],[4,104],[6,98],[6,96]],
-// Indonesia Java
 [[-6,106],[-8,108],[-8,112],[-8,114],[-6,112],[-6,108],[-6,106]],
-// Indonesia Sulawesi
 [[2,120],[0,120],[0,122],[2,122],[4,122],[4,120],[2,120]],
-// Indonesia Papua (west)
 [[-4,132],[-6,132],[-6,136],[-4,138],[-2,138],[-2,132],[-4,132]],
-// Philippines
 [[18,120],[14,120],[10,118],[8,124],[10,126],[14,122],[16,122],[18,122],[18,120]],
-// China
 [[54,122],[48,134],[44,130],[40,128],[36,122],[26,120],[22,114],[22,108],[26,104],[28,98],[30,96],[34,80],[36,76],[38,76],[40,76],[44,80],[48,88],[50,90],[52,88],[52,96],[52,102],[54,118],[54,122]],
-// Taiwan
 [[26,122],[22,120],[22,122],[24,122],[26,122]],
-// Mongolia
 [[52,88],[48,88],[44,88],[44,100],[44,108],[48,114],[52,118],[52,108],[52,100],[52,88]],
-// Japan Honshu
 [[40,140],[36,136],[34,132],[34,134],[36,138],[38,140],[40,142],[40,140]],
-// Japan Kyushu + Shikoku
 [[34,130],[32,130],[32,132],[34,134],[34,132],[34,130]],
-// Japan Hokkaido
 [[44,142],[42,140],[42,142],[44,144],[44,142]],
-// Korean peninsula
 [[38,126],[34,126],[34,128],[36,130],[38,130],[38,126]],
-
-// ── Africa ──────────────────────────────────────────────────────────────────
-// Morocco
 [[36,-6],[34,-4],[32,-4],[28,-12],[22,-14],[22,-12],[26,-10],[30,-8],[34,-2],[36,-2],[36,-6]],
-// Algeria
 [[36,-2],[34,-2],[30,-8],[22,-12],[22,0],[22,2],[26,2],[30,2],[34,2],[36,2],[36,-2]],
-// Tunisia
 [[37,8],[34,10],[32,10],[34,12],[36,12],[37,10],[37,8]],
-// Libya
 [[34,10],[30,10],[22,10],[22,20],[24,22],[26,24],[30,24],[32,24],[34,20],[34,10]],
-// Egypt
 [[32,24],[30,24],[22,24],[22,28],[22,32],[24,36],[26,36],[30,34],[32,34],[32,28],[32,24]],
-// Sudan + South Sudan
 [[22,24],[10,24],[4,28],[4,32],[8,32],[12,36],[16,38],[18,38],[22,36],[22,28],[22,24]],
-// Ethiopia + Eritrea
 [[18,38],[12,36],[8,38],[8,44],[12,44],[14,42],[16,44],[18,42],[18,38]],
-// Somalia
 [[12,44],[8,44],[2,44],[2,48],[4,46],[8,48],[10,50],[12,50],[12,44]],
-// Kenya + Tanzania
 [[4,34],[0,34],[-4,36],[-6,36],[-8,40],[-10,40],[-6,40],[0,42],[4,42],[4,40],[4,36],[4,34]],
-// West Africa (Nigeria, Ghana, Senegal block)
 [[16,0],[10,-18],[4,-16],[4,0],[4,8],[8,8],[12,8],[14,14],[16,12],[16,0]],
-// Nigeria
 [[14,4],[8,4],[4,4],[4,8],[8,12],[12,12],[14,12],[14,4]],
-// DRC + Congo
 [[4,18],[0,18],[-4,18],[-8,22],[-8,28],[-4,32],[0,30],[4,26],[4,18]],
-// Angola
 [[-4,12],[-16,12],[-18,12],[-20,16],[-22,20],[-16,24],[-8,24],[-4,16],[-4,12]],
-// Zambia + Zimbabwe + Mozambique
 [[-8,28],[-12,28],[-16,28],[-18,34],[-16,38],[-14,38],[-10,36],[-8,32],[-8,28]],
-// South Africa
 [[-22,20],[-28,16],[-34,18],[-32,20],[-30,24],[-28,28],[-24,32],[-22,34],[-20,32],[-22,30],[-22,20]],
-// Madagascar
 [[-12,48],[-16,44],[-20,44],[-24,44],[-26,48],[-20,50],[-14,50],[-12,48]],
-
-// ── Oceania ──────────────────────────────────────────────────────────────────
-// Australia
 [[-10,136],[-12,130],[-14,128],[-16,122],[-18,122],[-20,114],[-24,114],[-28,114],[-32,116],[-34,120],[-36,136],[-38,140],[-38,146],[-36,148],[-32,152],[-28,154],[-24,152],[-18,146],[-14,136],[-10,136]],
-// Tasmania
 [[-40,146],[-42,144],[-44,146],[-44,148],[-40,148],[-40,146]],
-// New Zealand North
 [[-36,174],[-38,176],[-40,176],[-38,174],[-36,174]],
-// New Zealand South
 [[-42,172],[-44,168],[-46,168],[-46,170],[-44,172],[-42,172]],
-// Papua New Guinea
 [[-2,132],[-4,140],[-6,146],[-4,148],[-2,148],[0,144],[0,140],[-2,132]],
+// Greenland
+[[83,-28],[80,-18],[76,-18],[72,-22],[70,-26],[72,-34],[76,-46],[80,-52],[82,-44],[84,-36],[83,-28]],
+// Svalbard
+[[80,16],[78,16],[76,20],[78,28],[80,28],[80,16]],
 ];
 
-interface GlobeViewProps {
-  flights: Flight[];
-  size?: number;
-}
+// ─── Continent fill polygons (simplified outlines for land color fill) ───────
+// These are coarser polygons used ONLY for the filled land background layer.
+const LAND_FILLS: [number,number][][] = [
+  // North America
+  [[70,-140],[60,-140],[50,-125],[40,-120],[30,-115],[20,-100],[15,-85],[8,-75],[10,-75],[15,-85],[20,-100],[30,-115],[40,-120],[50,-125],[60,-140],[70,-140]],
+  [[25,-80],[20,-80],[18,-70],[20,-65],[25,-75],[25,-80]],
+  [[50,-60],[45,-65],[42,-70],[44,-68],[47,-65],[50,-60]],
+  // South America
+  [[12,-72],[5,-50],[0,-50],[-5,-35],[-20,-40],[-34,-54],[-55,-68],[-55,-64],[-42,-63],[-32,-52],[-20,-40],[-5,-35],[0,-50],[5,-52],[12,-70],[12,-72]],
+  // Europe
+  [[71,28],[60,5],[44,-8],[36,-8],[36,2],[43,4],[44,8],[48,8],[48,16],[50,22],[52,24],[54,22],[54,14],[55,8],[59,5],[60,5],[60,18],[58,22],[58,24],[60,28],[62,28],[64,26],[66,28],[68,28],[70,24],[71,28]],
+  // Africa
+  [[36,-5],[30,-10],[10,-18],[0,-17],[-5,10],[-8,28],[-18,36],[-34,18],[-26,34],[-10,40],[4,42],[12,50],[12,44],[22,36],[26,36],[32,32],[36,22],[36,-5]],
+  // Asia (rough)
+  [[72,54],[60,60],[50,72],[40,76],[28,98],[22,108],[8,100],[1,104],[-2,108],[0,120],[4,120],[10,120],[36,130],[44,130],[48,134],[54,122],[68,140],[72,100],[72,54]],
+  // India subcontinent
+  [[36,74],[8,78],[8,80],[12,80],[20,86],[28,98],[30,96],[34,80],[36,76],[36,74]],
+  // Arabian peninsula
+  [[30,36],[14,42],[12,50],[18,52],[22,60],[28,50],[30,46],[30,36]],
+  // Australasia
+  [[-10,136],[-20,114],[-34,120],[-38,140],[-28,154],[-14,136],[-10,136]],
+  // Japan
+  [[40,140],[34,130],[32,130],[34,134],[36,138],[40,142],[40,140]],
+  // UK
+  [[58,-4],[51,-5],[50,-4],[51,2],[53,0],[58,-4]],
+  // Greenland
+  [[83,-28],[72,-22],[70,-34],[76,-46],[80,-52],[84,-36],[83,-28]],
+  // Madagascar
+  [[-12,48],[-24,44],[-26,48],[-14,50],[-12,48]],
+  // New Zealand
+  [[-36,174],[-46,168],[-42,172],[-36,174]],
+];
+
+interface GlobeViewProps { flights: Flight[]; size?: number; }
 
 export function GlobeView({ flights, size = GLOBE_SIZE }: GlobeViewProps) {
   const R = size / 2;
-  const [rotation, setRotation] = useState(0.3);
-  const rotRef = useRef(0.3);
+  const AUTO_SPEED = (2 * Math.PI) / (40 * 30); // one full rotation per 40s at 30fps
 
+  const rotRef    = useRef(0.3);
+  const velRef    = useRef(0);          // drag velocity (radians per frame)
+  const dragging  = useRef(false);
+  const lastX     = useRef(0);
+  const [rotation, setRotation] = useState(0.3);
+
+  // animation loop
   useEffect(() => {
-    const SPEED = (2 * Math.PI) / (30 * 30);
-    const id = setInterval(() => {
-      rotRef.current = (rotRef.current + SPEED) % (2 * Math.PI);
+    let animId: ReturnType<typeof setInterval>;
+    animId = setInterval(() => {
+      if (dragging.current) {
+        // while dragging: apply velocity accumulated from PanResponder
+        rotRef.current = (rotRef.current + velRef.current) % (2 * Math.PI);
+        velRef.current *= 0.85; // friction
+      } else {
+        // auto-rotate, blending out any remaining inertia
+        velRef.current *= 0.92;
+        rotRef.current = (rotRef.current + AUTO_SPEED + velRef.current) % (2 * Math.PI);
+      }
       setRotation(rotRef.current);
     }, 1000 / 30);
-    return () => clearInterval(id);
+    return () => clearInterval(animId);
   }, []);
 
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (_, gs) => {
+          dragging.current = true;
+          lastX.current = gs.x0;
+          velRef.current = 0;
+        },
+        onPanResponderMove: (_, gs) => {
+          const dx = gs.moveX - lastX.current;
+          lastX.current = gs.moveX;
+          // map pixels → radians  (π per half-globe-width gives a natural feel)
+          const delta = (dx / R) * 0.9;
+          rotRef.current = (rotRef.current + delta) % (2 * Math.PI);
+          velRef.current = delta;
+          setRotation(rotRef.current);
+        },
+        onPanResponderRelease: () => { dragging.current = false; },
+        onPanResponderTerminate: () => { dragging.current = false; },
+      }),
+    [R]
+  );
+
+  // ── Grid lines (latitude + longitude) ────────────────────────────────────
   const gridLines = useMemo(() => {
     const lines: React.ReactNode[] = [];
-    for (const lat of [-60,-30,0,30,60]) {
+    for (const lat of [-60, -30, 0, 30, 60]) {
       let seg: string[] = [];
-      for (let lng = -180; lng <= 180; lng += 3) {
+      for (let lng = -180; lng <= 180; lng += 4) {
         const p3 = latLngTo3D(lat, lng, R * 0.995);
-        const p = project(p3.x, p3.y, p3.z, rotation);
-        if (p.visible) seg.push(`${p.sx+R},${-p.sy+R}`);
-        else if (seg.length) { lines.push(<Path key={`la${lat}${lng}`} d={`M${seg.join("L")}`} fill="none" stroke={Colors.border} strokeWidth="0.4" opacity={0.6}/>); seg=[]; }
+        const p  = project(p3.x, p3.y, p3.z, rotation);
+        if (p.visible) seg.push(`${p.sx + R},${-p.sy + R}`);
+        else if (seg.length) {
+          lines.push(<Path key={`la${lat}${lng}`} d={`M${seg.join("L")}`} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.5" />);
+          seg = [];
+        }
       }
-      if (seg.length>1) lines.push(<Path key={`la${lat}e`} d={`M${seg.join("L")}`} fill="none" stroke={Colors.border} strokeWidth="0.4" opacity={0.6}/>);
+      if (seg.length > 1) lines.push(<Path key={`la${lat}e`} d={`M${seg.join("L")}`} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.5" />);
     }
-    for (const lng of [0,30,60,90,120,150,180,210,240,270,300,330]) {
+    for (const lng of [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330]) {
       let seg: string[] = [];
-      for (let lat = -90; lat <= 90; lat += 3) {
+      for (let lat = -90; lat <= 90; lat += 4) {
         const p3 = latLngTo3D(lat, lng, R * 0.995);
-        const p = project(p3.x, p3.y, p3.z, rotation);
-        if (p.visible) seg.push(`${p.sx+R},${-p.sy+R}`);
-        else if (seg.length) { lines.push(<Path key={`ln${lng}${lat}`} d={`M${seg.join("L")}`} fill="none" stroke={Colors.border} strokeWidth="0.4" opacity={0.6}/>); seg=[]; }
+        const p  = project(p3.x, p3.y, p3.z, rotation);
+        if (p.visible) seg.push(`${p.sx + R},${-p.sy + R}`);
+        else if (seg.length) {
+          lines.push(<Path key={`ln${lng}${lat}`} d={`M${seg.join("L")}`} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.5" />);
+          seg = [];
+        }
       }
-      if (seg.length>1) lines.push(<Path key={`ln${lng}e`} d={`M${seg.join("L")}`} fill="none" stroke={Colors.border} strokeWidth="0.4" opacity={0.6}/>);
+      if (seg.length > 1) lines.push(<Path key={`ln${lng}e`} d={`M${seg.join("L")}`} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.5" />);
     }
     return lines;
   }, [rotation, R]);
 
+  // ── Land fill layer ───────────────────────────────────────────────────────
+  const landFills = useMemo(() => {
+    return LAND_FILLS.flatMap((polygon, ci) => {
+      const pts: string[] = [];
+      let anyVisible = false;
+      polygon.forEach(([lat, lng]) => {
+        const p3 = latLngTo3D(lat, lng, R * 0.998);
+        const p  = project(p3.x, p3.y, p3.z, rotation);
+        if (p.visible) anyVisible = true;
+        pts.push(`${p.sx + R},${-p.sy + R}`);
+      });
+      if (!anyVisible || pts.length < 3) return [];
+      return [
+        <Path
+          key={`lf${ci}`}
+          d={`M${pts.join("L")}Z`}
+          fill="#C8C4A4"
+          fillOpacity={0.72}
+          stroke="none"
+        />,
+      ];
+    });
+  }, [rotation, R]);
+
+  // ── Country border outlines ───────────────────────────────────────────────
   const countryPaths = useMemo(() => {
     return COUNTRIES.flatMap((polygon, ci) => {
       const paths: React.ReactNode[] = [];
       let seg: string[] = [];
       polygon.forEach(([lat, lng], i) => {
-        const p3 = latLngTo3D(lat, lng, R * 0.997);
-        const p = project(p3.x, p3.y, p3.z, rotation);
+        const p3 = latLngTo3D(lat, lng, R * 0.999);
+        const p  = project(p3.x, p3.y, p3.z, rotation);
         if (p.visible) {
-          seg.push(`${p.sx+R},${-p.sy+R}`);
+          seg.push(`${p.sx + R},${-p.sy + R}`);
         } else {
-          if (seg.length > 1) paths.push(<Path key={`c${ci}-${i}`} d={`M${seg.join("L")}`} fill="none" stroke="#4A82BE" strokeWidth="1.0" opacity={0.65}/>);
+          if (seg.length > 1) paths.push(<Path key={`c${ci}-${i}`} d={`M${seg.join("L")}`} fill="none" stroke="rgba(160,148,110,0.7)" strokeWidth="0.8" />);
           seg = [];
         }
       });
-      // Close the ring if both ends were visible
-      if (seg.length > 1) paths.push(<Path key={`c${ci}-e`} d={`M${seg.join("L")}Z`} fill="none" stroke="#4A82BE" strokeWidth="1.0" opacity={0.65}/>);
+      if (seg.length > 1) paths.push(<Path key={`c${ci}-e`} d={`M${seg.join("L")}Z`} fill="none" stroke="rgba(160,148,110,0.7)" strokeWidth="0.8" />);
       return paths;
     });
   }, [rotation, R]);
 
+  // ── Flight arcs (adaptive curvature) ─────────────────────────────────────
   const flightArcs = useMemo(() => {
-    return flights.slice(0, 20).map((f, idx) => {
+    return flights.slice(0, 25).map((f, idx) => {
       const from = getCoord(f.departureAirport);
-      const to = getCoord(f.arrivalAirport);
+      const to   = getCoord(f.arrivalAirport);
+      if (from.lat === 0 && from.lng === 0) return null;
+      if (to.lat   === 0 && to.lng   === 0) return null;
+
       const fp = latLngTo3D(from.lat, from.lng, R * 0.97);
-      const tp = latLngTo3D(to.lat, to.lng, R * 0.97);
+      const tp = latLngTo3D(to.lat,   to.lng,   R * 0.97);
       const f2 = project(fp.x, fp.y, fp.z, rotation);
       const t2 = project(tp.x, tp.y, tp.z, rotation);
       if (!f2.visible && !t2.visible) return null;
-      const mid = { x:(fp.x+tp.x)/2, y:(fp.y+tp.y)/2, z:(fp.z+tp.z)/2 };
-      const dist = Math.sqrt(mid.x**2+mid.y**2+mid.z**2)||1;
-      const lift = R*1.2;
-      const cp3 = { x:(mid.x/dist)*lift, y:(mid.y/dist)*lift, z:(mid.z/dist)*lift };
-      const c2 = project(cp3.x, cp3.y, cp3.z, rotation);
-      const opacity = f2.visible && t2.visible ? 0.9 : 0.3;
+
+      // Adaptive lift: scale from 1.04 (very close) to 1.22 (antipodal)
+      const angle = greatCircleAngle(from, to);           // 0..π
+      const liftFactor = 1.04 + (angle / Math.PI) * 0.18; // 1.04 – 1.22
+
+      const mid  = { x: (fp.x + tp.x) / 2, y: (fp.y + tp.y) / 2, z: (fp.z + tp.z) / 2 };
+      const dist = Math.sqrt(mid.x ** 2 + mid.y ** 2 + mid.z ** 2) || 1;
+      const cp3  = { x: (mid.x / dist) * R * liftFactor, y: (mid.y / dist) * R * liftFactor, z: (mid.z / dist) * R * liftFactor };
+      const c2   = project(cp3.x, cp3.y, cp3.z, rotation);
+
+      const opacity = f2.visible && t2.visible ? 1 : 0.3;
       const d = `M${f2.sx+R},${-f2.sy+R} Q${c2.sx+R},${-c2.sy+R} ${t2.sx+R},${-t2.sy+R}`;
+
       return (
         <G key={`arc-${idx}`}>
-          <Path d={d} stroke={Colors.accent} strokeWidth="5" fill="none" opacity={0.10} strokeLinecap="round"/>
-          <Path d={d} stroke={Colors.accent} strokeWidth="1.8" fill="none" opacity={opacity} strokeLinecap="round"/>
+          {/* Glow halo */}
+          <Path d={d} stroke="#4F9EFF" strokeWidth="6" fill="none" opacity={0.08 * opacity} strokeLinecap="round" />
+          {/* Main arc */}
+          <Path d={d} stroke="#4F9EFF" strokeWidth="1.6" fill="none" opacity={0.95 * opacity} strokeLinecap="round" />
         </G>
       );
     });
   }, [flights, rotation, R]);
 
+  // ── Airport dots ──────────────────────────────────────────────────────────
   const airportDots = useMemo(() => {
     const iatas = new Set<string>();
     flights.forEach((f) => { iatas.add(f.departureAirport); iatas.add(f.arrivalAirport); });
-    return Array.from(iatas).slice(0, 40).map((iata) => {
+    return Array.from(iatas).slice(0, 50).map((iata) => {
       const coord = getCoord(iata);
+      if (coord.lat === 0 && coord.lng === 0) return null;
       const p3 = latLngTo3D(coord.lat, coord.lng, R * 0.978);
-      const p = project(p3.x, p3.y, p3.z, rotation);
+      const p  = project(p3.x, p3.y, p3.z, rotation);
       if (!p.visible) return null;
-      const cx = p.sx+R, cy = -p.sy+R;
+      const cx = p.sx + R, cy = -p.sy + R;
       return (
         <G key={`dot-${iata}`}>
-          <Circle cx={cx} cy={cy} r={5} fill={Colors.accent} opacity={0.15}/>
-          <Circle cx={cx} cy={cy} r={2.8} fill={Colors.accent} opacity={0.95}/>
-          <Circle cx={cx} cy={cy} r={1.2} fill="#fff" opacity={0.9}/>
+          <Circle cx={cx} cy={cy} r={5.5} fill="#4F9EFF" opacity={0.18} />
+          <Circle cx={cx} cy={cy} r={3}   fill="#4F9EFF" opacity={1} />
+          <Circle cx={cx} cy={cy} r={1.3} fill="#FFFFFF" opacity={0.95} />
         </G>
       );
     });
   }, [flights, rotation, R]);
 
   return (
-    <View style={[styles.container, { width: size, height: size }]}>
+    <View
+      style={[styles.container, { width: size, height: size }]}
+      {...panResponder.panHandlers}
+    >
       <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <Defs>
-          <RadialGradient id="globeGrad" cx="38%" cy="32%">
-            <Stop offset="0%" stopColor="#EEF4FF" stopOpacity="1"/>
-            <Stop offset="55%" stopColor="#D6E8FF" stopOpacity="1"/>
-            <Stop offset="100%" stopColor="#BDD4F5" stopOpacity="1"/>
+          {/* Ocean: Apple Maps deep blue */}
+          <RadialGradient id="ocean" cx="42%" cy="36%" rx="60%" ry="60%">
+            <Stop offset="0%"   stopColor="#5B9BD5" stopOpacity="1" />
+            <Stop offset="45%"  stopColor="#3E7FC1" stopOpacity="1" />
+            <Stop offset="100%" stopColor="#1E4F8C" stopOpacity="1" />
           </RadialGradient>
-          <RadialGradient id="shine" cx="32%" cy="28%">
-            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.55"/>
-            <Stop offset="60%" stopColor="#FFFFFF" stopOpacity="0"/>
+          {/* Specular highlight */}
+          <RadialGradient id="shine" cx="34%" cy="28%" rx="45%" ry="40%">
+            <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity="0.38" />
+            <Stop offset="55%"  stopColor="#FFFFFF" stopOpacity="0.04" />
+            <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
+          </RadialGradient>
+          {/* Atmospheric rim */}
+          <RadialGradient id="atmo" cx="50%" cy="50%" rx="50%" ry="50%">
+            <Stop offset="82%"  stopColor="#AACCFF" stopOpacity="0" />
+            <Stop offset="95%"  stopColor="#88AAEE" stopOpacity="0.35" />
+            <Stop offset="100%" stopColor="#6688CC" stopOpacity="0.55" />
+          </RadialGradient>
+          {/* Terminator shadow on back half */}
+          <RadialGradient id="shadow" cx="72%" cy="60%">
+            <Stop offset="0%"   stopColor="#000018" stopOpacity="0" />
+            <Stop offset="70%"  stopColor="#000018" stopOpacity="0.08" />
+            <Stop offset="100%" stopColor="#000018" stopOpacity="0.28" />
           </RadialGradient>
         </Defs>
-        <Circle cx={R} cy={R} r={R*0.985} fill="url(#globeGrad)" stroke={Colors.border} strokeWidth="1"/>
+
+        {/* Ocean base */}
+        <Circle cx={R} cy={R} r={R * 0.986} fill="url(#ocean)" />
+
+        {/* Land fills (solid tan, Apple Maps style) */}
+        {landFills}
+
+        {/* Grid lines on top of land */}
         <G>{gridLines}</G>
+
+        {/* Country borders */}
         <G>{countryPaths}</G>
+
+        {/* Flight arcs */}
         <G>{flightArcs}</G>
+
+        {/* Airport dots */}
         <G>{airportDots}</G>
-        <Circle cx={R*0.76} cy={R*0.60} r={R*0.42} fill="url(#shine)"/>
+
+        {/* Subtle terminator shadow */}
+        <Circle cx={R} cy={R} r={R * 0.986} fill="url(#shadow)" />
+
+        {/* Specular shine spot */}
+        <Circle cx={R} cy={R} r={R * 0.986} fill="url(#shine)" />
+
+        {/* Atmospheric halo ring */}
+        <Circle cx={R} cy={R} r={R * 0.986} fill="url(#atmo)" />
+
+        {/* Hard edge */}
+        <Circle cx={R} cy={R} r={R * 0.986} fill="none" stroke="rgba(80,130,210,0.4)" strokeWidth="1.2" />
       </Svg>
     </View>
   );
