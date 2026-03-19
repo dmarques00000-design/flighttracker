@@ -1,12 +1,25 @@
+/**
+ * MonthlyRecapCard — Monthly Recap
+ * ---------------------------------
+ * 9:16 portrait card. Same viral-optimised approach as StoryCard:
+ *  - Logbook logo + wordmark top-left
+ *  - Hero month name + flight count
+ *  - Stat grid, top routes, rank badge
+ *  - "Available on the App Store" iOS badge bottom-right
+ *  - CTA "Track yours → logbook.app"
+ */
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import Svg, {
+  G, Path, Circle, Rect, Defs, LinearGradient as SvgLG, Stop, ClipPath,
+} from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
 import { Flight } from "@/context/flights";
 import { getCO2FunFact } from "@/utils/co2FunFact";
 
-export const CARD_WIDTH = 375;
-export const CARD_HEIGHT = 667;
+export const CARD_WIDTH  = 390;
+export const CARD_HEIGHT = 693;
 
 const MONTH_NAMES = [
   "January","February","March","April","May","June",
@@ -14,10 +27,10 @@ const MONTH_NAMES = [
 ];
 
 function fmt(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  if (n >= 1_000_000) return `${(n/1_000_000).toFixed(1)}M`;
+  if (n >= 1_000)     return `${(n/1_000).toFixed(1)}K`;
   return String(n);
 }
-
 function fmtHours(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
@@ -25,15 +38,13 @@ function fmtHours(minutes: number): string {
   if (m === 0) return `${h}h`;
   return `${h}h\u2009${m}m`;
 }
-
 function computeRank(n: number): number {
   if (n === 0) return 0;
-  if (n <= 1) return 15; if (n <= 3) return 35;
-  if (n <= 6) return 55; if (n <= 10) return 70;
+  if (n <= 1) return 15;  if (n <= 3) return 35;
+  if (n <= 6) return 55;  if (n <= 10) return 70;
   if (n <= 15) return 82; if (n <= 25) return 91;
   if (n <= 40) return 96; return 99;
 }
-
 function getTopRoutes(flights: Flight[]): { dep: string; arr: string; count: number }[] {
   const freq: Record<string, number> = {};
   flights.forEach((f) => {
@@ -41,126 +52,80 @@ function getTopRoutes(flights: Flight[]): { dep: string; arr: string; count: num
     freq[key] = (freq[key] || 0) + 1;
   });
   return Object.entries(freq)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([k, count]) => {
-      const [dep, arr] = k.split("\u2192");
-      return { dep, arr, count };
-    });
+    .sort((a, b) => b[1] - a[1]).slice(0, 3)
+    .map(([k, count]) => { const [dep, arr] = k.split("\u2192"); return { dep, arr, count }; });
 }
-
 function getUniqueDestinations(flights: Flight[]): number {
   return new Set(flights.map((f) => f.arrivalCity)).size;
 }
 
-export interface MonthlyRecapCardProps {
-  flights: Flight[];
-  month: number;
-  year: number;
-}
-
-export default function MonthlyRecapCard({ flights, month, year }: MonthlyRecapCardProps) {
-  const count = flights.length;
-  const miles = flights.reduce((s, f) => s + f.distanceMiles, 0);
-  const co2 = flights.reduce((s, f) => s + f.co2Kg, 0);
-  const flightMin = flights.reduce((s, f) => s + f.durationMinutes, 0);
-  const rank = computeRank(count);
-  const topRoutes = getTopRoutes(flights);
-  const verifiedCount = flights.filter((f) => f.verified).length;
-  const destinations = getUniqueDestinations(flights);
-  const monthName = MONTH_NAMES[month];
-  const funFact = co2 > 0 ? getCO2FunFact(co2) : null;
-
+// ─── Inline LogoMark ────────────────────────────────────────────────────────
+function LogoMark({ size = 28 }: { size?: number }) {
+  const s=size, pad=s*0.10, bw=s-pad*2, bh=bw*0.72, bx=pad, by=(s-bh)/2, spX=bx+bw/2;
+  const lx1=bx, ly1=by+bh*0.06, lx2=spX-1, ly2=by, lx3=spX-1, ly3=by+bh, lx4=bx, ly4=by+bh*0.94;
+  const rx1=spX+1, ry1=by, rx2=bx+bw, ry2=by+bh*0.06, rx3=bx+bw, ry3=by+bh*0.94, rx4=spX+1, ry4=by+bh;
+  const arcPad=bw*0.1, arcX0=spX+arcPad+2, arcX3=bx+bw-arcPad, arcCX=(arcX0+arcX3)/2, arcY=by+bh*0.5, arcCY=arcY-bh*0.22;
   return (
-    <View style={s.card}>
-      <LinearGradient colors={["#03081A", "#071535", "#03081A"]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
-      <View style={s.glow1} />
-      <View style={s.glow2} />
-      {STARS.map((st, i) => (
-        <View key={i} style={[s.star, { top: st.t, left: st.l, width: st.r, height: st.r, borderRadius: st.r / 2, opacity: st.o }]} />
-      ))}
-
-      <View style={s.inner}>
-        <View style={s.header}>
-          <View style={s.logoRow}>
-            <Ionicons name="airplane" size={12} color="#4F8EF0" />
-            <Text style={s.logoText}>LOGBOOK</Text>
-          </View>
-          <Text style={s.monthLabel}>{monthName.toUpperCase()}</Text>
-          <Text style={s.yearLabel}>{year}</Text>
-        </View>
-
-        <View style={s.heroBlock}>
-          <Text style={s.heroNum}>{count}</Text>
-          <Text style={s.heroSub}>{count === 1 ? "FLIGHT" : "FLIGHTS"}</Text>
-          {verifiedCount > 0 && (
-            <View style={s.verifiedPill}>
-              <Ionicons name="checkmark-circle" size={11} color="#4F8EF0" />
-              <Text style={s.verifiedText}>{verifiedCount} wallet verified</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={s.statGrid}>
-          <StatBox icon="navigate" color="#4F8EF0" value={fmt(miles)} label="MILES" />
-          <View style={s.statDivV} />
-          <StatBox icon="time" color="#F59E0B" value={fmtHours(flightMin)} label="IN AIR" />
-          <View style={s.statDivV} />
-          <StatBox icon="leaf" color="#10B981" value={`${fmt(co2)}kg`} label="CO\u2082" />
-          <View style={s.statDivV} />
-          <StatBox icon="location" color="#4F8EF0" value={String(destinations)} label={destinations === 1 ? "DEST" : "DESTS"} />
-        </View>
-
-        {funFact && (
-          <View style={s.funFactRow}>
-            <Ionicons name="leaf-outline" size={11} color="#10B981" />
-            <Text style={s.funFactText}>That\u2019s like {funFact}</Text>
-          </View>
-        )}
-
-        {topRoutes.length > 0 && (
-          <View style={s.routesBlock}>
-            <Text style={s.sectionLabel}>TOP ROUTES</Text>
-            {topRoutes.map((r, i) => (
-              <View key={i} style={s.routeRow}>
-                <Text style={s.routeIata}>{r.dep}</Text>
-                <View style={s.routeLine}>
-                  <View style={s.routeDash} />
-                  <View style={s.planeWrap}><Ionicons name="airplane" size={11} color="#4F8EF0" /></View>
-                  <View style={s.routeDash} />
-                </View>
-                <Text style={[s.routeIata, { textAlign: "right" }]}>{r.arr}</Text>
-                {r.count > 1 && (
-                  <View style={s.countPill}><Text style={s.countPillText}>x{r.count}</Text></View>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
-
-        {count === 0 && (
-          <View style={s.emptyBlock}>
-            <Ionicons name="airplane-outline" size={32} color="rgba(79,142,240,0.3)" />
-            <Text style={s.emptyText}>No flights this month</Text>
-          </View>
-        )}
-
-        {rank > 0 && (
-          <View style={s.rankBlock}>
-            <View style={s.rankBadge}><Text style={s.rankBadgeText}>TOP {100 - rank}%</Text></View>
-            <Text style={s.rankCaption}>of global travellers</Text>
-          </View>
-        )}
-
-        <View style={s.footer}>
-          <View style={s.footerLine} />
-          <Text style={s.footerText}>logbook.app</Text>
-        </View>
-      </View>
-    </View>
+    <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+      <Defs>
+        <ClipPath id="mrc_clip"><Rect x="0" y="0" width={s} height={s} rx={s*0.22} ry={s*0.22} /></ClipPath>
+        <SvgLG id="mrc_bg" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0%" stopColor="#16161E" stopOpacity="1" />
+          <Stop offset="100%" stopColor="#0E0E18" stopOpacity="1" />
+        </SvgLG>
+      </Defs>
+      <Rect x="0" y="0" width={s} height={s} rx={s*0.22} ry={s*0.22} fill="url(#mrc_bg)" />
+      <G clipPath="url(#mrc_clip)">
+        <Path d={`M${lx1},${ly1} L${lx2},${ly2} L${lx3},${ly3} L${lx4},${ly4} Z`} fill="#16161E" stroke="#2A2A3A" strokeWidth={s*0.025} />
+        <Path d={`M${rx1},${ry1} L${rx2},${ry2} L${rx3},${ry3} L${rx4},${ry4} Z`} fill="#16161E" stroke="#2A2A3A" strokeWidth={s*0.025} />
+        <Rect x={spX-s*0.03} y={by} width={s*0.06} height={bh} fill="#000" opacity={0.4} />
+        <Path d={`M${spX},${by+bh*0.04} L${spX},${by+bh*0.96}`} stroke="#4F8EF7" strokeWidth={s*0.022} strokeLinecap="round" opacity={0.8} />
+        <Path d={`M${arcX0},${arcY} Q${arcCX},${arcCY} ${arcX3},${arcY}`} fill="none" stroke="#4F8EF7" strokeWidth={s*0.1} strokeLinecap="round" opacity={0.1} />
+        <Path d={`M${arcX0},${arcY} Q${arcCX},${arcCY} ${arcX3},${arcY}`} fill="none" stroke="#4F8EF7" strokeWidth={s*0.038} strokeLinecap="round" />
+        <Circle cx={arcX0} cy={arcY} r={s*0.042} fill="#4F8EF7" />
+        <Circle cx={arcX0} cy={arcY} r={s*0.018} fill="#FFF" opacity={0.9} />
+        <Circle cx={arcX3} cy={arcY} r={s*0.042} fill="#4F8EF7" />
+        <Circle cx={arcX3} cy={arcY} r={s*0.018} fill="#FFF" opacity={0.9} />
+      </G>
+      <Rect x={s*0.015} y={s*0.015} width={s*0.97} height={s*0.97} rx={s*0.21} ry={s*0.21} fill="none" stroke="#2A2A3A" strokeWidth={s*0.02} opacity={0.6} />
+    </Svg>
   );
 }
 
+// ─── iOS App Store Badge ─────────────────────────────────────────────────────
+function AppStoreBadge({ width = 118 }: { width?: number }) {
+  const h = width * 0.33;
+  const r = h * 0.28;
+  return (
+    <Svg width={width} height={h} viewBox={`0 0 ${width} ${h}`}>
+      <Defs>
+        <SvgLG id="mbadge_bg" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0%"  stopColor="#2A2A35" stopOpacity="1" />
+          <Stop offset="100%" stopColor="#1A1A25" stopOpacity="1" />
+        </SvgLG>
+      </Defs>
+      <Rect x={0} y={0} width={width} height={h} rx={r} ry={r}
+        fill="url(#mbadge_bg)" stroke="rgba(255,255,255,0.15)" strokeWidth={0.8}
+      />
+      <Text
+        x={width * 0.37} y={h * 0.40}
+        fontSize={h * 0.28} fill="rgba(255,255,255,0.65)"
+        fontFamily="DMSans_400Regular" textAnchor="middle" letterSpacing={0.3}
+      >
+        Available on the
+      </Text>
+      <Text
+        x={width * 0.37} y={h * 0.78}
+        fontSize={h * 0.42} fill="#FFFFFF"
+        fontFamily="DMSans_700Bold" textAnchor="middle" letterSpacing={-0.2}
+      >
+        App Store
+      </Text>
+    </Svg>
+  );
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
 function StatBox({ icon, color, value, label }: { icon: string; color: string; value: string; label: string }) {
   return (
     <View style={s.statBox}>
@@ -173,6 +138,12 @@ function StatBox({ icon, color, value, label }: { icon: string; color: string; v
   );
 }
 
+export interface MonthlyRecapCardProps {
+  flights: Flight[];
+  month: number;
+  year: number;
+}
+
 const STARS: { t: number; l: number; r: number; o: number }[] = [
   { t: 22, l: 40, r: 2, o: 0.6 }, { t: 55, l: 310, r: 1.5, o: 0.5 },
   { t: 80, l: 170, r: 1, o: 0.4 }, { t: 110, l: 340, r: 2, o: 0.7 },
@@ -182,46 +153,169 @@ const STARS: { t: number; l: number; r: number; o: number }[] = [
   { t: 590, l: 180, r: 1, o: 0.3 }, { t: 630, l: 80, r: 2, o: 0.4 },
 ];
 
+export default function MonthlyRecapCard({ flights, month, year }: MonthlyRecapCardProps) {
+  const count        = flights.length;
+  const miles        = flights.reduce((acc, f) => acc + f.distanceMiles, 0);
+  const co2          = flights.reduce((acc, f) => acc + f.co2Kg, 0);
+  const flightMin    = flights.reduce((acc, f) => acc + f.durationMinutes, 0);
+  const rank         = computeRank(count);
+  const topRoutes    = getTopRoutes(flights);
+  const destinations = getUniqueDestinations(flights);
+  const monthName    = MONTH_NAMES[month];
+  const funFact      = co2 > 0 ? getCO2FunFact(co2) : null;
+
+  return (
+    <View style={s.card}>
+      <LinearGradient colors={["#030A1C", "#071330", "#030A1C"]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
+
+      {/* Glow blobs */}
+      <View style={s.glow1} />
+      <View style={s.glow2} />
+      <View style={s.glow3} />
+
+      {/* Starfield */}
+      {STARS.map((st, i) => (
+        <View key={i} style={[s.star, { top: st.t, left: st.l, width: st.r, height: st.r, borderRadius: st.r/2, opacity: st.o }]} />
+      ))}
+
+      {/* Subtle horizontal dividers */}
+      <View style={s.gridH1} />
+      <View style={s.gridH2} />
+
+      <View style={s.inner}>
+
+        {/* ── TOP: Logo row ── */}
+        <View style={s.topRow}>
+          <LogoMark size={36} />
+          <View style={s.topBrand}>
+            <Text style={s.brandName}>Logbook</Text>
+            <Text style={s.brandSub}>Flight Journal</Text>
+          </View>
+          {rank > 0 && (
+            <View style={s.rankPill}>
+              <Text style={s.rankPillText}>TOP {100 - rank}%</Text>
+            </View>
+          )}
+        </View>
+
+        {/* ── MONTH hero ── */}
+        <View style={s.heroBlock}>
+          <View style={s.heroGlow} />
+          <Text style={s.monthName}>{monthName.toUpperCase()}</Text>
+          <Text style={s.yearLabel}>{year}</Text>
+          <Text style={s.heroNum}>{count}</Text>
+          <Text style={s.heroSub}>{count === 1 ? "FLIGHT" : "FLIGHTS"}</Text>
+        </View>
+
+        {/* ── STAT GRID ── */}
+        <View style={s.statGrid}>
+          <StatBox icon="navigate" color="#4F8EF0" value={fmt(miles)} label="MILES" />
+          <View style={s.statDivV} />
+          <StatBox icon="time" color="#F59E0B" value={fmtHours(flightMin)} label="IN AIR" />
+          <View style={s.statDivV} />
+          <StatBox icon="leaf" color="#10B981" value={`${fmt(co2)}kg`} label="CO\u2082" />
+          <View style={s.statDivV} />
+          <StatBox icon="location" color="#4F8EF0" value={String(destinations)} label={destinations === 1 ? "DEST" : "DESTS"} />
+        </View>
+
+        {/* ── FUN FACT ── */}
+        {funFact && (
+          <View style={s.funFactRow}>
+            <Text style={s.funFactText}>\uD83C\uDF43 That\u2019s like {funFact}</Text>
+          </View>
+        )}
+
+        {/* ── TOP ROUTES ── */}
+        {topRoutes.length > 0 && (
+          <View style={s.routesBlock}>
+            <Text style={s.sectionLabel}>\u2708\uFE0F TOP ROUTES</Text>
+            {topRoutes.map((r, i) => (
+              <View key={i} style={s.routeRow}>
+                <Text style={s.routeIata}>{r.dep}</Text>
+                <View style={s.routeLine}>
+                  <View style={s.routeDash} />
+                  <View style={s.planeWrap}><Ionicons name="airplane" size={11} color="#4F8EF0" /></View>
+                  <View style={s.routeDash} />
+                </View>
+                <Text style={[s.routeIata, { textAlign: "right" }]}>{r.arr}</Text>
+                {r.count > 1 && <View style={s.countPill}><Text style={s.countPillText}>x{r.count}</Text></View>}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Empty state */}
+        {count === 0 && (
+          <View style={s.emptyBlock}>
+            <Ionicons name="airplane-outline" size={36} color="rgba(79,142,240,0.3)" />
+            <Text style={s.emptyText}>No flights this month</Text>
+          </View>
+        )}
+
+        {/* ── FOOTER ── */}
+        <View style={s.footer}>
+          <View style={s.footerLeft}>
+            <Text style={s.ctaLine}>Track yours at</Text>
+            <Text style={s.ctaUrl}>logbook.app</Text>
+          </View>
+          <AppStoreBadge width={118} />
+        </View>
+
+      </View>
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
-  card: { width: CARD_WIDTH, height: CARD_HEIGHT, backgroundColor: "#03081A", borderRadius: 24, overflow: "hidden" },
-  glow1: { position: "absolute", width: 320, height: 320, borderRadius: 160, backgroundColor: "rgba(79,142,240,0.08)", top: -80, right: -80 },
-  glow2: { position: "absolute", width: 240, height: 240, borderRadius: 120, backgroundColor: "rgba(79,142,240,0.04)", bottom: 60, left: -80 },
-  star: { position: "absolute", backgroundColor: "#FFFFFF" },
-  inner: { flex: 1, paddingHorizontal: 32, paddingTop: 36, paddingBottom: 28, justifyContent: "space-between" },
-  header: { alignItems: "flex-start", gap: 2 },
-  logoRow: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 10 },
-  logoText: { fontSize: 10, color: "#4F8EF0", fontFamily: "DMSans_700Bold", letterSpacing: 3 },
-  monthLabel: { fontSize: 42, color: "#F0F6FF", fontFamily: "DMSans_700Bold", letterSpacing: -1, lineHeight: 46 },
-  yearLabel: { fontSize: 15, color: "rgba(240,246,255,0.35)", fontFamily: "DMSans_400Regular", letterSpacing: 2 },
-  heroBlock: { alignItems: "center", paddingVertical: 8 },
-  heroNum: { fontSize: 100, color: "#F0F6FF", fontFamily: "DMSans_700Bold", lineHeight: 108, letterSpacing: -4 },
-  heroSub: { fontSize: 12, color: "rgba(79,142,240,0.65)", fontFamily: "DMSans_700Bold", letterSpacing: 5, marginTop: -6 },
-  verifiedPill: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "rgba(79,142,240,0.12)", borderWidth: 1, borderColor: "rgba(79,142,240,0.25)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, marginTop: 8 },
-  verifiedText: { fontSize: 11, color: "#4F8EF0", fontFamily: "DMSans_500Medium", letterSpacing: 0.3 },
-  statGrid: { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.04)", borderRadius: 16, borderWidth: 1, borderColor: "rgba(79,142,240,0.12)", paddingVertical: 16, paddingHorizontal: 4, alignItems: "center" },
-  statBox: { flex: 1, alignItems: "center", gap: 4 },
-  statDivV: { width: 1, height: 36, backgroundColor: "rgba(79,142,240,0.15)" },
-  statIcon: { width: 28, height: 28, borderRadius: 8, alignItems: "center", justifyContent: "center", marginBottom: 2 },
+  card:  { width: CARD_WIDTH, height: CARD_HEIGHT, backgroundColor: "#030A1C", borderRadius: 28, overflow: "hidden" },
+  glow1: { position: "absolute", width: 340, height: 340, borderRadius: 170, backgroundColor: "rgba(79,142,240,0.09)", top: -90, right: -90 },
+  glow2: { position: "absolute", width: 260, height: 260, borderRadius: 130, backgroundColor: "rgba(79,142,240,0.05)", bottom: 60, left: -80 },
+  glow3: { position: "absolute", width: 200, height: 200, borderRadius: 100, backgroundColor: "rgba(245,158,11,0.04)", top: 280, left: 90 },
+  star:  { position: "absolute", backgroundColor: "#FFFFFF" },
+  gridH1: { position: "absolute", left: 0, right: 0, top: "40%", height: 1, backgroundColor: "rgba(79,142,240,0.05)" },
+  gridH2: { position: "absolute", left: 0, right: 0, top: "68%", height: 1, backgroundColor: "rgba(79,142,240,0.05)" },
+
+  inner: { flex: 1, paddingHorizontal: 32, paddingTop: 38, paddingBottom: 28, justifyContent: "space-between" },
+
+  topRow:    { flexDirection: "row", alignItems: "center", gap: 10 },
+  topBrand:  { flex: 1, gap: 1 },
+  brandName: { fontSize: 20, color: "#F0F6FF", fontFamily: "DMSans_700Bold", letterSpacing: -0.3, lineHeight: 22 },
+  brandSub:  { fontSize: 10, color: "rgba(79,142,240,0.7)", fontFamily: "DMSans_400Regular", letterSpacing: 0.8 },
+  rankPill:  { backgroundColor: "rgba(79,142,240,0.15)", borderWidth: 1, borderColor: "rgba(79,142,240,0.4)", paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20 },
+  rankPillText: { fontSize: 11, color: "#4F8EF0", fontFamily: "DMSans_700Bold", letterSpacing: 1.5 },
+
+  heroBlock: { alignItems: "center", position: "relative" },
+  heroGlow:  { position: "absolute", width: 240, height: 240, borderRadius: 120, backgroundColor: "rgba(79,142,240,0.07)", top: -20 },
+  monthName: { fontSize: 44, color: "#F0F6FF", fontFamily: "DMSans_700Bold", letterSpacing: -1.5, lineHeight: 48 },
+  yearLabel: { fontSize: 13, color: "rgba(240,246,255,0.3)", fontFamily: "DMSans_400Regular", letterSpacing: 3, marginBottom: 6 },
+  heroNum:   { fontSize: 104, color: "#F0F6FF", fontFamily: "DMSans_700Bold", lineHeight: 112, letterSpacing: -5, textShadowColor: "rgba(79,142,240,0.4)", textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 20 },
+  heroSub:   { fontSize: 12, color: "rgba(79,142,240,0.65)", fontFamily: "DMSans_700Bold", letterSpacing: 5, marginTop: -6 },
+
+  statGrid:  { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.04)", borderRadius: 16, borderWidth: 1, borderColor: "rgba(79,142,240,0.12)", paddingVertical: 15, paddingHorizontal: 4, alignItems: "center" },
+  statBox:   { flex: 1, alignItems: "center", gap: 4 },
+  statDivV:  { width: 1, height: 36, backgroundColor: "rgba(79,142,240,0.15)" },
+  statIcon:  { width: 28, height: 28, borderRadius: 8, alignItems: "center", justifyContent: "center", marginBottom: 2 },
   statValue: { fontSize: 16, color: "#F0F6FF", fontFamily: "DMSans_700Bold", letterSpacing: -0.3 },
   statLabel: { fontSize: 9, color: "rgba(240,246,255,0.4)", fontFamily: "DMSans_500Medium", letterSpacing: 1.5 },
-  funFactRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
-  funFactText: { fontSize: 11, color: "rgba(16,185,129,0.7)", fontFamily: "DMSans_400Regular", fontStyle: "italic", flex: 1 },
-  routesBlock: { gap: 10 },
+
+  funFactRow:  { backgroundColor: "rgba(16,185,129,0.07)", borderRadius: 12, borderWidth: 1, borderColor: "rgba(16,185,129,0.18)", paddingHorizontal: 14, paddingVertical: 8 },
+  funFactText: { fontSize: 11, color: "rgba(16,185,129,0.85)", fontFamily: "DMSans_400Regular", fontStyle: "italic", textAlign: "center", lineHeight: 16 },
+
+  routesBlock:  { gap: 8 },
   sectionLabel: { fontSize: 9, color: "rgba(79,142,240,0.55)", fontFamily: "DMSans_700Bold", letterSpacing: 2.5, marginBottom: 2 },
-  routeRow: { flexDirection: "row", alignItems: "center", gap: 0 },
-  routeIata: { fontSize: 18, color: "#F0F6FF", fontFamily: "DMSans_700Bold", width: 44, letterSpacing: -0.5 },
+  routeRow:  { flexDirection: "row", alignItems: "center", gap: 0 },
+  routeIata: { fontSize: 19, color: "#F0F6FF", fontFamily: "DMSans_700Bold", width: 46, letterSpacing: -0.5 },
   routeLine: { flex: 1, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6 },
   routeDash: { flex: 1, height: 1, backgroundColor: "rgba(79,142,240,0.25)" },
-  planeWrap: { width: 22, height: 22, borderRadius: 11, backgroundColor: "rgba(79,142,240,0.15)", alignItems: "center", justifyContent: "center" },
+  planeWrap: { width: 20, height: 20, borderRadius: 10, backgroundColor: "rgba(79,142,240,0.15)", alignItems: "center", justifyContent: "center" },
   countPill: { backgroundColor: "rgba(79,142,240,0.15)", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8, marginLeft: 6 },
   countPillText: { fontSize: 10, color: "#4F8EF0", fontFamily: "DMSans_700Bold" },
-  emptyBlock: { alignItems: "center", gap: 8, paddingVertical: 16 },
-  emptyText: { fontSize: 13, color: "rgba(240,246,255,0.3)", fontFamily: "DMSans_400Regular" },
-  rankBlock: { alignItems: "center", gap: 5 },
-  rankBadge: { backgroundColor: "rgba(79,142,240,0.12)", borderWidth: 1, borderColor: "rgba(79,142,240,0.35)", paddingHorizontal: 20, paddingVertical: 7, borderRadius: 20 },
-  rankBadgeText: { fontSize: 13, color: "#4F8EF0", fontFamily: "DMSans_700Bold", letterSpacing: 2 },
-  rankCaption: { fontSize: 10, color: "rgba(240,246,255,0.3)", fontFamily: "DMSans_400Regular", letterSpacing: 0.5 },
-  footer: { alignItems: "center", gap: 8 },
-  footerLine: { width: 40, height: 1, backgroundColor: "rgba(79,142,240,0.2)" },
-  footerText: { fontSize: 10, color: "rgba(240,246,255,0.18)", fontFamily: "DMSans_400Regular", letterSpacing: 1.5 },
+
+  emptyBlock: { alignItems: "center", gap: 8, paddingVertical: 20 },
+  emptyText:  { fontSize: 13, color: "rgba(240,246,255,0.3)", fontFamily: "DMSans_400Regular" },
+
+  footer:     { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  footerLeft: { gap: 2 },
+  ctaLine:    { fontSize: 10, color: "rgba(240,246,255,0.35)", fontFamily: "DMSans_400Regular", letterSpacing: 0.3 },
+  ctaUrl:     { fontSize: 14, color: "rgba(79,142,240,0.85)", fontFamily: "DMSans_700Bold", letterSpacing: 0.2 },
 });
