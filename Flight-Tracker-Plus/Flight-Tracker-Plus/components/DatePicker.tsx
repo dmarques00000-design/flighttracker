@@ -26,7 +26,10 @@ const MONTHS_SHORT = [
 ];
 
 const CURRENT_YEAR = new Date().getFullYear();
-const YEARS = Array.from({ length: 21 }, (_, i) => CURRENT_YEAR - 10 + i);
+const YEARS = Array.from(
+  { length: CURRENT_YEAR + 1 - 2020 + 1 },
+  (_, i) => 2020 + i,
+);
 
 function parseDateStr(str: string): Date {
   const [y, m, d] = str.split("-").map(Number);
@@ -398,25 +401,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  cellSelected: {
-    backgroundColor: Colors.accent,
-  },
-  cellToday: {
-    backgroundColor: Colors.accent + "22",
-  },
+  cellSelected: { backgroundColor: Colors.accent },
+  cellToday: { backgroundColor: Colors.accent + "22" },
   cellText: {
     fontSize: 14,
     color: Colors.text,
     fontFamily: "DMSans_400Regular",
   },
-  cellTextSelected: {
-    color: Colors.white,
-    fontFamily: "DMSans_700Bold",
-  },
-  cellTextToday: {
-    color: Colors.accent,
-    fontFamily: "DMSans_700Bold",
-  },
+  cellTextSelected: { color: Colors.white, fontFamily: "DMSans_700Bold" },
+  cellTextToday: { color: Colors.accent, fontFamily: "DMSans_700Bold" },
   shortcuts: {
     flexDirection: "row",
     gap: 10,
@@ -490,9 +483,7 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontFamily: "DMSans_700Bold",
   },
-  yearList: {
-    maxHeight: 260,
-  },
+  yearList: { maxHeight: 260 },
   yearItem: {
     height: 52,
     justifyContent: "center",
@@ -500,9 +491,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginVertical: 2,
   },
-  yearItemSelected: {
-    backgroundColor: Colors.accent,
-  },
+  yearItemSelected: { backgroundColor: Colors.accent },
   yearItemText: {
     fontSize: 17,
     fontFamily: "DMSans_400Regular",
