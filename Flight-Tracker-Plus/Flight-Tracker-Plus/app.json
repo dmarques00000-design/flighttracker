@@ -1,26 +1,26 @@
 {
   "expo": {
-    "name": "Flight Tracker Plus",
-    "slug": "flight-tracker-plus",
+    "name": "Logbook",
+    "slug": "logbook",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "flighttracker",
+    "scheme": "logbook",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF"
+      "backgroundColor": "#0A0A0F"
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.flighttrackerplus"
+      "bundleIdentifier": "com.logbookapp"
     },
     "android": {
-      "package": "com.flighttrackerplus",
+      "package": "com.logbookapp",
       "adaptiveIcon": {
-        "backgroundColor": "#FFFFFF",
+        "backgroundColor": "#0A0A0F",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
