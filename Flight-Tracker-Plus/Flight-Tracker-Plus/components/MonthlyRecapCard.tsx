@@ -48,8 +48,7 @@ function getTopRoutes(flights: Flight[]): { dep: string; arr: string; count: num
     });
 }
 
-function getUniqueCountries(flights: Flight[]): number {
-  // Rough estimate: unique arrival cities as proxy for destinations
+function getUniqueDestinations(flights: Flight[]): number {
   return new Set(flights.map((f) => f.arrivalCity)).size;
 }
 
@@ -67,7 +66,7 @@ export default function MonthlyRecapCard({ flights, month, year }: MonthlyRecapC
   const rank = computeRank(count);
   const topRoutes = getTopRoutes(flights);
   const verifiedCount = flights.filter((f) => f.verified).length;
-  const destinations = getUniqueCountries(flights);
+  const destinations = getUniqueDestinations(flights);
   const monthName = MONTH_NAMES[month];
 
   return (
@@ -79,7 +78,7 @@ export default function MonthlyRecapCard({ flights, month, year }: MonthlyRecapC
         style={StyleSheet.absoluteFill}
       />
 
-      {/* Radial glow blobs */}
+      {/* Radial glow blobs — both use app accent blue only */}
       <View style={s.glow1} />
       <View style={s.glow2} />
 
@@ -112,7 +111,7 @@ export default function MonthlyRecapCard({ flights, month, year }: MonthlyRecapC
           )}
         </View>
 
-        {/* ── Stat grid ── */}
+        {/* ── Stat grid: accent blue / amber / green / amber (no purple) ── */}
         <View style={s.statGrid}>
           <StatBox icon="navigate" color="#4F8EF0" value={fmt(miles)} label="MILES" />
           <View style={s.statDivV} />
@@ -120,7 +119,7 @@ export default function MonthlyRecapCard({ flights, month, year }: MonthlyRecapC
           <View style={s.statDivV} />
           <StatBox icon="leaf" color="#10B981" value={`${fmt(co2)}kg`} label="CO\u2082" />
           <View style={s.statDivV} />
-          <StatBox icon="location" color="#A78BFA" value={String(destinations)} label={destinations === 1 ? "DEST" : "DESTS"} />
+          <StatBox icon="location" color="#4F8EF0" value={String(destinations)} label={destinations === 1 ? "DEST" : "DESTS"} />
         </View>
 
         {/* ── Top routes ── */}
@@ -148,7 +147,7 @@ export default function MonthlyRecapCard({ flights, month, year }: MonthlyRecapC
           </View>
         )}
 
-        {/* ── Empty state message ── */}
+        {/* ── Empty state ── */}
         {count === 0 && (
           <View style={s.emptyBlock}>
             <Ionicons name="airplane-outline" size={32} color="rgba(79,142,240,0.3)" />
@@ -189,7 +188,6 @@ function StatBox({ icon, color, value, label }: { icon: string; color: string; v
   );
 }
 
-// Pre-seeded decorative stars
 const STARS: { t: number; l: number; r: number; o: number }[] = [
   { t: 22, l: 40, r: 2, o: 0.6 }, { t: 55, l: 310, r: 1.5, o: 0.5 },
   { t: 80, l: 170, r: 1, o: 0.4 }, { t: 110, l: 340, r: 2, o: 0.7 },
@@ -221,7 +219,7 @@ const s = StyleSheet.create({
     width: 240,
     height: 240,
     borderRadius: 120,
-    backgroundColor: "rgba(167,139,250,0.05)",
+    backgroundColor: "rgba(79,142,240,0.04)",
     bottom: 60,
     left: -80,
   },
@@ -236,226 +234,60 @@ const s = StyleSheet.create({
     paddingBottom: 28,
     justifyContent: "space-between",
   },
+  header: { alignItems: "flex-start", gap: 2 },
+  logoRow: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 10 },
+  logoText: { fontSize: 10, color: "#4F8EF0", fontFamily: "DMSans_700Bold", letterSpacing: 3 },
+  monthLabel: { fontSize: 42, color: "#F0F6FF", fontFamily: "DMSans_700Bold", letterSpacing: -1, lineHeight: 46 },
+  yearLabel: { fontSize: 15, color: "rgba(240,246,255,0.35)", fontFamily: "DMSans_400Regular", letterSpacing: 2 },
 
-  // Header
-  header: {
-    alignItems: "flex-start",
-    gap: 2,
-  },
-  logoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginBottom: 10,
-  },
-  logoText: {
-    fontSize: 10,
-    color: "#4F8EF0",
-    fontFamily: "DMSans_700Bold",
-    letterSpacing: 3,
-  },
-  monthLabel: {
-    fontSize: 42,
-    color: "#F0F6FF",
-    fontFamily: "DMSans_700Bold",
-    letterSpacing: -1,
-    lineHeight: 46,
-  },
-  yearLabel: {
-    fontSize: 15,
-    color: "rgba(240,246,255,0.35)",
-    fontFamily: "DMSans_400Regular",
-    letterSpacing: 2,
-  },
-
-  // Hero flight count
-  heroBlock: {
-    alignItems: "center",
-    paddingVertical: 8,
-  },
-  heroNum: {
-    fontSize: 100,
-    color: "#F0F6FF",
-    fontFamily: "DMSans_700Bold",
-    lineHeight: 108,
-    letterSpacing: -4,
-  },
-  heroSub: {
-    fontSize: 12,
-    color: "rgba(79,142,240,0.65)",
-    fontFamily: "DMSans_700Bold",
-    letterSpacing: 5,
-    marginTop: -6,
-  },
+  heroBlock: { alignItems: "center", paddingVertical: 8 },
+  heroNum: { fontSize: 100, color: "#F0F6FF", fontFamily: "DMSans_700Bold", lineHeight: 108, letterSpacing: -4 },
+  heroSub: { fontSize: 12, color: "rgba(79,142,240,0.65)", fontFamily: "DMSans_700Bold", letterSpacing: 5, marginTop: -6 },
   verifiedPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
+    flexDirection: "row", alignItems: "center", gap: 5,
     backgroundColor: "rgba(79,142,240,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(79,142,240,0.25)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-    marginTop: 8,
+    borderWidth: 1, borderColor: "rgba(79,142,240,0.25)",
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, marginTop: 8,
   },
-  verifiedText: {
-    fontSize: 11,
-    color: "#4F8EF0",
-    fontFamily: "DMSans_500Medium",
-    letterSpacing: 0.3,
-  },
+  verifiedText: { fontSize: 11, color: "#4F8EF0", fontFamily: "DMSans_500Medium", letterSpacing: 0.3 },
 
-  // Stat grid
   statGrid: {
     flexDirection: "row",
     backgroundColor: "rgba(255,255,255,0.04)",
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(79,142,240,0.12)",
-    paddingVertical: 16,
-    paddingHorizontal: 4,
+    borderWidth: 1, borderColor: "rgba(79,142,240,0.12)",
+    paddingVertical: 16, paddingHorizontal: 4,
     alignItems: "center",
   },
-  statBox: {
-    flex: 1,
-    alignItems: "center",
-    gap: 4,
-  },
-  statDivV: {
-    width: 1,
-    height: 36,
-    backgroundColor: "rgba(79,142,240,0.15)",
-  },
-  statIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 2,
-  },
-  statValue: {
-    fontSize: 16,
-    color: "#F0F6FF",
-    fontFamily: "DMSans_700Bold",
-    letterSpacing: -0.3,
-  },
-  statLabel: {
-    fontSize: 9,
-    color: "rgba(240,246,255,0.4)",
-    fontFamily: "DMSans_500Medium",
-    letterSpacing: 1.5,
-  },
+  statBox: { flex: 1, alignItems: "center", gap: 4 },
+  statDivV: { width: 1, height: 36, backgroundColor: "rgba(79,142,240,0.15)" },
+  statIcon: { width: 28, height: 28, borderRadius: 8, alignItems: "center", justifyContent: "center", marginBottom: 2 },
+  statValue: { fontSize: 16, color: "#F0F6FF", fontFamily: "DMSans_700Bold", letterSpacing: -0.3 },
+  statLabel: { fontSize: 9, color: "rgba(240,246,255,0.4)", fontFamily: "DMSans_500Medium", letterSpacing: 1.5 },
 
-  // Routes
-  routesBlock: {
-    gap: 10,
-  },
-  sectionLabel: {
-    fontSize: 9,
-    color: "rgba(79,142,240,0.55)",
-    fontFamily: "DMSans_700Bold",
-    letterSpacing: 2.5,
-    marginBottom: 2,
-  },
-  routeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 0,
-  },
-  routeIata: {
-    fontSize: 18,
-    color: "#F0F6FF",
-    fontFamily: "DMSans_700Bold",
-    width: 44,
-    letterSpacing: -0.5,
-  },
-  routeLine: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 6,
-  },
-  routeDash: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "rgba(79,142,240,0.25)",
-  },
-  planeWrap: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "rgba(79,142,240,0.15)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  countPill: {
-    backgroundColor: "rgba(79,142,240,0.15)",
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 8,
-    marginLeft: 6,
-  },
-  countPillText: {
-    fontSize: 10,
-    color: "#4F8EF0",
-    fontFamily: "DMSans_700Bold",
-  },
+  routesBlock: { gap: 10 },
+  sectionLabel: { fontSize: 9, color: "rgba(79,142,240,0.55)", fontFamily: "DMSans_700Bold", letterSpacing: 2.5, marginBottom: 2 },
+  routeRow: { flexDirection: "row", alignItems: "center", gap: 0 },
+  routeIata: { fontSize: 18, color: "#F0F6FF", fontFamily: "DMSans_700Bold", width: 44, letterSpacing: -0.5 },
+  routeLine: { flex: 1, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6 },
+  routeDash: { flex: 1, height: 1, backgroundColor: "rgba(79,142,240,0.25)" },
+  planeWrap: { width: 22, height: 22, borderRadius: 11, backgroundColor: "rgba(79,142,240,0.15)", alignItems: "center", justifyContent: "center" },
+  countPill: { backgroundColor: "rgba(79,142,240,0.15)", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 8, marginLeft: 6 },
+  countPillText: { fontSize: 10, color: "#4F8EF0", fontFamily: "DMSans_700Bold" },
 
-  // Empty
-  emptyBlock: {
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 16,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: "rgba(240,246,255,0.3)",
-    fontFamily: "DMSans_400Regular",
-  },
+  emptyBlock: { alignItems: "center", gap: 8, paddingVertical: 16 },
+  emptyText: { fontSize: 13, color: "rgba(240,246,255,0.3)", fontFamily: "DMSans_400Regular" },
 
-  // Rank
-  rankBlock: {
-    alignItems: "center",
-    gap: 5,
-  },
+  rankBlock: { alignItems: "center", gap: 5 },
   rankBadge: {
     backgroundColor: "rgba(79,142,240,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(79,142,240,0.35)",
-    paddingHorizontal: 20,
-    paddingVertical: 7,
-    borderRadius: 20,
+    borderWidth: 1, borderColor: "rgba(79,142,240,0.35)",
+    paddingHorizontal: 20, paddingVertical: 7, borderRadius: 20,
   },
-  rankBadgeText: {
-    fontSize: 13,
-    color: "#4F8EF0",
-    fontFamily: "DMSans_700Bold",
-    letterSpacing: 2,
-  },
-  rankCaption: {
-    fontSize: 10,
-    color: "rgba(240,246,255,0.3)",
-    fontFamily: "DMSans_400Regular",
-    letterSpacing: 0.5,
-  },
+  rankBadgeText: { fontSize: 13, color: "#4F8EF0", fontFamily: "DMSans_700Bold", letterSpacing: 2 },
+  rankCaption: { fontSize: 10, color: "rgba(240,246,255,0.3)", fontFamily: "DMSans_400Regular", letterSpacing: 0.5 },
 
-  // Footer
-  footer: {
-    alignItems: "center",
-    gap: 8,
-  },
-  footerLine: {
-    width: 40,
-    height: 1,
-    backgroundColor: "rgba(79,142,240,0.2)",
-  },
-  footerText: {
-    fontSize: 10,
-    color: "rgba(240,246,255,0.18)",
-    fontFamily: "DMSans_400Regular",
-    letterSpacing: 1.5,
-  },
+  footer: { alignItems: "center", gap: 8 },
+  footerLine: { width: 40, height: 1, backgroundColor: "rgba(79,142,240,0.2)" },
+  footerText: { fontSize: 10, color: "rgba(240,246,255,0.18)", fontFamily: "DMSans_400Regular", letterSpacing: 1.5 },
 });
