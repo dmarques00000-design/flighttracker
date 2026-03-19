@@ -106,7 +106,7 @@ export default function FlightDetailScreen() {
       if (available) {
         await Sharing.shareAsync(uri, {
           mimeType: "image/png",
-          dialogTitle: `Share ${flight.flightCode} — ${flight.departureAirport} to ${flight.arrivalAirport}`,
+          dialogTitle: `Share ${flight.flightCode} \u2014 ${flight.departureAirport} to ${flight.arrivalAirport}`,
         });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
@@ -282,13 +282,13 @@ export default function FlightDetailScreen() {
           <View style={styles.statBox}>
             <Ionicons name="leaf-outline" size={18} color={Colors.green} />
             <Text style={styles.statNum}>{flight.co2Kg}</Text>
-            <Text style={styles.statLbl}>kg CO₂</Text>
+            <Text style={styles.statLbl}>kg CO\u2082</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statBox}>
             <Ionicons name="hourglass-outline" size={18} color={Colors.amber} />
             <Text style={styles.statNum}>
-              {flight.delayMinutes > 0 ? `+${flight.delayMinutes}` : "—"}
+              {flight.delayMinutes > 0 ? `+${flight.delayMinutes}` : "\u2014"}
             </Text>
             <Text style={styles.statLbl}>min delay</Text>
           </View>
@@ -305,11 +305,11 @@ export default function FlightDetailScreen() {
             <InfoRow label="Date" value={formatDate(flight.date)} />
             <InfoRow
               label="Departure"
-              value={`${flight.departureAirport}  ·  ${flight.departureTime}`}
+              value={`${flight.departureAirport}  \u00b7  ${flight.departureTime}`}
             />
             <InfoRow
               label="Arrival"
-              value={`${flight.arrivalAirport}  ·  ${flight.arrivalTime}`}
+              value={`${flight.arrivalAirport}  \u00b7  ${flight.arrivalTime}`}
             />
           </View>
         </Animated.View>
@@ -321,7 +321,7 @@ export default function FlightDetailScreen() {
           <Text style={styles.sectionTitle}>Environmental Impact</Text>
           <View style={styles.card}>
             <InfoRow
-              label="CO₂ Emitted"
+              label="CO\u2082 Emitted"
               value={`${flight.co2Kg} kg`}
               accent={Colors.green}
             />
@@ -331,7 +331,7 @@ export default function FlightDetailScreen() {
             />
             <InfoRow
               label="Distance"
-              value={`${flight.distanceMiles.toLocaleString()} mi  ·  ${Math.round(
+              value={`${flight.distanceMiles.toLocaleString()} mi  \u00b7  ${Math.round(
                 flight.distanceMiles * 1.60934,
               ).toLocaleString()} km`}
             />
@@ -367,7 +367,7 @@ export default function FlightDetailScreen() {
             )}
           </Pressable>
           <Text style={styles.shareHint}>
-            Generates a boarding-pass style card — share to Instagram, WhatsApp,
+            Generates a boarding-pass style card \u2014 share to Instagram, WhatsApp,
             and more.
           </Text>
         </Animated.View>
@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "0.2)",
+    borderColor: "rgba(255,255,255,0.2)",
   },
   heroGradient: {
     padding: 22,
@@ -457,14 +457,14 @@ const styles = StyleSheet.create({
   flightLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "0.3)",
+    backgroundColor: "rgba(255,255,255,0.3)",
     width: 20,
   },
   planeCircle: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "0.18)",
+    backgroundColor: "rgba(255,255,255,0.18)",
     alignItems: "center",
     justifyContent: "center",
     marginHorizontal: 6,
@@ -477,7 +477,7 @@ const styles = StyleSheet.create({
   },
   city: {
     fontSize: 13,
-    color: "#6C63FF0.55)",
+    color: "rgba(180,180,220,0.55)",
     fontFamily: "DMSans_400Regular",
     marginTop: 2,
   },
@@ -487,7 +487,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: "0.15)",
+    borderTopColor: "rgba(255,255,255,0.15)",
   },
   timeText: {
     fontSize: 22,
@@ -496,7 +496,7 @@ const styles = StyleSheet.create({
   },
   durationText: {
     fontSize: 13,
-    color: "#6C63FF0.5)",
+    color: "rgba(180,180,220,0.7)",
     fontFamily: "DMSans_400Regular",
   },
   badgeRow: {
