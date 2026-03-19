@@ -91,7 +91,7 @@ export default function FlightDetailScreen() {
   const shareRef = useRef<ViewShot>(null);
   const [sharing, setSharing] = useState(false);
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top + 8;
+  const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 20;
 
   async function handleShare() {
@@ -127,16 +127,13 @@ export default function FlightDetailScreen() {
   if (!flight) {
     return (
       <View style={[styles.container, { paddingTop: topPad }]}>
-        <Pressable onPress={() => router.back()} style={styles.navBtn}>
-          <Ionicons name="chevron-back" size={22} color={Colors.text} />
-        </Pressable>
+        <View style={styles.navBar}>
+          <Pressable onPress={() => router.back()} style={styles.navBtn} hitSlop={8}>
+            <Ionicons name="chevron-back" size={22} color={Colors.text} />
+          </Pressable>
+        </View>
         <View style={styles.notFound}>
-          <Ionicons
-            name="airplane-outline"
-            size={36}
-            color={Colors.textSec}
-            style={{ marginBottom: 12 }}
-          />
+          <Ionicons name="airplane-outline" size={36} color={Colors.textSec} style={{ marginBottom: 12 }} />
           <Text style={styles.notFoundText}>Flight not found.</Text>
         </View>
       </View>
@@ -145,6 +142,8 @@ export default function FlightDetailScreen() {
 
   const isDelayed = flight.status === "delayed";
   const co2Trees = (flight.co2Kg / 21).toFixed(1);
+  const TODAY = new Date().toISOString().substring(0, 10);
+  const isUpcoming = flight.date >= TODAY;
 
   return (
     <View style={[styles.container, { paddingTop: topPad }]}>
@@ -156,28 +155,25 @@ export default function FlightDetailScreen() {
         <FlightShareCard flight={flight} />
       </ViewShot>
 
+      {/* ── Nav bar ─────────────────────────────────────────── */}
       <View style={styles.navBar}>
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.navBtn}
-          hitSlop={8}
-        >
+        <Pressable onPress={() => router.back()} style={styles.navBtn} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={Colors.text} />
         </Pressable>
-        <Text style={styles.navTitle}>Flight</Text>
+        <View style={styles.navCenter}>
+          <Text style={styles.navLabel}>{flight.airline}</Text>
+          <Text style={styles.navTitle}>{flight.departureAirport} \u2192 {flight.arrivalAirport}</Text>
+        </View>
         <Pressable
           onPress={handleShare}
           disabled={sharing}
-          style={({ pressed }) => [
-            styles.shareBtn,
-            { opacity: sharing || pressed ? 0.7 : 1 },
-          ]}
+          style={({ pressed }) => [styles.navBtn, { opacity: sharing || pressed ? 0.7 : 1 }]}
           hitSlop={8}
         >
           {sharing ? (
             <ActivityIndicator size="small" color={Colors.accent} />
           ) : (
-            <Ionicons name="share-outline" size={22} color={Colors.accent} />
+            <Ionicons name="share-outline" size={20} color={Colors.accent} />
           )}
         </Pressable>
       </View>
@@ -187,10 +183,8 @@ export default function FlightDetailScreen() {
         contentContainerStyle={[styles.scroll, { paddingBottom: bottomPad }]}
         contentInsetAdjustmentBehavior="automatic"
       >
-        <Animated.View
-          entering={FadeInDown.delay(0).springify()}
-          style={styles.heroOuter}
-        >
+        {/* ── Hero gradient card ──────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(0).springify()} style={styles.heroOuter}>
           <LinearGradient
             colors={["#0D1E38", "#1A2F55", "#0D1E38"]}
             start={{ x: 0, y: 0 }}
@@ -200,7 +194,7 @@ export default function FlightDetailScreen() {
             <View style={styles.routeRow}>
               <View style={styles.routeEnd}>
                 <Text style={styles.iata}>{flight.departureAirport}</Text>
-                <Text style={styles.city}>{flight.departureCity}</Text>
+                <Text style={styles.cityName}>{flight.departureCity}</Text>
               </View>
               <View style={styles.routeMid}>
                 <View style={styles.flightLine} />
@@ -211,24 +205,20 @@ export default function FlightDetailScreen() {
               </View>
               <View style={[styles.routeEnd, { alignItems: "flex-end" }]}>
                 <Text style={styles.iata}>{flight.arrivalAirport}</Text>
-                <Text style={styles.city}>{flight.arrivalCity}</Text>
+                <Text style={[styles.cityName, { textAlign: "right" }]}>{flight.arrivalCity}</Text>
               </View>
             </View>
 
             <View style={styles.timesRow}>
               <Text style={styles.timeText}>{flight.departureTime}</Text>
-              <Text style={styles.durationText}>
-                {formatHours(flight.durationMinutes)}
-              </Text>
+              <Text style={styles.durationText}>{formatHours(flight.durationMinutes)}</Text>
               <Text style={styles.timeText}>{flight.arrivalTime}</Text>
             </View>
           </LinearGradient>
         </Animated.View>
 
-        <Animated.View
-          entering={FadeInDown.delay(60).springify()}
-          style={styles.badgeRow}
-        >
+        {/* ── Badges ─────────────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(60).springify()} style={styles.badgeRow}>
           <View style={styles.codeBadge}>
             <Text style={styles.codeText}>{flight.flightCode}</Text>
           </View>
@@ -236,7 +226,9 @@ export default function FlightDetailScreen() {
             style={[
               styles.statusBadge,
               {
-                backgroundColor: isDelayed
+                backgroundColor: isUpcoming
+                  ? Colors.accent + "22"
+                  : isDelayed
                   ? Colors.red + "22"
                   : Colors.green + "22",
               },
@@ -246,17 +238,31 @@ export default function FlightDetailScreen() {
               style={[
                 styles.statusDot,
                 {
-                  backgroundColor: isDelayed ? Colors.red : Colors.green,
+                  backgroundColor: isUpcoming
+                    ? Colors.accent
+                    : isDelayed
+                    ? Colors.red
+                    : Colors.green,
                 },
               ]}
             />
             <Text
               style={[
                 styles.statusText,
-                { color: isDelayed ? Colors.red : Colors.green },
+                {
+                  color: isUpcoming
+                    ? Colors.accent
+                    : isDelayed
+                    ? Colors.red
+                    : Colors.green,
+                },
               ]}
             >
-              {isDelayed ? `Delayed +${flight.delayMinutes} min` : "On Time"}
+              {isUpcoming
+                ? "Upcoming"
+                : isDelayed
+                ? `Delayed +${flight.delayMinutes} min`
+                : "Completed"}
             </Text>
           </View>
           {flight.verified && (
@@ -267,15 +273,11 @@ export default function FlightDetailScreen() {
           )}
         </Animated.View>
 
-        <Animated.View
-          entering={FadeInDown.delay(120).springify()}
-          style={styles.statsRow}
-        >
+        {/* ── Stats row ──────────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(120).springify()} style={styles.statsRow}>
           <View style={styles.statBox}>
             <Ionicons name="navigate-outline" size={18} color={Colors.accent} />
-            <Text style={styles.statNum}>
-              {flight.distanceMiles.toLocaleString()}
-            </Text>
+            <Text style={styles.statNum}>{flight.distanceMiles.toLocaleString()}</Text>
             <Text style={styles.statLbl}>miles</Text>
           </View>
           <View style={styles.statDivider} />
@@ -286,21 +288,18 @@ export default function FlightDetailScreen() {
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statBox}>
-            <Ionicons name="hourglass-outline" size={18} color={Colors.amber} />
-            <Text style={styles.statNum}>
-              {flight.delayMinutes > 0 ? `+${flight.delayMinutes}` : "\u2014"}
-            </Text>
-            <Text style={styles.statLbl}>min delay</Text>
+            <Ionicons name="time-outline" size={18} color={Colors.amber} />
+            <Text style={styles.statNum}>{formatHours(flight.durationMinutes)}</Text>
+            <Text style={styles.statLbl}>duration</Text>
           </View>
         </Animated.View>
 
-        <Animated.View
-          entering={FadeInDown.delay(180).springify()}
-          style={styles.section}
-        >
+        {/* ── Flight Info ────────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(180).springify()} style={styles.section}>
           <Text style={styles.sectionTitle}>Flight Info</Text>
           <View style={styles.card}>
             <InfoRow label="Airline" value={flight.airline} />
+            <InfoRow label="Flight" value={flight.flightCode} />
             <InfoRow label="Aircraft" value={flight.aircraft} />
             <InfoRow label="Date" value={formatDate(flight.date)} />
             <InfoRow
@@ -311,13 +310,15 @@ export default function FlightDetailScreen() {
               label="Arrival"
               value={`${flight.arrivalAirport}  \u00b7  ${flight.arrivalTime}`}
             />
+            <InfoRow
+              label="Distance"
+              value={`${flight.distanceMiles.toLocaleString()} mi  \u00b7  ${Math.round(flight.distanceMiles * 1.60934).toLocaleString()} km`}
+            />
           </View>
         </Animated.View>
 
-        <Animated.View
-          entering={FadeInDown.delay(240).springify()}
-          style={styles.section}
-        >
+        {/* ── Environmental Impact ───────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(240).springify()} style={styles.section}>
           <Text style={styles.sectionTitle}>Environmental Impact</Text>
           <View style={styles.card}>
             <InfoRow
@@ -326,22 +327,14 @@ export default function FlightDetailScreen() {
               accent={Colors.green}
             />
             <InfoRow
-              label="Equivalent trees"
-              value={`${co2Trees} trees/year`}
-            />
-            <InfoRow
-              label="Distance"
-              value={`${flight.distanceMiles.toLocaleString()} mi  \u00b7  ${Math.round(
-                flight.distanceMiles * 1.60934,
-              ).toLocaleString()} km`}
+              label="Tree equivalent"
+              value={`${co2Trees} trees / year to offset`}
             />
           </View>
         </Animated.View>
 
-        <Animated.View
-          entering={FadeInDown.delay(300).springify()}
-          style={styles.shareCardPreview}
-        >
+        {/* ── Share ──────────────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.shareSection}>
           <Text style={styles.sectionTitle}>Share This Flight</Text>
           <Pressable
             onPress={handleShare}
@@ -355,20 +348,13 @@ export default function FlightDetailScreen() {
               <ActivityIndicator size="small" color={Colors.white} />
             ) : (
               <>
-                <Ionicons
-                  name="share-social-outline"
-                  size={20}
-                  color={Colors.white}
-                />
-                <Text style={styles.shareFlightBtnText}>
-                  Share with friends
-                </Text>
+                <Ionicons name="share-social-outline" size={20} color={Colors.white} />
+                <Text style={styles.shareFlightBtnText}>Share with friends</Text>
               </>
             )}
           </Pressable>
           <Text style={styles.shareHint}>
-            Generates a boarding-pass style card \u2014 share to Instagram, WhatsApp,
-            and more.
+            Generates a boarding-pass style card \u2014 share to Instagram, WhatsApp, and more.
           </Text>
         </Animated.View>
       </ScrollView>
@@ -386,12 +372,17 @@ const styles = StyleSheet.create({
     left: -9999,
     top: 0,
   },
+
+  // ── Nav bar ────────────────────────────────────────────────
   navBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingTop: 8,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
   navBtn: {
     width: 40,
@@ -403,23 +394,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  navCenter: {
+    flex: 1,
+    alignItems: "center",
+    paddingHorizontal: 12,
+  },
+  navLabel: {
+    fontSize: 11,
+    color: Colors.textSec,
+    fontFamily: "DMSans_400Regular",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    marginBottom: 1,
+  },
   navTitle: {
     fontSize: 16,
     color: Colors.text,
     fontFamily: "DMSans_700Bold",
   },
-  shareBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 20,
-    backgroundColor: Colors.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
+
   scroll: {
     paddingHorizontal: 20,
+    paddingTop: 16,
   },
   notFound: {
     flex: 1,
@@ -431,6 +427,8 @@ const styles = StyleSheet.create({
     color: Colors.textSec,
     fontFamily: "DMSans_400Regular",
   },
+
+  // ── Hero ───────────────────────────────────────────────────
   heroOuter: {
     borderRadius: 20,
     overflow: "hidden",
@@ -475,11 +473,11 @@ const styles = StyleSheet.create({
     fontFamily: "DMSans_700Bold",
     lineHeight: 44,
   },
-  city: {
-    fontSize: 13,
-    color: "rgba(180,180,220,0.55)",
+  cityName: {
+    fontSize: 12,
+    color: "rgba(180,180,220,0.7)",
     fontFamily: "DMSans_400Regular",
-    marginTop: 2,
+    marginTop: 3,
   },
   timesRow: {
     flexDirection: "row",
@@ -499,6 +497,8 @@ const styles = StyleSheet.create({
     color: "rgba(180,180,220,0.7)",
     fontFamily: "DMSans_400Regular",
   },
+
+  // ── Badges ─────────────────────────────────────────────────
   badgeRow: {
     flexDirection: "row",
     gap: 8,
@@ -550,6 +550,8 @@ const styles = StyleSheet.create({
     color: Colors.accent,
     fontFamily: "DMSans_500Medium",
   },
+
+  // ── Stats row ──────────────────────────────────────────────
   statsRow: {
     backgroundColor: Colors.card,
     borderRadius: 16,
@@ -571,7 +573,7 @@ const styles = StyleSheet.create({
     marginVertical: 12,
   },
   statNum: {
-    fontSize: 20,
+    fontSize: 18,
     color: Colors.text,
     fontFamily: "DMSans_700Bold",
   },
@@ -580,6 +582,8 @@ const styles = StyleSheet.create({
     color: Colors.textSec,
     fontFamily: "DMSans_400Regular",
   },
+
+  // ── Sections ───────────────────────────────────────────────
   section: {
     marginBottom: 16,
   },
@@ -598,7 +602,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  shareCardPreview: {
+
+  // ── Share ──────────────────────────────────────────────────
+  shareSection: {
     marginBottom: 8,
   },
   shareFlightBtn: {
