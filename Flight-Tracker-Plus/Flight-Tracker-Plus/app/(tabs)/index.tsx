@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -61,11 +61,11 @@ function computeRank(flightCount: number): number {
 function useFilteredStats(flights: Flight[], period: "all" | number) {
   return useMemo(() => {
     const filtered = period === "all" ? flights : flights.filter((f) => f.date.startsWith(String(period)));
-    const count = filtered.length;
-    const miles = filtered.reduce((s, f) => s + f.distanceMiles, 0);
-    const co2 = filtered.reduce((s, f) => s + f.co2Kg, 0);
+    const count    = filtered.length;
+    const miles    = filtered.reduce((s, f) => s + f.distanceMiles, 0);
+    const co2      = filtered.reduce((s, f) => s + f.co2Kg, 0);
     const flightMin = filtered.reduce((s, f) => s + f.durationMinutes, 0);
-    const delayMin = filtered.reduce((s, f) => s + f.delayMinutes, 0);
+    const delayMin  = filtered.reduce((s, f) => s + f.delayMinutes, 0);
     const rank = computeRank(count);
     return { count, miles, co2, flightMin, delayMin, rank };
   }, [flights, period]);
@@ -102,7 +102,9 @@ function FlightRow({ flight, isUpcoming }: { flight: Flight; isUpcoming: boolean
           <Text style={styles.flightAirport}>{flight.arrivalAirport}</Text>
         </View>
         <View style={styles.flightMetaRow}>
-          <Text style={styles.flightMeta}>{flight.flightCode} \u00b7 {formatDateShort(flight.date)}</Text>
+          <Text style={styles.flightMeta}>
+            {flight.flightCode}{" · "}{formatDateShort(flight.date)}
+          </Text>
           {isUpcoming && days !== null ? (
             <View style={[styles.countdownPill, { backgroundColor: days === 0 ? Colors.accent : days <= 7 ? Colors.amber + "22" : Colors.accentDim }]}>
               <Text style={[styles.countdownText, { color: days === 0 ? Colors.white : days <= 7 ? Colors.amber : Colors.accent }]}>
@@ -123,10 +125,10 @@ function FlightRow({ flight, isUpcoming }: { flight: Flight; isUpcoming: boolean
 }
 
 const MENU_ITEMS = [
-  { id: "wallet",        icon: "wallet-outline",         label: "Link Apple Wallet",  sub: "Import boarding passes" },
-  { id: "monthly-recap", icon: "calendar-outline",        label: "Monthly Recap",       sub: "Share your month in the air" },
-  { id: "share",         icon: "share-social-outline",   label: "Share Year Recap",   sub: "Post to social media" },
-  { id: "add",           icon: "add-circle-outline",     label: "Add Flight",         sub: "Log a flight manually" },
+  { id: "wallet",        icon: "wallet-outline",       label: "Link Apple Wallet",  sub: "Import boarding passes" },
+  { id: "monthly-recap", icon: "calendar-outline",      label: "Monthly Recap",       sub: "Share your month in the air" },
+  { id: "share",         icon: "share-social-outline", label: "Share Year Recap",   sub: "Post to social media" },
+  { id: "add",           icon: "add-circle-outline",   label: "Add Flight",         sub: "Log a flight manually" },
 ];
 
 function HamburgerMenu({ visible, onClose, onSelect }: { visible: boolean; onClose: () => void; onSelect: (id: string) => void }) {
@@ -171,7 +173,7 @@ export default function HomeScreen() {
   const [period, setPeriod] = useState<"all" | number>(new Date().getFullYear());
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const topPadding = Platform.OS === "web" ? 67 : insets.top;
+  const topPadding    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
   const years = useMemo(() => {
@@ -189,15 +191,15 @@ export default function HomeScreen() {
     [flights]
   );
 
-  const stats = useFilteredStats(flights, period);
+  const stats     = useFilteredStats(flights, period);
   const hasFlights = flights.length > 0;
 
   function handleMenuSelect(id: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (id === "wallet") router.push("/wallet-import");
+    if (id === "wallet")        router.push("/wallet-import");
     else if (id === "monthly-recap") router.push("/monthly-recap");
-    else if (id === "share") router.push("/share");
-    else if (id === "add") router.push("/add-flight");
+    else if (id === "share")    router.push("/share");
+    else if (id === "add")      router.push("/add-flight");
   }
 
   function handleAdd() {
@@ -212,11 +214,7 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
-      <HamburgerMenu
-        visible={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        onSelect={handleMenuSelect}
-      />
+      <HamburgerMenu visible={menuOpen} onClose={() => setMenuOpen(false)} onSelect={handleMenuSelect} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -276,13 +274,17 @@ export default function HomeScreen() {
               <View style={styles.heroBottomRow}>
                 <Text style={styles.heroStat}>{formatNumber(stats.miles)} mi</Text>
                 <View style={styles.heroDot} />
-                <Text style={styles.heroStat}>{stats.co2.toFixed(0)} kg CO\u2082</Text>
+                <Text style={styles.heroStat}>{stats.co2.toFixed(0)} kg CO₂</Text>
                 {stats.rank > 0 && (
-                  <View style={styles.rankPill}><Text style={styles.rankPillText}>Top {100 - stats.rank}%</Text></View>
+                  <View style={styles.rankPill}>
+                    <Text style={styles.rankPillText}>Top {100 - stats.rank}%</Text>
+                  </View>
                 )}
               </View>
               {stats.co2 > 0 && (
-                <Text style={styles.co2FunFact}>{"\uD83C\uDF43"} That\u2019s like {getCO2FunFact(stats.co2)}</Text>
+                <Text style={styles.co2FunFact}>
+                  {"\uD83C\uDF43"} {"That\u2019s like "}{getCO2FunFact(stats.co2)}
+                </Text>
               )}
             </Animated.View>
 
@@ -294,10 +296,10 @@ export default function HomeScreen() {
             <Animated.View entering={FadeInDown.delay(140).springify()}>
               <Text style={styles.sectionTitle}>Statistics</Text>
               <View style={styles.statsGrid}>
-                <StatCard label="Miles Flown" value={formatNumber(stats.miles)} icon="globe-outline" accent={Colors.accent} />
-                <StatCard label="CO\u2082 Emitted" value={`${formatNumber(stats.co2)}kg`} icon="leaf-outline" accent={Colors.green} />
-                <StatCard label="Time in Air" value={formatHours(stats.flightMin)} icon="time-outline" accent={Colors.amber} />
-                <StatCard label="Delay Time" value={stats.delayMin > 0 ? formatHours(stats.delayMin) : "\u2014"} icon="hourglass-outline" accent={Colors.red} />
+                <StatCard label="Miles Flown"  value={formatNumber(stats.miles)}                          icon="globe-outline"     accent={Colors.accent} />
+                <StatCard label="CO₂ Emitted"  value={`${formatNumber(stats.co2)}kg`}                   icon="leaf-outline"      accent={Colors.green} />
+                <StatCard label="Time in Air"  value={formatHours(stats.flightMin)}                      icon="time-outline"      accent={Colors.amber} />
+                <StatCard label="Delay Time"   value={stats.delayMin > 0 ? formatHours(stats.delayMin) : "—"} icon="hourglass-outline" accent={Colors.red} />
               </View>
             </Animated.View>
 
@@ -349,87 +351,81 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-  scroll: { paddingHorizontal: 20 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 20 },
-  greeting: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_400Regular", letterSpacing: 0.6, textTransform: "uppercase" },
-  title: { fontSize: 30, color: Colors.text, fontFamily: "DMSans_700Bold", marginTop: 2 },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },
-  addBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.accent, alignItems: "center", justifyContent: "center" },
-  menuBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center", gap: 4 },
-  burgerLine: { width: 18, height: 2, borderRadius: 1, backgroundColor: Colors.text },
+  container:    { flex: 1, backgroundColor: Colors.bg },
+  scroll:       { paddingHorizontal: 20 },
+  header:       { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 20 },
+  greeting:     { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_400Regular", letterSpacing: 0.6, textTransform: "uppercase" },
+  title:        { fontSize: 30, color: Colors.text, fontFamily: "DMSans_700Bold", marginTop: 2 },
+  headerRight:  { flexDirection: "row", alignItems: "center", gap: 10 },
+  addBtn:       { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.accent, alignItems: "center", justifyContent: "center" },
+  menuBtn:      { width: 36, height: 36, alignItems: "center", justifyContent: "center", gap: 4 },
+  burgerLine:   { width: 18, height: 2, borderRadius: 1, backgroundColor: Colors.text },
 
-  menuOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.18)" },
+  menuOverlay:  { flex: 1, backgroundColor: "rgba(0,0,0,0.18)" },
   menuCard: {
-    position: "absolute", top: 90, right: 20,
-    width: 260,
-    backgroundColor: Colors.card,
-    borderRadius: 16,
-    borderWidth: 1, borderColor: Colors.border,
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 10,
+    position: "absolute", top: 90, right: 20, width: 260,
+    backgroundColor: Colors.card, borderRadius: 16,
+    borderWidth: 1, borderColor: Colors.border, overflow: "hidden",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12, shadowRadius: 24, elevation: 10,
   },
-  menuItem: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
+  menuItem:       { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
   menuItemBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
-  menuItemIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: Colors.accentDim, alignItems: "center", justifyContent: "center" },
-  menuItemText: { flex: 1 },
-  menuItemLabel: { fontSize: 14, color: Colors.text, fontFamily: "DMSans_700Bold" },
-  menuItemSub: { fontSize: 11, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 1 },
+  menuItemIcon:   { width: 34, height: 34, borderRadius: 10, backgroundColor: Colors.accentDim, alignItems: "center", justifyContent: "center" },
+  menuItemText:   { flex: 1 },
+  menuItemLabel:  { fontSize: 14, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  menuItemSub:    { fontSize: 11, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 1 },
 
-  periodRow: { marginBottom: 16, marginHorizontal: -20 },
-  periodContent: { paddingHorizontal: 20, gap: 8, flexDirection: "row" },
-  periodPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border },
+  periodRow:        { marginBottom: 16, marginHorizontal: -20 },
+  periodContent:    { paddingHorizontal: 20, gap: 8, flexDirection: "row" },
+  periodPill:       { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border },
   periodPillActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  periodText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
+  periodText:       { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
   periodTextActive: { color: Colors.white },
 
-  heroCard: { backgroundColor: Colors.card, borderRadius: 20, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: Colors.border },
-  heroTopRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  heroLabel: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_400Regular", letterSpacing: 0.2, marginBottom: 2 },
-  heroNum: { fontSize: 52, color: Colors.text, fontFamily: "DMSans_700Bold", lineHeight: 60 },
-  heroIconWrap: { width: 52, height: 52, borderRadius: 14, backgroundColor: Colors.accentDim, alignItems: "center", justifyContent: "center" },
-  heroDivider: { height: 1, backgroundColor: Colors.border, marginVertical: 14 },
+  heroCard:      { backgroundColor: Colors.card, borderRadius: 20, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: Colors.border },
+  heroTopRow:    { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  heroLabel:     { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_400Regular", letterSpacing: 0.2, marginBottom: 2 },
+  heroNum:       { fontSize: 52, color: Colors.text, fontFamily: "DMSans_700Bold", lineHeight: 60 },
+  heroIconWrap:  { width: 52, height: 52, borderRadius: 14, backgroundColor: Colors.accentDim, alignItems: "center", justifyContent: "center" },
+  heroDivider:   { height: 1, backgroundColor: Colors.border, marginVertical: 14 },
   heroBottomRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  heroStat: { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
-  heroDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: Colors.border },
-  co2FunFact: { fontSize: 11, color: Colors.textMuted, fontFamily: "DMSans_400Regular", marginTop: 6, fontStyle: "italic" },
-  rankPill: { backgroundColor: Colors.accentDim, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 },
-  rankPillText: { fontSize: 12, color: Colors.accent, fontFamily: "DMSans_700Bold" },
+  heroStat:      { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
+  heroDot:       { width: 3, height: 3, borderRadius: 2, backgroundColor: Colors.border },
+  co2FunFact:    { fontSize: 11, color: Colors.textMuted, fontFamily: "DMSans_400Regular", marginTop: 6, fontStyle: "italic" },
+  rankPill:      { backgroundColor: Colors.accentDim, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 },
+  rankPillText:  { fontSize: 12, color: Colors.accent, fontFamily: "DMSans_700Bold" },
 
-  sectionTitle: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase" },
-  sectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  sectionTitle:    { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase" },
+  sectionRow:      { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   sectionTitleRow: { flexDirection: "row", alignItems: "center", gap: 7 },
-  sectionDot: { width: 6, height: 6, borderRadius: 3 },
-  section: { marginBottom: 8 },
-  seeAll: { fontSize: 13, color: Colors.accent, fontFamily: "DMSans_500Medium" },
+  sectionDot:      { width: 6, height: 6, borderRadius: 3 },
+  section:         { marginBottom: 8 },
+  seeAll:          { fontSize: 13, color: Colors.accent, fontFamily: "DMSans_500Medium" },
 
-  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 24 },
-  statCard: { flex: 1, minWidth: "44%", backgroundColor: Colors.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.border },
-  statIcon: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", marginBottom: 10 },
-  statValue: { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold" },
-  statLabel: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 },
+  statsGrid:  { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 24 },
+  statCard:   { flex: 1, minWidth: "44%", backgroundColor: Colors.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.border },
+  statIcon:   { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", marginBottom: 10 },
+  statValue:  { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  statLabel:  { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 },
 
-  flightCard: { flexDirection: "row", backgroundColor: Colors.card, borderRadius: 14, marginBottom: 8, borderWidth: 1, borderColor: Colors.border, overflow: "hidden" },
+  flightCard:      { flexDirection: "row", backgroundColor: Colors.card, borderRadius: 14, marginBottom: 8, borderWidth: 1, borderColor: Colors.border, overflow: "hidden" },
   flightAccentBar: { width: 3 },
   flightCardInner: { flex: 1, paddingHorizontal: 14, paddingVertical: 13 },
-  flightRouteRow: { flexDirection: "row", alignItems: "center", marginBottom: 7 },
-  flightAirport: { fontSize: 18, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  flightRouteRow:  { flexDirection: "row", alignItems: "center", marginBottom: 7 },
+  flightAirport:   { fontSize: 18, color: Colors.text, fontFamily: "DMSans_700Bold" },
   flightArrowWrap: { flex: 1, flexDirection: "row", alignItems: "center", marginHorizontal: 8, gap: 3 },
   flightArrowLine: { flex: 1, height: 1, backgroundColor: Colors.border },
-  flightMetaRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  flightMeta: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
-  countdownPill: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 8 },
-  countdownText: { fontSize: 11, fontFamily: "DMSans_700Bold" },
+  flightMetaRow:   { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  flightMeta:      { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
+  countdownPill:   { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 8 },
+  countdownText:   { fontSize: 11, fontFamily: "DMSans_700Bold" },
 
   globeContainer: { marginTop: 4, marginBottom: 24, alignItems: "center" },
-  emptyState: { flex: 1, alignItems: "center", paddingTop: 60, paddingHorizontal: 20 },
-  emptyIcon: { width: 80, height: 80, borderRadius: 24, backgroundColor: Colors.card, alignItems: "center", justifyContent: "center", marginBottom: 20, borderWidth: 1, borderColor: Colors.border },
-  emptyTitle: { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold", marginBottom: 10 },
-  emptyText: { fontSize: 15, color: Colors.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 22, marginBottom: 28 },
-  emptyBtn: { backgroundColor: Colors.accent, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30 },
-  emptyBtnText: { fontSize: 15, color: Colors.white, fontFamily: "DMSans_700Bold" },
+  emptyState:     { flex: 1, alignItems: "center", paddingTop: 60, paddingHorizontal: 20 },
+  emptyIcon:      { width: 80, height: 80, borderRadius: 24, backgroundColor: Colors.card, alignItems: "center", justifyContent: "center", marginBottom: 20, borderWidth: 1, borderColor: Colors.border },
+  emptyTitle:     { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold", marginBottom: 10 },
+  emptyText:      { fontSize: 15, color: Colors.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 22, marginBottom: 28 },
+  emptyBtn:       { backgroundColor: Colors.accent, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30 },
+  emptyBtnText:   { fontSize: 15, color: Colors.white, fontFamily: "DMSans_700Bold" },
 });

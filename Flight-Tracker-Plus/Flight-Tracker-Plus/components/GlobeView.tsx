@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { View, StyleSheet, Dimensions, PanResponder } from "react-native";
 import Svg, {
-  Circle, Path, G, Defs, RadialGradient, LinearGradient, Stop, Ellipse,
+  Circle, Path, G, Defs, RadialGradient, Stop,
 } from "react-native-svg";
 import { Colors } from "@/constants/colors";
 import { Flight } from "@/context/flights";
@@ -26,7 +26,6 @@ function project(x: number, y: number, z: number, rot: number) {
   return { sx: x * cr - z * sr, sy: y, visible: x * sr + z * cr > 0 };
 }
 
-/** Great-circle angular distance in radians between two lat/lng pairs */
 function greatCircleAngle(a: Coord, b: Coord): number {
   const toR = Math.PI / 180;
   const lat1 = a.lat * toR, lat2 = b.lat * toR;
@@ -59,15 +58,13 @@ const AIRPORTS: Record<string, Coord> = {
 
 function getCoord(iata: string): Coord { return AIRPORTS[iata] ?? { lat: 0, lng: 0 }; }
 
-// ─── Country polygons (same as before) ───────────────────────────────────────
+// Country polygons — used for BOTH land fill AND border drawing
 const COUNTRIES: [number,number][][] = [
+// USA lower 48
 [[49,-95],[49,-123],[47,-124],[46,-124],[43,-124],[40,-124],[38,-123],[36,-122],[34,-121],[32,-117],[31,-117],[30,-104],[29,-99],[27,-97],[26,-97],[25,-97],[26,-97],[25,-80],[26,-80],[28,-81],[30,-81],[32,-81],[34,-78],[36,-76],[37,-76],[38,-75],[39,-74],[40,-74],[41,-72],[42,-70],[44,-68],[45,-67],[47,-68],[47,-70],[47,-67],[48,-70],[48,-67],[46,-64],[46,-62],[45,-61],[44,-66],[42,-70],[41,-70],[41,-72],[40,-74],[38,-75],[36,-76],[34,-78],[32,-81],[30,-85],[28,-82],[26,-80],[25,-80],[24,-82],[24,-84],[25,-86],[28,-88],[29,-90],[29,-89],[29,-92],[29,-94],[28,-96],[27,-97],[28,-97],[30,-99],[30,-97],[29,-97],[30,-104],[31,-106],[31,-109],[31,-111],[33,-114],[33,-117],[34,-117],[35,-120],[36,-121],[38,-123],[39,-124],[40,-124],[42,-124],[43,-124],[46,-124],[47,-124],[48,-124],[49,-123],[49,-115],[49,-110],[49,-104],[49,-100],[49,-96],[49,-95]],
 [[25,-80],[24,-82],[24,-84],[25,-87],[28,-88],[28,-85],[26,-82],[26,-80],[25,-80]],
 [[71,-156],[70,-162],[66,-166],[63,-166],[59,-164],[57,-158],[55,-160],[57,-136],[58,-137],[59,-136],[60,-141],[63,-141],[65,-141],[68,-141],[69,-141],[71,-141],[71,-156]],
-[[55,-162],[54,-164],[53,-168],[53,-163],[55,-162]],
 [[49,-95],[49,-86],[47,-84],[46,-84],[44,-77],[43,-79],[44,-76],[44,-75],[45,-73],[45,-71],[47,-70],[47,-68],[47,-67],[46,-64],[46,-62],[45,-61],[44,-66],[43,-66],[44,-67],[45,-64],[46,-62],[46,-60],[47,-54],[48,-54],[49,-56],[50,-56],[52,-56],[53,-57],[54,-60],[55,-60],[57,-61],[59,-64],[60,-64],[62,-64],[63,-64],[64,-65],[64,-66],[65,-65],[65,-70],[65,-75],[66,-78],[66,-82],[68,-84],[70,-84],[72,-82],[74,-80],[76,-78],[78,-76],[79,-74],[80,-74],[83,-74],[83,-68],[82,-64],[82,-58],[80,-56],[78,-54],[77,-60],[76,-64],[74,-80],[72,-80],[70,-78],[72,-75],[74,-72],[76,-70],[78,-70],[80,-66],[82,-64],[82,-60],[80,-56],[78,-52],[76,-52],[75,-58],[73,-60],[72,-64],[70,-64],[68,-64],[68,-70],[66,-74],[64,-78],[64,-84],[62,-84],[60,-84],[58,-84],[58,-78],[60,-76],[62,-76],[64,-78],[64,-84],[62,-84],[60,-84],[58,-84],[58,-78],[56,-76],[56,-80],[54,-82],[52,-82],[50,-78],[50,-84],[52,-88],[52,-92],[50,-92],[50,-96],[51,-98],[52,-100],[52,-96],[50,-96],[50,-90],[52,-86],[52,-82],[50,-80],[49,-86],[49,-95]],
-[[73,-80],[70,-80],[68,-75],[68,-78],[70,-80],[72,-78],[73,-80]],
-[[47,-54],[47,-56],[49,-56],[50,-54],[49,-53],[47,-54]],
 [[30,-110],[29,-111],[28,-113],[27,-110],[24,-104],[20,-105],[18,-104],[16,-96],[15,-88],[16,-89],[16,-92],[18,-91],[18,-90],[20,-87],[21,-87],[22,-90],[23,-89],[21,-86],[20,-87],[21,-90],[22,-90],[23,-89],[22,-85],[24,-81],[25,-77],[28,-82],[30,-85],[32,-100],[30,-104],[31,-106],[31,-109],[31,-111],[33,-114],[33,-117],[32,-117],[31,-117],[30,-104],[29,-99],[27,-97],[26,-97],[25,-97],[26,-97],[28,-96],[29,-94],[29,-92],[29,-89],[28,-88],[25,-86],[24,-84],[24,-82],[25,-80],[26,-80],[28,-81],[30,-85],[30,-84],[29,-90],[30,-93],[30,-95],[29,-94],[30,-97],[30,-99],[29,-97],[28,-97],[29,-99],[30,-104],[31,-106],[31,-109],[31,-111],[33,-114],[33,-117],[32,-117],[30,-110]],
 [[23,-74],[22,-77],[20,-77],[20,-75],[22,-73],[23,-74]],
 [[20,-72],[18,-74],[18,-71],[20,-69],[20,-72]],
@@ -83,6 +80,7 @@ const COUNTRIES: [number,number][][] = [
 [[-30,-58],[-32,-54],[-34,-54],[-34,-58],[-32,-58],[-30,-58]],
 [[0,-78],[-2,-78],[-4,-76],[-4,-80],[0,-80],[0,-78]],
 [[8,-60],[8,-58],[6,-58],[4,-58],[2,-56],[2,-52],[4,-52],[6,-52],[8,-52],[8,-60]],
+// Europe
 [[71,28],[70,30],[68,28],[65,14],[63,8],[60,5],[58,6],[60,10],[62,14],[65,14],[68,18],[70,22],[71,26],[71,28]],
 [[70,22],[68,16],[66,14],[64,10],[62,6],[60,5],[59,5],[58,6],[58,8],[60,10],[62,8],[64,10],[66,14],[68,16],[70,22]],
 [[69,28],[67,22],[65,18],[63,18],[61,18],[59,18],[57,12],[56,12],[56,14],[58,16],[60,18],[62,18],[64,18],[66,20],[68,22],[70,24],[69,28]],
@@ -116,6 +114,7 @@ const COUNTRIES: [number,number][][] = [
 [[54,24],[52,24],[50,24],[52,28],[54,28],[54,24]],
 [[58,22],[56,22],[54,22],[54,26],[56,26],[58,24],[58,22]],
 [[70,24],[68,22],[66,20],[68,20],[70,22],[70,24]],
+// Russia
 [[72,54],[68,54],[64,60],[60,60],[56,58],[54,58],[54,36],[56,34],[58,28],[60,28],[62,30],[64,30],[66,30],[68,32],[70,30],[72,32],[72,54]],
 [[72,54],[68,54],[64,60],[60,60],[56,60],[56,80],[60,80],[64,78],[68,74],[72,72],[72,54]],
 [[72,72],[68,74],[64,78],[60,80],[56,80],[56,100],[60,100],[64,100],[68,100],[72,100],[72,72]],
@@ -123,6 +122,7 @@ const COUNTRIES: [number,number][][] = [
 [[60,162],[55,158],[52,160],[54,164],[56,164],[58,162],[60,162]],
 [[68,140],[64,140],[60,140],[58,140],[56,136],[58,130],[60,130],[64,136],[68,140]],
 [[54,142],[50,142],[50,144],[52,144],[54,142]],
+// Middle East
 [[42,26],[40,26],[38,26],[36,28],[36,36],[38,42],[40,44],[42,44],[42,40],[40,38],[38,40],[36,40],[36,36],[38,30],[40,28],[42,28],[42,26]],
 [[37,36],[34,36],[33,36],[36,38],[36,42],[37,42],[37,36]],
 [[37,40],[34,38],[30,46],[30,50],[32,48],[36,44],[37,42],[37,40]],
@@ -134,12 +134,15 @@ const COUNTRIES: [number,number][][] = [
 [[33,35],[30,34],[28,34],[30,36],[32,38],[33,36],[33,35]],
 [[38,60],[36,62],[32,62],[28,62],[30,68],[34,70],[36,72],[38,68],[38,60]],
 [[36,72],[34,70],[30,68],[26,68],[24,68],[24,72],[26,74],[28,70],[30,72],[32,74],[34,72],[36,72]],
+// Central Asia
 [[54,58],[52,56],[50,52],[46,52],[46,60],[48,66],[50,72],[52,76],[54,74],[54,66],[54,58]],
 [[42,56],[40,52],[38,56],[38,60],[40,60],[42,60],[42,56]],
+// India
 [[36,74],[34,74],[32,74],[28,72],[24,68],[22,68],[20,70],[14,74],[8,76],[8,78],[10,80],[12,80],[16,82],[20,86],[24,88],[26,90],[28,98],[30,96],[32,78],[34,78],[36,76],[36,74]],
 [[10,80],[8,80],[8,82],[10,82],[10,80]],
 [[28,80],[28,82],[28,88],[28,92],[30,92],[30,80],[28,80]],
 [[26,88],[22,88],[22,92],[24,92],[26,92],[26,88]],
+// Southeast Asia
 [[28,98],[22,98],[16,98],[14,98],[16,102],[20,100],[22,100],[24,100],[26,98],[28,96],[28,98]],
 [[20,100],[14,100],[8,100],[6,100],[6,102],[10,100],[14,102],[18,102],[20,102],[20,100]],
 [[22,102],[16,102],[12,108],[10,106],[12,108],[14,110],[16,108],[20,104],[22,104],[22,102]],
@@ -150,13 +153,16 @@ const COUNTRIES: [number,number][][] = [
 [[2,120],[0,120],[0,122],[2,122],[4,122],[4,120],[2,120]],
 [[-4,132],[-6,132],[-6,136],[-4,138],[-2,138],[-2,132],[-4,132]],
 [[18,120],[14,120],[10,118],[8,124],[10,126],[14,122],[16,122],[18,122],[18,120]],
+// China
 [[54,122],[48,134],[44,130],[40,128],[36,122],[26,120],[22,114],[22,108],[26,104],[28,98],[30,96],[34,80],[36,76],[38,76],[40,76],[44,80],[48,88],[50,90],[52,88],[52,96],[52,102],[54,118],[54,122]],
 [[26,122],[22,120],[22,122],[24,122],[26,122]],
 [[52,88],[48,88],[44,88],[44,100],[44,108],[48,114],[52,118],[52,108],[52,100],[52,88]],
+// Japan
 [[40,140],[36,136],[34,132],[34,134],[36,138],[38,140],[40,142],[40,140]],
 [[34,130],[32,130],[32,132],[34,134],[34,132],[34,130]],
 [[44,142],[42,140],[42,142],[44,144],[44,142]],
 [[38,126],[34,126],[34,128],[36,130],[38,130],[38,126]],
+// Africa
 [[36,-6],[34,-4],[32,-4],[28,-12],[22,-14],[22,-12],[26,-10],[30,-8],[34,-2],[36,-2],[36,-6]],
 [[36,-2],[34,-2],[30,-8],[22,-12],[22,0],[22,2],[26,2],[30,2],[34,2],[36,2],[36,-2]],
 [[37,8],[34,10],[32,10],[34,12],[36,12],[37,10],[37,8]],
@@ -173,6 +179,7 @@ const COUNTRIES: [number,number][][] = [
 [[-8,28],[-12,28],[-16,28],[-18,34],[-16,38],[-14,38],[-10,36],[-8,32],[-8,28]],
 [[-22,20],[-28,16],[-34,18],[-32,20],[-30,24],[-28,28],[-24,32],[-22,34],[-20,32],[-22,30],[-22,20]],
 [[-12,48],[-16,44],[-20,44],[-24,44],[-26,48],[-20,50],[-14,50],[-12,48]],
+// Australia + NZ
 [[-10,136],[-12,130],[-14,128],[-16,122],[-18,122],[-20,114],[-24,114],[-28,114],[-32,116],[-34,120],[-36,136],[-38,140],[-38,146],[-36,148],[-32,152],[-28,154],[-24,152],[-18,146],[-14,136],[-10,136]],
 [[-40,146],[-42,144],[-44,146],[-44,148],[-40,148],[-40,146]],
 [[-36,174],[-38,176],[-40,176],[-38,174],[-36,174]],
@@ -184,62 +191,25 @@ const COUNTRIES: [number,number][][] = [
 [[80,16],[78,16],[76,20],[78,28],[80,28],[80,16]],
 ];
 
-// ─── Continent fill polygons (simplified outlines for land color fill) ───────
-// These are coarser polygons used ONLY for the filled land background layer.
-const LAND_FILLS: [number,number][][] = [
-  // North America
-  [[70,-140],[60,-140],[50,-125],[40,-120],[30,-115],[20,-100],[15,-85],[8,-75],[10,-75],[15,-85],[20,-100],[30,-115],[40,-120],[50,-125],[60,-140],[70,-140]],
-  [[25,-80],[20,-80],[18,-70],[20,-65],[25,-75],[25,-80]],
-  [[50,-60],[45,-65],[42,-70],[44,-68],[47,-65],[50,-60]],
-  // South America
-  [[12,-72],[5,-50],[0,-50],[-5,-35],[-20,-40],[-34,-54],[-55,-68],[-55,-64],[-42,-63],[-32,-52],[-20,-40],[-5,-35],[0,-50],[5,-52],[12,-70],[12,-72]],
-  // Europe
-  [[71,28],[60,5],[44,-8],[36,-8],[36,2],[43,4],[44,8],[48,8],[48,16],[50,22],[52,24],[54,22],[54,14],[55,8],[59,5],[60,5],[60,18],[58,22],[58,24],[60,28],[62,28],[64,26],[66,28],[68,28],[70,24],[71,28]],
-  // Africa
-  [[36,-5],[30,-10],[10,-18],[0,-17],[-5,10],[-8,28],[-18,36],[-34,18],[-26,34],[-10,40],[4,42],[12,50],[12,44],[22,36],[26,36],[32,32],[36,22],[36,-5]],
-  // Asia (rough)
-  [[72,54],[60,60],[50,72],[40,76],[28,98],[22,108],[8,100],[1,104],[-2,108],[0,120],[4,120],[10,120],[36,130],[44,130],[48,134],[54,122],[68,140],[72,100],[72,54]],
-  // India subcontinent
-  [[36,74],[8,78],[8,80],[12,80],[20,86],[28,98],[30,96],[34,80],[36,76],[36,74]],
-  // Arabian peninsula
-  [[30,36],[14,42],[12,50],[18,52],[22,60],[28,50],[30,46],[30,36]],
-  // Australasia
-  [[-10,136],[-20,114],[-34,120],[-38,140],[-28,154],[-14,136],[-10,136]],
-  // Japan
-  [[40,140],[34,130],[32,130],[34,134],[36,138],[40,142],[40,140]],
-  // UK
-  [[58,-4],[51,-5],[50,-4],[51,2],[53,0],[58,-4]],
-  // Greenland
-  [[83,-28],[72,-22],[70,-34],[76,-46],[80,-52],[84,-36],[83,-28]],
-  // Madagascar
-  [[-12,48],[-24,44],[-26,48],[-14,50],[-12,48]],
-  // New Zealand
-  [[-36,174],[-46,168],[-42,172],[-36,174]],
-];
-
 interface GlobeViewProps { flights: Flight[]; size?: number; }
 
 export function GlobeView({ flights, size = GLOBE_SIZE }: GlobeViewProps) {
   const R = size / 2;
-  const AUTO_SPEED = (2 * Math.PI) / (40 * 30); // one full rotation per 40s at 30fps
+  const AUTO_SPEED = (2 * Math.PI) / (40 * 30);
 
-  const rotRef    = useRef(0.3);
-  const velRef    = useRef(0);          // drag velocity (radians per frame)
-  const dragging  = useRef(false);
-  const lastX     = useRef(0);
+  const rotRef   = useRef(0.3);
+  const velRef   = useRef(0);
+  const dragging = useRef(false);
+  const lastX    = useRef(0);
   const [rotation, setRotation] = useState(0.3);
 
-  // animation loop
   useEffect(() => {
-    let animId: ReturnType<typeof setInterval>;
-    animId = setInterval(() => {
+    const animId = setInterval(() => {
       if (dragging.current) {
-        // while dragging: apply velocity accumulated from PanResponder
         rotRef.current = (rotRef.current + velRef.current) % (2 * Math.PI);
-        velRef.current *= 0.85; // friction
+        velRef.current *= 0.82;
       } else {
-        // auto-rotate, blending out any remaining inertia
-        velRef.current *= 0.92;
+        velRef.current *= 0.90;
         rotRef.current = (rotRef.current + AUTO_SPEED + velRef.current) % (2 * Math.PI);
       }
       setRotation(rotRef.current);
@@ -247,32 +217,29 @@ export function GlobeView({ flights, size = GLOBE_SIZE }: GlobeViewProps) {
     return () => clearInterval(animId);
   }, []);
 
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (_, gs) => {
-          dragging.current = true;
-          lastX.current = gs.x0;
-          velRef.current = 0;
-        },
-        onPanResponderMove: (_, gs) => {
-          const dx = gs.moveX - lastX.current;
-          lastX.current = gs.moveX;
-          // map pixels → radians  (π per half-globe-width gives a natural feel)
-          const delta = (dx / R) * 0.9;
-          rotRef.current = (rotRef.current + delta) % (2 * Math.PI);
-          velRef.current = delta;
-          setRotation(rotRef.current);
-        },
-        onPanResponderRelease: () => { dragging.current = false; },
-        onPanResponderTerminate: () => { dragging.current = false; },
-      }),
-    [R]
-  );
+  const panResponder = useMemo(() =>
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder:  () => true,
+      onPanResponderGrant: (_, gs) => {
+        dragging.current = true;
+        lastX.current = gs.x0;
+        velRef.current = 0;
+      },
+      onPanResponderMove: (_, gs) => {
+        const dx = gs.moveX - lastX.current;
+        lastX.current = gs.moveX;
+        const delta = (dx / R) * 0.9;
+        rotRef.current = (rotRef.current + delta) % (2 * Math.PI);
+        velRef.current = delta;
+        setRotation(rotRef.current);
+      },
+      onPanResponderRelease:   () => { dragging.current = false; },
+      onPanResponderTerminate: () => { dragging.current = false; },
+    }),
+  [R]);
 
-  // ── Grid lines (latitude + longitude) ────────────────────────────────────
+  // ── Grid lines ────────────────────────────────────────────────────────────
   const gridLines = useMemo(() => {
     const lines: React.ReactNode[] = [];
     for (const lat of [-60, -30, 0, 30, 60]) {
@@ -282,11 +249,11 @@ export function GlobeView({ flights, size = GLOBE_SIZE }: GlobeViewProps) {
         const p  = project(p3.x, p3.y, p3.z, rotation);
         if (p.visible) seg.push(`${p.sx + R},${-p.sy + R}`);
         else if (seg.length) {
-          lines.push(<Path key={`la${lat}${lng}`} d={`M${seg.join("L")}`} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.5" />);
+          lines.push(<Path key={`la${lat}x${lng}`} d={`M${seg.join("L")}`} fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="0.5" />);
           seg = [];
         }
       }
-      if (seg.length > 1) lines.push(<Path key={`la${lat}e`} d={`M${seg.join("L")}`} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.5" />);
+      if (seg.length > 1) lines.push(<Path key={`la${lat}e`} d={`M${seg.join("L")}`} fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="0.5" />);
     }
     for (const lng of [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330]) {
       let seg: string[] = [];
@@ -295,43 +262,44 @@ export function GlobeView({ flights, size = GLOBE_SIZE }: GlobeViewProps) {
         const p  = project(p3.x, p3.y, p3.z, rotation);
         if (p.visible) seg.push(`${p.sx + R},${-p.sy + R}`);
         else if (seg.length) {
-          lines.push(<Path key={`ln${lng}${lat}`} d={`M${seg.join("L")}`} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.5" />);
+          lines.push(<Path key={`ln${lng}x${lat}`} d={`M${seg.join("L")}`} fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="0.5" />);
           seg = [];
         }
       }
-      if (seg.length > 1) lines.push(<Path key={`ln${lng}e`} d={`M${seg.join("L")}`} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.5" />);
+      if (seg.length > 1) lines.push(<Path key={`ln${lng}e`} d={`M${seg.join("L")}`} fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="0.5" />);
     }
     return lines;
   }, [rotation, R]);
 
-  // ── Land fill layer ───────────────────────────────────────────────────────
-  const landFills = useMemo(() => {
-    return LAND_FILLS.flatMap((polygon, ci) => {
+  // ── Land fill + borders — driven from the same COUNTRIES polygons ─────────
+  const { landFills, countryBorders } = useMemo(() => {
+    const fills: React.ReactNode[] = [];
+    const borders: React.ReactNode[] = [];
+
+    COUNTRIES.forEach((polygon, ci) => {
+      // --- fill ---
       const pts: string[] = [];
-      let anyVisible = false;
+      let visibleCount = 0;
       polygon.forEach(([lat, lng]) => {
-        const p3 = latLngTo3D(lat, lng, R * 0.998);
+        const p3 = latLngTo3D(lat, lng, R * 0.997);
         const p  = project(p3.x, p3.y, p3.z, rotation);
-        if (p.visible) anyVisible = true;
+        if (p.visible) visibleCount++;
         pts.push(`${p.sx + R},${-p.sy + R}`);
       });
-      if (!anyVisible || pts.length < 3) return [];
-      return [
-        <Path
-          key={`lf${ci}`}
-          d={`M${pts.join("L")}Z`}
-          fill="#C8C4A4"
-          fillOpacity={0.72}
-          stroke="none"
-        />,
-      ];
-    });
-  }, [rotation, R]);
+      // only draw fill if a good fraction of points are on the visible hemisphere
+      if (visibleCount >= Math.max(2, polygon.length * 0.5) && pts.length >= 3) {
+        fills.push(
+          <Path
+            key={`lf${ci}`}
+            d={`M${pts.join("L")}Z`}
+            fill="#D8CEAA"
+            fillOpacity={0.82}
+            stroke="none"
+          />
+        );
+      }
 
-  // ── Country border outlines ───────────────────────────────────────────────
-  const countryPaths = useMemo(() => {
-    return COUNTRIES.flatMap((polygon, ci) => {
-      const paths: React.ReactNode[] = [];
+      // --- border ---
       let seg: string[] = [];
       polygon.forEach(([lat, lng], i) => {
         const p3 = latLngTo3D(lat, lng, R * 0.999);
@@ -339,16 +307,17 @@ export function GlobeView({ flights, size = GLOBE_SIZE }: GlobeViewProps) {
         if (p.visible) {
           seg.push(`${p.sx + R},${-p.sy + R}`);
         } else {
-          if (seg.length > 1) paths.push(<Path key={`c${ci}-${i}`} d={`M${seg.join("L")}`} fill="none" stroke="rgba(160,148,110,0.7)" strokeWidth="0.8" />);
+          if (seg.length > 1) borders.push(<Path key={`cb${ci}-${i}`} d={`M${seg.join("L")}`} fill="none" stroke="rgba(180,158,100,0.65)" strokeWidth="0.7" />);
           seg = [];
         }
       });
-      if (seg.length > 1) paths.push(<Path key={`c${ci}-e`} d={`M${seg.join("L")}Z`} fill="none" stroke="rgba(160,148,110,0.7)" strokeWidth="0.8" />);
-      return paths;
+      if (seg.length > 1) borders.push(<Path key={`cb${ci}-e`} d={`M${seg.join("L")}Z`} fill="none" stroke="rgba(180,158,100,0.65)" strokeWidth="0.7" />);
     });
+
+    return { landFills: fills, countryBorders: borders };
   }, [rotation, R]);
 
-  // ── Flight arcs (adaptive curvature) ─────────────────────────────────────
+  // ── Flight arcs ───────────────────────────────────────────────────────────
   const flightArcs = useMemo(() => {
     return flights.slice(0, 25).map((f, idx) => {
       const from = getCoord(f.departureAirport);
@@ -362,9 +331,8 @@ export function GlobeView({ flights, size = GLOBE_SIZE }: GlobeViewProps) {
       const t2 = project(tp.x, tp.y, tp.z, rotation);
       if (!f2.visible && !t2.visible) return null;
 
-      // Adaptive lift: scale from 1.04 (very close) to 1.22 (antipodal)
-      const angle = greatCircleAngle(from, to);           // 0..π
-      const liftFactor = 1.04 + (angle / Math.PI) * 0.18; // 1.04 – 1.22
+      const angle      = greatCircleAngle(from, to);
+      const liftFactor = 1.04 + (angle / Math.PI) * 0.18;
 
       const mid  = { x: (fp.x + tp.x) / 2, y: (fp.y + tp.y) / 2, z: (fp.z + tp.z) / 2 };
       const dist = Math.sqrt(mid.x ** 2 + mid.y ** 2 + mid.z ** 2) || 1;
@@ -376,10 +344,8 @@ export function GlobeView({ flights, size = GLOBE_SIZE }: GlobeViewProps) {
 
       return (
         <G key={`arc-${idx}`}>
-          {/* Glow halo */}
-          <Path d={d} stroke="#4F9EFF" strokeWidth="6" fill="none" opacity={0.08 * opacity} strokeLinecap="round" />
-          {/* Main arc */}
-          <Path d={d} stroke="#4F9EFF" strokeWidth="1.6" fill="none" opacity={0.95 * opacity} strokeLinecap="round" />
+          <Path d={d} stroke="#5AAFFF" strokeWidth="7" fill="none" opacity={0.07 * opacity} strokeLinecap="round" />
+          <Path d={d} stroke="#5AAFFF" strokeWidth="1.6" fill="none" opacity={0.95 * opacity} strokeLinecap="round" />
         </G>
       );
     });
@@ -398,8 +364,8 @@ export function GlobeView({ flights, size = GLOBE_SIZE }: GlobeViewProps) {
       const cx = p.sx + R, cy = -p.sy + R;
       return (
         <G key={`dot-${iata}`}>
-          <Circle cx={cx} cy={cy} r={5.5} fill="#4F9EFF" opacity={0.18} />
-          <Circle cx={cx} cy={cy} r={3}   fill="#4F9EFF" opacity={1} />
+          <Circle cx={cx} cy={cy} r={5.5} fill="#5AAFFF" opacity={0.18} />
+          <Circle cx={cx} cy={cy} r={3}   fill="#5AAFFF" opacity={1} />
           <Circle cx={cx} cy={cy} r={1.3} fill="#FFFFFF" opacity={0.95} />
         </G>
       );
@@ -407,67 +373,65 @@ export function GlobeView({ flights, size = GLOBE_SIZE }: GlobeViewProps) {
   }, [flights, rotation, R]);
 
   return (
-    <View
-      style={[styles.container, { width: size, height: size }]}
-      {...panResponder.panHandlers}
-    >
+    <View style={[styles.container, { width: size, height: size }]} {...panResponder.panHandlers}>
       <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <Defs>
-          {/* Ocean: Apple Maps deep blue */}
-          <RadialGradient id="ocean" cx="42%" cy="36%" rx="60%" ry="60%">
-            <Stop offset="0%"   stopColor="#5B9BD5" stopOpacity="1" />
-            <Stop offset="45%"  stopColor="#3E7FC1" stopOpacity="1" />
-            <Stop offset="100%" stopColor="#1E4F8C" stopOpacity="1" />
+          {/* Ocean — Apple Maps lighter azure */}
+          <RadialGradient id="ocean" cx="40%" cy="34%" rx="62%" ry="62%">
+            <Stop offset="0%"   stopColor="#7EC8E3" stopOpacity="1" />
+            <Stop offset="40%"  stopColor="#4D9FD6" stopOpacity="1" />
+            <Stop offset="75%"  stopColor="#2E78BE" stopOpacity="1" />
+            <Stop offset="100%" stopColor="#1B5EA0" stopOpacity="1" />
           </RadialGradient>
-          {/* Specular highlight */}
-          <RadialGradient id="shine" cx="34%" cy="28%" rx="45%" ry="40%">
-            <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity="0.38" />
-            <Stop offset="55%"  stopColor="#FFFFFF" stopOpacity="0.04" />
+          {/* Specular highlight — off-centre top-left */}
+          <RadialGradient id="shine" cx="30%" cy="24%" rx="42%" ry="38%">
+            <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity="0.45" />
+            <Stop offset="50%"  stopColor="#FFFFFF" stopOpacity="0.06" />
             <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
           </RadialGradient>
-          {/* Atmospheric rim */}
+          {/* Atmospheric rim glow */}
           <RadialGradient id="atmo" cx="50%" cy="50%" rx="50%" ry="50%">
-            <Stop offset="82%"  stopColor="#AACCFF" stopOpacity="0" />
-            <Stop offset="95%"  stopColor="#88AAEE" stopOpacity="0.35" />
-            <Stop offset="100%" stopColor="#6688CC" stopOpacity="0.55" />
+            <Stop offset="80%"  stopColor="#A0D4FF" stopOpacity="0" />
+            <Stop offset="93%"  stopColor="#80B8FF" stopOpacity="0.42" />
+            <Stop offset="100%" stopColor="#5590EE" stopOpacity="0.65" />
           </RadialGradient>
-          {/* Terminator shadow on back half */}
-          <RadialGradient id="shadow" cx="72%" cy="60%">
-            <Stop offset="0%"   stopColor="#000018" stopOpacity="0" />
-            <Stop offset="70%"  stopColor="#000018" stopOpacity="0.08" />
-            <Stop offset="100%" stopColor="#000018" stopOpacity="0.28" />
+          {/* Limb darkening */}
+          <RadialGradient id="limb" cx="50%" cy="50%">
+            <Stop offset="0%"   stopColor="#000020" stopOpacity="0" />
+            <Stop offset="65%"  stopColor="#000020" stopOpacity="0.05" />
+            <Stop offset="100%" stopColor="#000020" stopOpacity="0.32" />
           </RadialGradient>
         </Defs>
 
-        {/* Ocean base */}
-        <Circle cx={R} cy={R} r={R * 0.986} fill="url(#ocean)" />
+        {/* 1. Ocean base */}
+        <Circle cx={R} cy={R} r={R * 0.987} fill="url(#ocean)" />
 
-        {/* Land fills (solid tan, Apple Maps style) */}
-        {landFills}
+        {/* 2. Land fills */}
+        <G>{landFills}</G>
 
-        {/* Grid lines on top of land */}
+        {/* 3. Grid lines (subtle) */}
         <G>{gridLines}</G>
 
-        {/* Country borders */}
-        <G>{countryPaths}</G>
+        {/* 4. Country borders */}
+        <G>{countryBorders}</G>
 
-        {/* Flight arcs */}
+        {/* 5. Flight arcs */}
         <G>{flightArcs}</G>
 
-        {/* Airport dots */}
+        {/* 6. Airport dots */}
         <G>{airportDots}</G>
 
-        {/* Subtle terminator shadow */}
-        <Circle cx={R} cy={R} r={R * 0.986} fill="url(#shadow)" />
+        {/* 7. Limb darkening (edge vignette) */}
+        <Circle cx={R} cy={R} r={R * 0.987} fill="url(#limb)" />
 
-        {/* Specular shine spot */}
-        <Circle cx={R} cy={R} r={R * 0.986} fill="url(#shine)" />
+        {/* 8. Specular shine */}
+        <Circle cx={R} cy={R} r={R * 0.987} fill="url(#shine)" />
 
-        {/* Atmospheric halo ring */}
-        <Circle cx={R} cy={R} r={R * 0.986} fill="url(#atmo)" />
+        {/* 9. Atmospheric halo */}
+        <Circle cx={R} cy={R} r={R * 0.987} fill="url(#atmo)" />
 
-        {/* Hard edge */}
-        <Circle cx={R} cy={R} r={R * 0.986} fill="none" stroke="rgba(80,130,210,0.4)" strokeWidth="1.2" />
+        {/* 10. Crisp edge ring */}
+        <Circle cx={R} cy={R} r={R * 0.987} fill="none" stroke="rgba(60,110,200,0.35)" strokeWidth="1" />
       </Svg>
     </View>
   );
