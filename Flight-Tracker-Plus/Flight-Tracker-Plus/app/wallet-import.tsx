@@ -45,17 +45,17 @@ function haversineKm(a: {lat:number;lng:number}, b: {lat:number;lng:number}): nu
 
 function estimateDistance(dep: string, arr: string): number {
   const a = AIRPORT_COORDS[dep], b = AIRPORT_COORDS[arr];
-  if (!a || !b) return 500; // fallback
-  return Math.round(haversineKm(a, b) * 0.621371); // km -> miles
+  if (!a || !b) return 500;
+  return Math.round(haversineKm(a, b) * 0.621371);
 }
 
 function estimateDuration(dep: string, arr: string): number {
   const miles = estimateDistance(dep, arr);
-  return Math.round((miles / 500) * 60 + 30); // rough: 500mph + 30min overhead
+  return Math.round((miles / 500) * 60 + 30);
 }
 
 function estimateCO2(miles: number): number {
-  return Math.round(miles * 0.255 * 0.453592); // 0.255 lb CO2/mile converted to kg
+  return Math.round(miles * 0.255 * 0.453592);
 }
 
 type ImportState = "idle" | "requesting" | "loading" | "ready" | "done";
@@ -248,6 +248,7 @@ export default function WalletImportScreen() {
         status: "on_time",
         delayMinutes: 0,
         aircraft: pass.aircraft,
+        verified: true,
       });
     }
 
@@ -289,12 +290,12 @@ export default function WalletImportScreen() {
             <Text style={styles.connectTitle}>Import from Apple Wallet</Text>
             <Text style={styles.connectBody}>
               Connect your iPhone Wallet to pull in boarding passes and quickly add flights to your logbook.
-              No account needed — everything stays on your device.
+              No account needed \u2014 everything stays on your device.
             </Text>
 
             <View style={styles.featureList}>
               {[
-                { icon: "shield-checkmark-outline", text: "Private — data never leaves your phone" },
+                { icon: "shield-checkmark-outline", text: "Private \u2014 data never leaves your phone" },
                 { icon: "flash-outline", text: "Instantly import multiple flights at once" },
                 { icon: "checkmark-circle-outline", text: "Review each pass before adding" },
               ].map((item) => (
@@ -341,7 +342,7 @@ export default function WalletImportScreen() {
               <View style={styles.mockBanner}>
                 <Ionicons name="flask-outline" size={15} color={Colors.amber} />
                 <Text style={styles.mockBannerText}>
-                  Preview mode — showing sample boarding passes. On a real device with a custom build, your actual Wallet passes will appear here.
+                  Preview mode \u2014 showing sample boarding passes. On a real device with a custom build, your actual Wallet passes will appear here.
                 </Text>
               </View>
             )}
