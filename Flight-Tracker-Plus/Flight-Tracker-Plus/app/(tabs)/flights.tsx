@@ -1,11 +1,12 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  SectionList,
   Pressable,
   Platform,
+  ScrollView,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,13 +16,59 @@ import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { Colors } from "@/constants/colors";
 import { useFlights, Flight } from "@/context/flights";
 
+const MONTHS = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
+
+type GroupBy = "month" | "year" | "all";
+
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function groupFlights(
+  flights: Flight[],
+  groupBy: GroupBy,
+  yearFilter: number | "all"
+): { title: string; data: Flight[] }[] {
+  let filtered = yearFilter === "all"
+    ? [...flights]
+    : flights.filter((f) => f.date.startsWith(String(yearFilter)));
+
+  if (groupBy === "all") {
+    return filtered.length > 0 ? [{ title: "All Flights", data: filtered }] : [];
+  }
+
+  if (groupBy === "year") {
+    const map = new Map<number, Flight[]>();
+    filtered.forEach((f) => {
+      const y = parseInt(f.date.substring(0, 4), 10);
+      if (!map.has(y)) map.set(y, []);
+      map.get(y)!.push(f);
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => b[0] - a[0])
+      .map(([year, data]) => ({ title: String(year), data }));
+  }
+
+  // month grouping
+  const map = new Map<string, Flight[]>();
+  filtered.forEach((f) => {
+    const y = parseInt(f.date.substring(0, 4), 10);
+    const m = parseInt(f.date.substring(5, 7), 10) - 1;
+    const key = `${y}-${String(m + 1).padStart(2, "0")}`;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(f);
   });
+  return Array.from(map.entries())
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([key, data]) => {
+      const y = parseInt(key.substring(0, 4), 10);
+      const m = parseInt(key.substring(5), 10) - 1;
+      return { title: `${MONTHS[m]} ${y}`, data };
+    });
 }
 
 function FlightItem({
@@ -46,73 +93,38 @@ function FlightItem({
     onDelete();
   }
 
-  function handleCancelDelete() {
-    setConfirming(false);
-  }
-
   function handlePress() {
-    if (confirming) {
-      setConfirming(false);
-      return;
-    }
+    if (confirming) { setConfirming(false); return; }
     router.push({ pathname: "/flight/[id]", params: { id: flight.id } });
   }
 
   return (
     <Pressable onPress={handlePress}>
       <Animated.View
-        entering={FadeInDown.delay(index * 40).springify()}
+        entering={FadeInDown.delay(index * 30).springify()}
         style={styles.card}
       >
         <View style={styles.cardMain}>
           <View style={styles.routeCol}>
             <View style={styles.routeRow}>
               <Text style={styles.airport}>{flight.departureAirport}</Text>
-              <Ionicons
-                name="arrow-forward"
-                size={12}
-                color={Colors.textSec}
-                style={{ marginHorizontal: 6 }}
-              />
+              <Ionicons name="arrow-forward" size={12} color={Colors.textSec} style={{ marginHorizontal: 6 }} />
               <Text style={styles.airport}>{flight.arrivalAirport}</Text>
             </View>
-            <Text style={styles.meta}>
-              {flight.flightCode} · {formatDate(flight.date)}
-            </Text>
+            <Text style={styles.meta}>{flight.flightCode} \u00b7 {formatDate(flight.date)}</Text>
           </View>
-
           <View style={styles.rightCol}>
-            <View
-              style={[
-                styles.statusDot,
-                {
-                  backgroundColor:
-                    flight.status === "delayed" ? Colors.red : Colors.green,
-                },
-              ]}
-            />
-            {!confirming ? (
-              <Pressable
-                onPress={handleTrash}
-                hitSlop={14}
-                style={styles.trashBtn}
-              >
-                <Ionicons
-                  name="trash-outline"
-                  size={16}
-                  color={Colors.textSec}
-                />
+            <View style={[styles.statusDot, { backgroundColor: flight.status === "delayed" ? Colors.red : Colors.green }]} />
+            {!confirming && (
+              <Pressable onPress={handleTrash} hitSlop={14} style={styles.trashBtn}>
+                <Ionicons name="trash-outline" size={16} color={Colors.textSec} />
               </Pressable>
-            ) : null}
+            )}
           </View>
         </View>
-
         {confirming && (
-          <Animated.View
-            entering={FadeIn.duration(150)}
-            style={styles.confirmRow}
-          >
-            <Pressable onPress={handleCancelDelete} style={styles.cancelBtn}>
+          <Animated.View entering={FadeIn.duration(150)} style={styles.confirmRow}>
+            <Pressable onPress={() => setConfirming(false)} style={styles.cancelBtn}>
               <Text style={styles.cancelText}>Cancel</Text>
             </Pressable>
             <Pressable onPress={handleConfirmDelete} style={styles.deleteBtn}>
@@ -132,69 +144,125 @@ export default function FlightsScreen() {
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
+  const [groupBy, setGroupBy] = useState<GroupBy>("month");
+  const [yearFilter, setYearFilter] = useState<number | "all">(new Date().getFullYear());
+
+  const years = useMemo(() => {
+    const set = new Set<number>();
+    flights.forEach((f) => {
+      const y = parseInt(f.date.substring(0, 4), 10);
+      if (!isNaN(y)) set.add(y);
+    });
+    return Array.from(set).sort((a, b) => b - a);
+  }, [flights]);
+
+  const sections = useMemo(
+    () => groupFlights(flights, groupBy, yearFilter),
+    [flights, groupBy, yearFilter]
+  );
+
   function handleAdd() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push("/add-flight");
   }
 
+  const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
+    { key: "month", label: "By Month" },
+    { key: "year", label: "By Year" },
+    { key: "all", label: "All" },
+  ];
+
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
-      <FlatList
-        data={flights}
+      <SectionList
+        sections={sections}
         keyExtractor={(f) => f.id}
         showsVerticalScrollIndicator={false}
         contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={[
-          styles.list,
-          { paddingBottom: bottomPadding + 100 },
-        ]}
+        stickySectionHeadersEnabled={false}
+        contentContainerStyle={[styles.list, { paddingBottom: bottomPadding + 100 }]}
         ListHeaderComponent={() => (
           <View style={styles.header}>
-            <Text style={styles.title}>All Flights</Text>
-            <Text style={styles.count}>{flights.length} logged</Text>
+            <View style={styles.headerTop}>
+              <Text style={styles.title}>All Flights</Text>
+              <Text style={styles.count}>{flights.length} logged</Text>
+            </View>
+
+            {/* Year filter */}
+            {years.length > 1 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.filterRow}
+                style={{ marginBottom: 10, marginHorizontal: -20 }}
+              >
+                <View style={{ paddingLeft: 20 }} />
+                <Pressable
+                  onPress={() => { Haptics.selectionAsync(); setYearFilter("all"); }}
+                  style={[styles.filterPill, yearFilter === "all" && styles.filterPillActive]}
+                >
+                  <Text style={[styles.filterText, yearFilter === "all" && styles.filterTextActive]}>All Time</Text>
+                </Pressable>
+                {years.map((y) => (
+                  <Pressable
+                    key={y}
+                    onPress={() => { Haptics.selectionAsync(); setYearFilter(y); }}
+                    style={[styles.filterPill, yearFilter === y && styles.filterPillActive]}
+                  >
+                    <Text style={[styles.filterText, yearFilter === y && styles.filterTextActive]}>{y}</Text>
+                  </Pressable>
+                ))}
+                <View style={{ paddingRight: 20 }} />
+              </ScrollView>
+            )}
+
+            {/* Group by toggle */}
+            <View style={styles.groupRow}>
+              {GROUP_OPTIONS.map((opt) => (
+                <Pressable
+                  key={opt.key}
+                  onPress={() => { Haptics.selectionAsync(); setGroupBy(opt.key); }}
+                  style={[styles.groupBtn, groupBy === opt.key && styles.groupBtnActive]}
+                >
+                  <Text style={[styles.groupText, groupBy === opt.key && styles.groupTextActive]}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
         )}
+        renderSectionHeader={({ section }) =>
+          groupBy !== "all" ? (
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionHeaderText}>{section.title}</Text>
+              <Text style={styles.sectionCount}>{section.data.length} flight{section.data.length !== 1 ? "s" : ""}</Text>
+            </View>
+          ) : null
+        }
         ListEmptyComponent={() => (
           <Animated.View entering={FadeInDown.springify()} style={styles.empty}>
             <View style={styles.emptyIcon}>
-              <Ionicons
-                name="airplane-outline"
-                size={36}
-                color={Colors.textSec}
-              />
+              <Ionicons name="airplane-outline" size={36} color={Colors.textSec} />
             </View>
             <Text style={styles.emptyTitle}>No flights yet</Text>
             <Text style={styles.emptySub}>
               Add your first flight to start building your logbook.
             </Text>
-            <Pressable
-              onPress={handleAdd}
-              style={({ pressed }) => [
-                styles.emptyBtn,
-                { opacity: pressed ? 0.8 : 1 },
-              ]}
-            >
+            <Pressable onPress={handleAdd} style={({ pressed }) => [styles.emptyBtn, { opacity: pressed ? 0.8 : 1 }]}>
               <Text style={styles.emptyBtnText}>Add Flight</Text>
             </Pressable>
           </Animated.View>
         )}
         renderItem={({ item, index }) => (
-          <FlightItem
-            flight={item}
-            index={index}
-            onDelete={() => removeFlight(item.id)}
-          />
+          <FlightItem flight={item} index={index} onDelete={() => removeFlight(item.id)} />
         )}
       />
       <Pressable
         onPress={handleAdd}
         style={({ pressed }) => [
           styles.fab,
-          {
-            bottom: (Platform.OS === "web" ? 34 : insets.bottom) + 80,
-            opacity: pressed ? 0.85 : 1,
-            transform: [{ scale: pressed ? 0.95 : 1 }],
-          },
+          { bottom: (Platform.OS === "web" ? 34 : insets.bottom) + 80, opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] },
         ]}
       >
         <Ionicons name="add" size={26} color={Colors.white} />
@@ -204,29 +272,63 @@ export default function FlightsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1, backgroundColor: Colors.bg },
+  list: { paddingHorizontal: 20, paddingTop: 4 },
+  header: { paddingTop: 16, paddingBottom: 8 },
+  headerTop: { marginBottom: 16 },
+  title: { fontSize: 30, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  count: { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 },
+
+  filterRow: { gap: 8, flexDirection: "row", paddingVertical: 2 },
+  filterPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  filterPillActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  filterText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
+  filterTextActive: { color: Colors.white },
+
+  groupRow: {
+    flexDirection: "row",
+    backgroundColor: Colors.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 3,
+    marginBottom: 14,
+  },
+  groupBtn: {
     flex: 1,
-    backgroundColor: Colors.bg,
+    paddingVertical: 8,
+    alignItems: "center",
+    borderRadius: 10,
   },
-  list: {
-    paddingHorizontal: 20,
-    paddingTop: 4,
-  },
-  header: {
+  groupBtnActive: { backgroundColor: Colors.accent },
+  groupText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
+  groupTextActive: { color: Colors.white, fontFamily: "DMSans_700Bold" },
+
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingTop: 16,
-    paddingBottom: 20,
+    paddingBottom: 8,
   },
-  title: {
-    fontSize: 30,
+  sectionHeaderText: {
+    fontSize: 15,
     color: Colors.text,
     fontFamily: "DMSans_700Bold",
   },
-  count: {
-    fontSize: 14,
+  sectionCount: {
+    fontSize: 12,
     color: Colors.textSec,
     fontFamily: "DMSans_400Regular",
-    marginTop: 2,
   },
+
   card: {
     backgroundColor: Colors.card,
     borderRadius: 14,
@@ -236,42 +338,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  cardMain: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  routeCol: {
-    flex: 1,
-    gap: 4,
-  },
-  routeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  airport: {
-    fontSize: 18,
-    color: Colors.text,
-    fontFamily: "DMSans_700Bold",
-  },
-  meta: {
-    fontSize: 12,
-    color: Colors.textSec,
-    fontFamily: "DMSans_400Regular",
-  },
-  rightCol: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  trashBtn: {
-    padding: 4,
-  },
+  cardMain: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  routeCol: { flex: 1, gap: 4 },
+  routeRow: { flexDirection: "row", alignItems: "center" },
+  airport: { fontSize: 18, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  meta: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
+  rightCol: { flexDirection: "row", alignItems: "center", gap: 12 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  trashBtn: { padding: 4 },
   confirmRow: {
     flexDirection: "row",
     gap: 8,
@@ -281,32 +355,16 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
   },
   cancelBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: Colors.surface,
-    alignItems: "center",
+    flex: 1, paddingVertical: 8, borderRadius: 8,
+    backgroundColor: Colors.surface, alignItems: "center",
   },
-  cancelText: {
-    fontSize: 13,
-    color: Colors.textSec,
-    fontFamily: "DMSans_500Medium",
-  },
+  cancelText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
   deleteBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: Colors.red,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 5,
+    flex: 1, paddingVertical: 8, borderRadius: 8,
+    backgroundColor: Colors.red, alignItems: "center",
+    flexDirection: "row", justifyContent: "center", gap: 5,
   },
-  deleteText: {
-    fontSize: 13,
-    color: Colors.white,
-    fontFamily: "DMSans_700Bold",
-  },
+  deleteText: { fontSize: 13, color: Colors.white, fontFamily: "DMSans_700Bold" },
   fab: {
     position: "absolute",
     right: 20,
@@ -322,45 +380,18 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 6,
   },
-  empty: {
-    paddingTop: 60,
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
+  empty: { paddingTop: 60, alignItems: "center", paddingHorizontal: 20 },
   emptyIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: Colors.card,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    width: 72, height: 72, borderRadius: 20,
+    backgroundColor: Colors.card, alignItems: "center",
+    justifyContent: "center", marginBottom: 16,
+    borderWidth: 1, borderColor: Colors.border,
   },
-  emptyTitle: {
-    fontSize: 20,
-    color: Colors.text,
-    fontFamily: "DMSans_700Bold",
-    marginBottom: 8,
-  },
+  emptyTitle: { fontSize: 20, color: Colors.text, fontFamily: "DMSans_700Bold", marginBottom: 8 },
   emptySub: {
-    fontSize: 14,
-    color: Colors.textSec,
-    fontFamily: "DMSans_400Regular",
-    textAlign: "center",
-    lineHeight: 20,
-    marginBottom: 24,
+    fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular",
+    textAlign: "center", lineHeight: 20, marginBottom: 24,
   },
-  emptyBtn: {
-    backgroundColor: Colors.accent,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  emptyBtnText: {
-    fontSize: 15,
-    color: Colors.white,
-    fontFamily: "DMSans_700Bold",
-  },
+  emptyBtn: { backgroundColor: Colors.accent, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
+  emptyBtnText: { fontSize: 15, color: Colors.white, fontFamily: "DMSans_700Bold" },
 });

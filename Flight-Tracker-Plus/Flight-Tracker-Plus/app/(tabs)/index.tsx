@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react"; // v2
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -10,7 +10,6 @@ import {
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Colors } from "@/constants/colors";
@@ -44,50 +43,20 @@ function computeRank(flightCount: number): number {
 }
 
 function getCO2FunFact(co2Kg: number): string {
-  // Funny comparison constants
-  const burpsCO2 = 0.0001; // ~0.1g per burp
-  const burps = Math.round(co2Kg / burpsCO2);
-
-  const pizzaDeliveryCO2 = 0.5; // ~500g for one pizza delivery
-  const pizzas = Math.round(co2Kg / pizzaDeliveryCO2);
-
-  const donutsCO2 = 0.06; // ~60g per donut
-  const donuts = Math.round(co2Kg / donutsCO2);
-
-  const netflixHourCO2 = 0.055; // ~55g per hour of Netflix
-  const netflixHours = Math.round(co2Kg / netflixHourCO2);
-
-  const beerCO2 = 0.3; // ~300g per beer bottle (production + transport)
-  const beers = Math.round(co2Kg / beerCO2);
-
-  const avocadoCO2 = 0.085; // ~85g per avocado
-  const avocados = Math.round(co2Kg / avocadoCO2);
-
-  const catPurrCO2 = 0.0000001; // basically nothing but funny
-  const catPurrs = Math.round(co2Kg / catPurrCO2);
-
-  const coffeeCO2 = 0.021; // ~21g per cup
-  const coffeeCups = Math.round(co2Kg / coffeeCO2);
-
-  // Return funny comparisons based on CO2 amount
-  if (co2Kg < 5) {
-    return `${burps.toLocaleString()} burps worth of CO₂`;
-  } else if (co2Kg < 20) {
-    return `${donuts.toLocaleString()} donuts from the bakery`;
-  } else if (co2Kg < 50) {
-    return `${coffeeCups.toLocaleString()} cups of coffee (worth it!)`;
-  } else if (co2Kg < 100) {
-    return `${netflixHours.toLocaleString()} hours of Netflix binging`;
-  } else if (co2Kg < 200) {
-    return `${beers.toLocaleString()} beers at the pub`;
-  } else if (co2Kg < 500) {
-    return `${avocados.toLocaleString()} avocado toasts`;
-  } else if (co2Kg < 1000) {
-    return `${pizzas.toLocaleString()} pizza deliveries`;
-  } else {
-    return `${catPurrs.toLocaleString()} cat purrs (absolute unit)`;
-  }
+  const coffeeCups = Math.round(co2Kg / 0.021);
+  const netflixHours = Math.round(co2Kg / 0.055);
+  const beers = Math.round(co2Kg / 0.3);
+  const pizzas = Math.round(co2Kg / 0.5);
+  const donuts = Math.round(co2Kg / 0.06);
+  const burps = Math.round(co2Kg / 0.0001);
+  if (co2Kg < 5) return `${burps.toLocaleString()} burps worth of CO\u2082`;
+  if (co2Kg < 20) return `${donuts.toLocaleString()} donuts from the bakery`;
+  if (co2Kg < 50) return `${coffeeCups.toLocaleString()} cups of coffee (worth it!)`;
+  if (co2Kg < 100) return `${netflixHours.toLocaleString()} hours of Netflix binging`;
+  if (co2Kg < 200) return `${beers.toLocaleString()} beers at the pub`;
+  return `${pizzas.toLocaleString()} pizza deliveries`;
 }
+
 function useFilteredStats(flights: Flight[], period: "all" | number) {
   return useMemo(() => {
     const filtered =
@@ -125,12 +94,11 @@ function StatCard({
     </View>
   );
 }
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { flights } = useFlights();
-  const [period, setPeriod] = useState<"all" | number>(
-    new Date().getFullYear(),
-  );
+  const [period, setPeriod] = useState<"all" | number>(new Date().getFullYear());
 
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
@@ -145,7 +113,10 @@ export default function HomeScreen() {
   }, [flights]);
 
   const stats = useFilteredStats(flights, period);
-  const recentFlights = flights.slice(0, 3);
+  const recentFlights = useMemo(() => {
+    if (period === "all") return flights.slice(0, 3);
+    return flights.filter((f) => f.date.startsWith(String(period))).slice(0, 3);
+  }, [flights, period]);
   const hasFlights = flights.length > 0;
 
   function handleAdd() {
@@ -167,16 +138,11 @@ export default function HomeScreen() {
     <View style={[styles.container, { paddingTop: topPadding }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingBottom: bottomPadding + 100 },
-        ]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: bottomPadding + 100 }]}
         contentInsetAdjustmentBehavior="automatic"
       >
-        <Animated.View
-          entering={FadeInDown.delay(0).springify()}
-          style={styles.header}
-        >
+        {/* Header */}
+        <Animated.View entering={FadeInDown.delay(0).springify()} style={styles.header}>
           <View>
             <Text style={styles.greeting}>Flight Log</Text>
             <Text style={styles.title}>Logbook</Text>
@@ -185,10 +151,7 @@ export default function HomeScreen() {
             onPress={handleAdd}
             style={({ pressed }) => [
               styles.addBtn,
-              {
-                opacity: pressed ? 0.85 : 1,
-                transform: [{ scale: pressed ? 0.95 : 1 }],
-              },
+              { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] },
             ]}
           >
             <Ionicons name="add" size={22} color={Colors.white} />
@@ -197,10 +160,8 @@ export default function HomeScreen() {
 
         {hasFlights ? (
           <>
-            <Animated.View
-              entering={FadeInDown.delay(40).springify()}
-              style={styles.periodRow}
-            >
+            {/* Period filter */}
+            <Animated.View entering={FadeInDown.delay(40).springify()} style={styles.periodRow}>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -208,17 +169,9 @@ export default function HomeScreen() {
               >
                 <Pressable
                   onPress={() => handlePeriodChange("all")}
-                  style={[
-                    styles.periodPill,
-                    period === "all" && styles.periodPillActive,
-                  ]}
+                  style={[styles.periodPill, period === "all" && styles.periodPillActive]}
                 >
-                  <Text
-                    style={[
-                      styles.periodText,
-                      period === "all" && styles.periodTextActive,
-                    ]}
-                  >
+                  <Text style={[styles.periodText, period === "all" && styles.periodTextActive]}>
                     All Time
                   </Text>
                 </Pressable>
@@ -226,17 +179,9 @@ export default function HomeScreen() {
                   <Pressable
                     key={y}
                     onPress={() => handlePeriodChange(y)}
-                    style={[
-                      styles.periodPill,
-                      period === y && styles.periodPillActive,
-                    ]}
+                    style={[styles.periodPill, period === y && styles.periodPillActive]}
                   >
-                    <Text
-                      style={[
-                        styles.periodText,
-                        period === y && styles.periodTextActive,
-                      ]}
-                    >
+                    <Text style={[styles.periodText, period === y && styles.periodTextActive]}>
                       {y}
                     </Text>
                   </Pressable>
@@ -244,94 +189,61 @@ export default function HomeScreen() {
               </ScrollView>
             </Animated.View>
 
+            {/* Share banner */}
             <Animated.View entering={FadeInDown.delay(80).springify()}>
               <Pressable
                 onPress={handleShare}
-                style={({ pressed }) => [
-                  styles.shareBanner,
-                  { opacity: pressed ? 0.88 : 1 },
-                ]}
+                style={({ pressed }) => [styles.shareBanner, { opacity: pressed ? 0.88 : 1 }]}
               >
-                <LinearGradient
-                  colors={["#0D2145", "#1A3A7A", "#0D2145"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={StyleSheet.absoluteFill}
-                />
                 <View style={styles.shareBannerLeft}>
-                  <Ionicons
-                    name="share-social"
-                    size={22}
-                    color="rgba(108,99,255,0.25)"
-                  />
+                  <View style={styles.shareIconWrap}>
+                    <Ionicons name="share-social" size={18} color={Colors.accent} />
+                  </View>
                   <View>
-                    <Text style={styles.shareBannerTitle}>
-                      Share Year Recap
-                    </Text>
-                    <Text style={styles.shareBannerSub}>
-                      Post to Instagram, WhatsApp & more
-                    </Text>
+                    <Text style={styles.shareBannerTitle}>Share Year Recap</Text>
+                    <Text style={styles.shareBannerSub}>Post to Instagram, WhatsApp & more</Text>
                   </View>
                 </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={18}
-                  color="rgba(79,142,240,0.6)"
-                />
+                <Ionicons name="chevron-forward" size={18} color={Colors.textSec} />
               </Pressable>
             </Animated.View>
 
-            <Animated.View entering={FadeInDown.delay(120).springify()}>
-              <LinearGradient
-                colors={["#0D1E38", "#1A2F55", "#0D1E38"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.heroCard}
-              >
-                <View style={styles.heroRow}>
-                  <View>
-                    <Text style={styles.heroLabel}>
-                      {period === "all"
-                        ? "All time flights"
-                        : `Flights in ${period}`}
-                    </Text>
-                    <Text style={styles.heroNum}>{stats.count}</Text>
-                  </View>
-                  <View style={styles.heroIconWrap}>
-                    <Ionicons name="airplane" size={32} color={Colors.accent} />
-                  </View>
+            {/* Hero card */}
+            <Animated.View entering={FadeInDown.delay(120).springify()} style={styles.heroCard}>
+              <View style={styles.heroTopRow}>
+                <View>
+                  <Text style={styles.heroLabel}>
+                    {period === "all" ? "All time flights" : `Flights in ${period}`}
+                  </Text>
+                  <Text style={styles.heroNum}>{stats.count}</Text>
                 </View>
-                <View style={styles.heroDivider} />
-                <View style={styles.heroRow}>
-                  <Text style={styles.heroSub}>
-                    {formatNumber(stats.miles)} mi
-                  </Text>
-                  <Text style={styles.heroSub}>
-                    {stats.co2.toFixed(0)} kg CO₂
-                  </Text>
-                  <Text style={styles.co2FunFact}>
-                    {getCO2FunFact(stats.co2)}
-                  </Text>
-                  {stats.rank > 0 && (
-                    <View style={styles.rankPill}>
-                      <Text style={styles.rankPillText}>
-                        Top {100 - stats.rank}%
-                      </Text>
-                    </View>
-                  )}
+                <View style={styles.heroIconWrap}>
+                  <Ionicons name="airplane" size={28} color={Colors.accent} />
                 </View>
-              </LinearGradient>
+              </View>
+              <View style={styles.heroDivider} />
+              <View style={styles.heroBottomRow}>
+                <Text style={styles.heroStat}>{formatNumber(stats.miles)} mi</Text>
+                <View style={styles.heroDot} />
+                <Text style={styles.heroStat}>{stats.co2.toFixed(0)} kg CO\u2082</Text>
+                {stats.rank > 0 && (
+                  <View style={styles.rankPill}>
+                    <Text style={styles.rankPillText}>Top {100 - stats.rank}%</Text>
+                  </View>
+                )}
+              </View>
+              {stats.co2 > 0 && (
+                <Text style={styles.co2FunFact}>{getCO2FunFact(stats.co2)}</Text>
+              )}
             </Animated.View>
 
-            {/* Globe visualization */}
-            <Animated.View
-              entering={FadeInDown.delay(160).springify()}
-              style={styles.globeContainer}
-            >
-              <Text style={styles.heroSub}>Your Flight Network</Text>
+            {/* Globe */}
+            <Animated.View entering={FadeInDown.delay(160).springify()} style={styles.globeContainer}>
+              <Text style={styles.sectionTitle}>Your Flight Network</Text>
               <GlobeView flights={flights} />
             </Animated.View>
 
+            {/* Stats grid */}
             <Animated.View entering={FadeInDown.delay(180).springify()}>
               <Text style={styles.sectionTitle}>Statistics</Text>
               <View style={styles.statsGrid}>
@@ -342,7 +254,7 @@ export default function HomeScreen() {
                   accent={Colors.accent}
                 />
                 <StatCard
-                  label="CO₂ Emitted"
+                  label="CO\u2082 Emitted"
                   value={`${formatNumber(stats.co2)}kg`}
                   icon="leaf-outline"
                   accent={Colors.green}
@@ -355,78 +267,37 @@ export default function HomeScreen() {
                 />
                 <StatCard
                   label="Delay Time"
-                  value={stats.delayMin > 0 ? formatHours(stats.delayMin) : "—"}
+                  value={stats.delayMin > 0 ? formatHours(stats.delayMin) : "\u2014"}
                   icon="hourglass-outline"
                   accent={Colors.red}
                 />
               </View>
             </Animated.View>
 
+            {/* Recent flights */}
             {recentFlights.length > 0 && (
               <Animated.View entering={FadeInDown.delay(240).springify()}>
                 <View style={styles.sectionRow}>
                   <Text style={styles.sectionTitle}>Recent</Text>
-                  <Pressable
-                    onPress={() => router.push("/(tabs)/flights")}
-                    hitSlop={10}
-                  >
+                  <Pressable onPress={() => router.push("/(tabs)/flights")} hitSlop={10}>
                     <Text style={styles.seeAll}>See all</Text>
                   </Pressable>
                 </View>
                 {recentFlights.map((f) => (
                   <Pressable
                     key={f.id}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/flight/[id]",
-                        params: { id: f.id },
-                      })
-                    }
-                    style={({ pressed }) => [
-                      styles.recentCard,
-                      { opacity: pressed ? 0.8 : 1 },
-                    ]}
+                    onPress={() => router.push({ pathname: "/flight/[id]", params: { id: f.id } })}
+                    style={({ pressed }) => [styles.recentCard, { opacity: pressed ? 0.8 : 1 }]}
                   >
                     <View style={styles.recentRoute}>
-                      <Text style={styles.recentAirport}>
-                        {f.departureAirport}
-                      </Text>
-                      <Ionicons
-                        name="arrow-forward"
-                        size={14}
-                        color={Colors.textSec}
-                        style={{ marginHorizontal: 6 }}
-                      />
-                      <Text style={styles.recentAirport}>
-                        {f.arrivalAirport}
-                      </Text>
+                      <Text style={styles.recentAirport}>{f.departureAirport}</Text>
+                      <Ionicons name="arrow-forward" size={14} color={Colors.textSec} style={{ marginHorizontal: 6 }} />
+                      <Text style={styles.recentAirport}>{f.arrivalAirport}</Text>
                     </View>
                     <View style={styles.recentMeta}>
-                      <Text style={styles.recentCode}>
-                        {f.flightCode} · {f.date}
-                      </Text>
-                      <View
-                        style={[
-                          styles.statusBadge,
-                          {
-                            backgroundColor:
-                              f.status === "delayed"
-                                ? Colors.red + "22"
-                                : Colors.green + "22",
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.statusText,
-                            {
-                              color:
-                                f.status === "delayed"
-                                  ? Colors.red
-                                  : Colors.green,
-                            },
-                          ]}
-                        >
+                      <Text style={styles.recentCode}>{f.flightCode} \u00b7 {f.date}</Text>
+                      <View style={[styles.statusBadge, { backgroundColor: f.status === "delayed" ? Colors.red + "22" : Colors.green + "22" }]}>
+                        <Text style={[styles.statusText, { color: f.status === "delayed" ? Colors.red : Colors.green }]}>
                           {f.status === "delayed" ? "Delayed" : "On Time"}
                         </Text>
                       </View>
@@ -437,28 +308,17 @@ export default function HomeScreen() {
             )}
           </>
         ) : (
-          <Animated.View
-            entering={FadeInDown.delay(100).springify()}
-            style={styles.emptyState}
-          >
+          <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.emptyState}>
             <View style={styles.emptyIcon}>
-              <Ionicons
-                name="airplane-outline"
-                size={40}
-                color={Colors.textSec}
-              />
+              <Ionicons name="airplane-outline" size={40} color={Colors.textSec} />
             </View>
             <Text style={styles.emptyTitle}>No flights logged</Text>
             <Text style={styles.emptyText}>
-              Tap the + button to add your first flight and start tracking your
-              year in the air.
+              Tap the + button to add your first flight and start tracking your year in the air.
             </Text>
             <Pressable
               onPress={handleAdd}
-              style={({ pressed }) => [
-                styles.emptyBtn,
-                { opacity: pressed ? 0.8 : 1 },
-              ]}
+              style={({ pressed }) => [styles.emptyBtn, { opacity: pressed ? 0.8 : 1 }]}
             >
               <Text style={styles.emptyBtnText}>Add First Flight</Text>
             </Pressable>
@@ -470,13 +330,8 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
-  scroll: {
-    paddingHorizontal: 20,
-  },
+  container: { flex: 1, backgroundColor: Colors.bg },
+  scroll: { paddingHorizontal: 20 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -491,12 +346,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     textTransform: "uppercase",
   },
-  title: {
-    fontSize: 30,
-    color: Colors.text,
-    fontFamily: "DMSans_700Bold",
-    marginTop: 2,
-  },
+  title: { fontSize: 30, color: Colors.text, fontFamily: "DMSans_700Bold", marginTop: 2 },
   addBtn: {
     width: 44,
     height: 44,
@@ -505,15 +355,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  periodRow: {
-    marginBottom: 16,
-    marginHorizontal: -20,
-  },
-  periodContent: {
-    paddingHorizontal: 20,
-    gap: 8,
-    flexDirection: "row",
-  },
+  periodRow: { marginBottom: 16, marginHorizontal: -20 },
+  periodContent: { paddingHorizontal: 20, gap: 8, flexDirection: "row" },
   periodPill: {
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -522,109 +365,84 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  periodPillActive: {
-    backgroundColor: Colors.accent,
-    borderColor: Colors.accent,
-  },
-  periodText: {
-    fontSize: 13,
-    color: Colors.textSec,
-    fontFamily: "DMSans_500Medium",
-  },
-  periodTextActive: {
-    color: Colors.white,
-  },
+  periodPillActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  periodText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
+  periodTextActive: { color: Colors.white },
+
+  // Share banner — light card style
   shareBanner: {
     borderRadius: 16,
-    overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 18,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     marginBottom: 14,
+    backgroundColor: Colors.card,
     borderWidth: 1,
-    borderColor: "rgba(108,99,255,0.3)",
+    borderColor: Colors.border,
   },
-  shareBannerLeft: {
-    flexDirection: "row",
+  shareBannerLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
+  shareIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: Colors.accentDim,
     alignItems: "center",
-    gap: 14,
+    justifyContent: "center",
   },
-  shareBannerTitle: {
-    fontSize: 15,
-    color: Colors.text,
-    fontFamily: "DMSans_700Bold",
-  },
-  shareBannerSub: {
-    fontSize: 12,
-    color: Colors.textSec,
-    fontFamily: "DMSans_400Regular",
-    marginTop: 1,
-  },
+  shareBannerTitle: { fontSize: 15, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  shareBannerSub: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 1 },
+
+  // Hero card — light card style, no dark gradient
   heroCard: {
+    backgroundColor: Colors.card,
     borderRadius: 20,
     padding: 20,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: "rgba(108,99,255,0.35)",
-    overflow: "hidden",
+    borderColor: Colors.border,
   },
-  heroRow: {
+  heroTopRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
   heroLabel: {
     fontSize: 13,
-    color: "rgba(108,99,255,0.2)",
+    color: Colors.textSec,
     fontFamily: "DMSans_400Regular",
     letterSpacing: 0.2,
+    marginBottom: 2,
   },
-  heroNum: {
-    fontSize: 52,
-    color: Colors.text,
-    fontFamily: "DMSans_700Bold",
-    lineHeight: 60,
-  },
+  heroNum: { fontSize: 52, color: Colors.text, fontFamily: "DMSans_700Bold", lineHeight: 60 },
   heroIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: "#6C63FF",
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: Colors.accentDim,
     alignItems: "center",
     justifyContent: "center",
   },
-  heroDivider: {
-    height: 1,
-    backgroundColor: "#6C63FF",
-    marginVertical: 16,
-  },
-  heroSub: {
-    fontSize: 14,
-    color: "rgba(238,242,255,0.55)",
-    fontFamily: "DMSans_400Regular",
-  },
+  heroDivider: { height: 1, backgroundColor: Colors.border, marginVertical: 14 },
+  heroBottomRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  heroStat: { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
+  heroDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: Colors.border },
   co2FunFact: {
     fontSize: 11,
-    color: "rgba(108,99,255,0.7)",
+    color: Colors.textMuted,
     fontFamily: "DMSans_400Regular",
-    marginTop: 4,
+    marginTop: 6,
     fontStyle: "italic",
   },
   rankPill: {
-    backgroundColor: "rgba(108,99,255,0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(108,99,255,0.18)",
+    backgroundColor: Colors.accentDim,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 3,
     borderRadius: 10,
   },
-  rankPillText: {
-    fontSize: 12,
-    color: Colors.accent,
-    fontFamily: "DMSans_700Bold",
-  },
+  rankPillText: { fontSize: 12, color: Colors.accent, fontFamily: "DMSans_700Bold" },
+
   sectionTitle: {
     fontSize: 12,
     color: Colors.textSec,
@@ -640,22 +458,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     marginTop: 8,
   },
-  seeAll: {
-    fontSize: 13,
-    color: Colors.accent,
-    fontFamily: "DMSans_500Medium",
-  },
-  statsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 16,
-  },
+  seeAll: { fontSize: 13, color: Colors.accent, fontFamily: "DMSans_500Medium" },
+  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 },
   statCard: {
     flex: 1,
     minWidth: "44%",
     backgroundColor: Colors.card,
-    borderRadius: 120,
+    borderRadius: 16,
     padding: 16,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -663,22 +472,13 @@ const styles = StyleSheet.create({
   statIcon: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 10,
   },
-  statValue: {
-    fontSize: 22,
-    color: Colors.text,
-    fontFamily: "DMSans_700Bold",
-  },
-  statLabel: {
-    fontSize: 12,
-    color: Colors.textSec,
-    fontFamily: "DMSans_400Regular",
-    marginTop: 2,
-  },
+  statValue: { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  statLabel: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 },
   recentCard: {
     backgroundColor: Colors.card,
     borderRadius: 14,
@@ -687,41 +487,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  recentRoute: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  recentAirport: {
-    fontSize: 18,
-    color: Colors.text,
-    fontFamily: "DMSans_700Bold",
-  },
-  recentMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  recentCode: {
-    fontSize: 12,
-    color: Colors.textSec,
-    fontFamily: "DMSans_400Regular",
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  statusText: {
-    fontSize: 11,
-    fontFamily: "DMSans_500Medium",
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: "center",
-    paddingTop: 60,
-    paddingHorizontal: 20,
-  },
+  recentRoute: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
+  recentAirport: { fontSize: 18, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  recentMeta: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  recentCode: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  statusText: { fontSize: 11, fontFamily: "DMSans_500Medium" },
+  globeContainer: { marginTop: 4, marginBottom: 20, alignItems: "center" },
+  emptyState: { flex: 1, alignItems: "center", paddingTop: 60, paddingHorizontal: 20 },
   emptyIcon: {
     width: 80,
     height: 80,
@@ -733,12 +506,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  emptyTitle: {
-    fontSize: 22,
-    color: Colors.text,
-    fontFamily: "DMSans_700Bold",
-    marginBottom: 10,
-  },
+  emptyTitle: { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold", marginBottom: 10 },
   emptyText: {
     fontSize: 15,
     color: Colors.textSec,
@@ -753,15 +521,5 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 30,
   },
-  emptyBtnText: {
-    
-    fontSize: 15,
-    color: Colors.white,
-    fontFamily: "DMSans_700Bold",
-  },
-  globeContainer: {
-    marginTop: 20,
-    marginBottom: 10,
-    alignItems: "center",
-  },
+  emptyBtnText: { fontSize: 15, color: Colors.white, fontFamily: "DMSans_700Bold" },
 });
