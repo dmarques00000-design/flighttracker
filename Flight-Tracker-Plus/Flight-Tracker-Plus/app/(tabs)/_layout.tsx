@@ -7,7 +7,6 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Colors } from "@/constants/colors";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 
 function NativeTabLayout() {
   return (
@@ -19,6 +18,10 @@ function NativeTabLayout() {
       <NativeTabs.Trigger name="flights">
         <Icon sf={{ default: "airplane", selected: "airplane" }} />
         <Label>Flights</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="profile">
+        <Icon sf={{ default: "person", selected: "person.fill" }} />
+        <Label>Profile</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -106,6 +109,21 @@ function ClassicTabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "Profile",
+          tabBarIcon: ({ color, focused }) => (
+            <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+              <Ionicons
+                name={focused ? "person" : "person-outline"}
+                size={22}
+                color={color}
+              />
+            </View>
+          ),
+        }}
+      />
     </Tabs>
   );
 }
@@ -125,5 +143,5 @@ const styles = StyleSheet.create({
 
 export default function TabLayout() {
   if (isLiquidGlassAvailable()) return <NativeTabLayout />;
-  return <ClassicTabLayout />;
+  return <ClassicTabLayout />
 }
