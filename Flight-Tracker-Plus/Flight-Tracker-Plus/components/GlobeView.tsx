@@ -1,94 +1,180 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
-import { View, StyleSheet, Dimensions, Platform } from "react-native";
-import Svg, {
-  Circle,
-  Path,
-  G,
-  Defs,
-  RadialGradient,
-  Stop,
-} from "react-native-svg";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { View, StyleSheet, Dimensions } from "react-native";
+import Svg, { Circle, Path, G, Defs, RadialGradient, Stop } from "react-native-svg";
 import { Colors } from "@/constants/colors";
 import { Flight } from "@/context/flights";
 
 const { width: screenWidth } = Dimensions.get("window");
-const GLOBE_SIZE = Math.min(screenWidth * 0.85, 400);
+const GLOBE_SIZE = Math.min(screenWidth * 0.9, 400);
 
-interface Coordinate {
-  lat: number;
-  lng: number;
-}
+interface Coord { lat: number; lng: number; }
 
-// Convert lat/lng to 3D sphere coordinates
-function latLngTo3D(lat: number, lng: number, radius: number) {
+// ─── Projection helpers ────────────────────────────────────────────────────────
+function latLngTo3D(lat: number, lng: number, r: number) {
   const phi = (90 - lat) * (Math.PI / 180);
   const theta = (lng + 180) * (Math.PI / 180);
-  const x = -(radius * Math.sin(phi) * Math.cos(theta));
-  const y = radius * Math.cos(phi);
-  const z = radius * Math.sin(phi) * Math.sin(theta);
-  return { x, y, z };
-}
-
-// Project 3D coordinates to 2D (orthographic projection with Y-axis rotation)
-function project3DTo2D(x: number, y: number, z: number, rotation: number) {
-  const cosR = Math.cos(rotation);
-  const sinR = Math.sin(rotation);
-  const rotatedX = x * cosR - z * sinR;
-  const rotatedZ = x * sinR + z * cosR;
   return {
-    x: rotatedX,
-    y,
-    visible: rotatedZ > 0,
+    x: -(r * Math.sin(phi) * Math.cos(theta)),
+    y:   r * Math.cos(phi),
+    z:   r * Math.sin(phi) * Math.sin(theta),
   };
 }
 
-// Airport coordinates
-const airportCoordinates: { [key: string]: Coordinate } = {
-  LIS: { lat: 38.7813, lng: -9.1359 },
-  GVA: { lat: 46.2381, lng: 6.109 },
-  ATL: { lat: 33.6407, lng: -84.4277 },
-  MIA: { lat: 25.7959, lng: -80.287 },
-  JFK: { lat: 40.6413, lng: -73.7781 },
-  LAX: { lat: 33.9416, lng: -118.4085 },
-  LHR: { lat: 51.47, lng: -0.4543 },
-  CDG: { lat: 49.0097, lng: 2.5479 },
-  DXB: { lat: 25.2532, lng: 55.3657 },
-  HKG: { lat: 22.308, lng: 113.9185 },
-  SYD: { lat: -33.9399, lng: 151.1753 },
-  SIN: { lat: 1.3644, lng: 103.9915 },
-  NRT: { lat: 35.772, lng: 140.3929 },
-  FRA: { lat: 50.0379, lng: 8.5622 },
-  AMS: { lat: 52.3086, lng: 4.7639 },
-  MAD: { lat: 40.4936, lng: -3.5668 },
-  BCN: { lat: 41.2971, lng: 2.0785 },
-  FCO: { lat: 41.8003, lng: 12.2389 },
-  MUC: { lat: 48.3537, lng: 11.775 },
-  ZRH: { lat: 47.4647, lng: 8.5492 },
-  ORD: { lat: 41.9742, lng: -87.9073 },
-  SFO: { lat: 37.6213, lng: -122.379 },
-  BOS: { lat: 42.3656, lng: -71.0096 },
-  IAD: { lat: 38.9531, lng: -77.4565 },
-  EWR: { lat: 40.6895, lng: -74.1745 },
+function project(x: number, y: number, z: number, rot: number) {
+  const cr = Math.cos(rot), sr = Math.sin(rot);
+  return {
+    sx: x * cr - z * sr,
+    sy: y,
+    visible: x * sr + z * cr > 0,
+  };
+}
+
+// ─── Airport database ──────────────────────────────────────────────────────────
+const AIRPORTS: Record<string, Coord> = {
+  LIS: { lat: 38.78, lng: -9.14 }, GVA: { lat: 46.24, lng: 6.11 },
+  ZRH: { lat: 47.46, lng: 8.55 }, ATL: { lat: 33.64, lng: -84.43 },
+  MIA: { lat: 25.80, lng: -80.29 }, JFK: { lat: 40.64, lng: -73.78 },
+  LAX: { lat: 33.94, lng: -118.41 }, LHR: { lat: 51.47, lng: -0.45 },
+  CDG: { lat: 49.01, lng: 2.55 }, DXB: { lat: 25.25, lng: 55.37 },
+  HKG: { lat: 22.31, lng: 113.92 }, SYD: { lat: -33.94, lng: 151.18 },
+  SIN: { lat: 1.36, lng: 103.99 }, NRT: { lat: 35.77, lng: 140.39 },
+  FRA: { lat: 50.04, lng: 8.56 }, AMS: { lat: 52.31, lng: 4.76 },
+  MAD: { lat: 40.49, lng: -3.57 }, BCN: { lat: 41.30, lng: 2.08 },
+  FCO: { lat: 41.80, lng: 12.24 }, MUC: { lat: 48.35, lng: 11.78 },
+  ORD: { lat: 41.97, lng: -87.91 }, SFO: { lat: 37.62, lng: -122.38 },
+  BOS: { lat: 42.37, lng: -71.01 }, IAD: { lat: 38.95, lng: -77.46 },
+  EWR: { lat: 40.69, lng: -74.17 }, BKK: { lat: 13.69, lng: 100.75 },
+  ICN: { lat: 37.46, lng: 126.44 }, DEL: { lat: 28.56, lng: 77.10 },
+  BOM: { lat: 19.09, lng: 72.87 }, CPT: { lat: -33.96, lng: 18.60 },
+  GRU: { lat: -23.43, lng: -46.47 }, YYZ: { lat: 43.68, lng: -79.63 },
+  MEX: { lat: 19.43, lng: -99.07 }, DOH: { lat: 25.27, lng: 51.61 },
+  IST: { lat: 40.98, lng: 28.82 }, VIE: { lat: 48.11, lng: 16.57 },
+  BRU: { lat: 50.90, lng: 4.48 }, ARN: { lat: 59.65, lng: 17.92 },
+  CPH: { lat: 55.62, lng: 12.66 }, HEL: { lat: 60.32, lng: 24.96 },
+  OSL: { lat: 60.20, lng: 11.08 }, WAW: { lat: 52.17, lng: 20.97 },
+  PRG: { lat: 50.10, lng: 14.26 }, BUD: { lat: 47.43, lng: 19.26 },
+  ATH: { lat: 37.94, lng: 23.95 }, LHR2: { lat: 51.47, lng: -0.45 },
 };
 
-const WORLD_BORDERS = [
-  // North America outline
-  [[70,-130],[65,-140],[60,-165],[55,-170],[50,-130],[45,-125],[40,-124],[35,-118],[32,-117],[28,-110],[25,-105],[22,-105],[19,-90],[15,-88],[10,-85],[8,-80],[9,-79],[10,-75],[15,-70],[20,-70],[25,-80],[30,-85],[35,-90],[40,-75],[45,-65],[50,-55],[55,-60],[60,-65],[70,-70],[75,-80],[75,-100],[70,-130]],
-  // Europe outline  
-  [[70,25],[65,20],[60,5],[55,0],[50,5],[45,10],[40,10],[35,15],[35,25],[40,40],[45,45],[50,50],[55,60],[60,70],[65,80],[68,90],[70,70],[70,40],[70,25]],
-  // Asia outline
-  [[70,90],[65,70],[60,60],[55,75],[50,80],[45,90],[40,100],[35,100],[25,70],[20,70],[15,75],[10,100],[0,105],[-10,110],[-5,120],[5,135],[15,145],[25,140],[35,140],[45,145],[55,160],[60,170],[65,175],[70,170],[72,150],[70,120],[70,90]],
-  // Africa outline
-  [[35,10],[30,15],[25,20],[20,30],[15,40],[10,45],[0,40],[-10,35],[-20,30],[-25,25],[-30,20],[-35,18],[-35,30],[-30,35],[-25,40],[-20,50],[-10,50],[0,45],[10,40],[15,35],[20,30],[25,25],[30,15],[35,10]],
-  // South America outline
-  [[10,-75],[5,-80],[0,-78],[-5,-75],[-10,-70],[-15,-70],[-20,-65],[-25,-70],[-30,-70],[-35,-72],[-40,-73],[-45,-72],[-50,-70],[-55,-68],[-55,-65],[-50,-60],[-45,-62],[-40,-65],[-35,-60],[-30,-55],[-25,-50],[-20,-50],[-15,-55],[-10,-60],[-5,-65],[0,-70],[5,-72],[10,-75]],
-  // Australia outline
-  [[-10,130],[-15,125],[-20,115],[-25,115],[-30,120],[-35,135],[-40,145],[-42,148],[-40,150],[-35,150],[-30,145],[-25,145],[-20,140],[-15,140],[-10,135],[-10,130]]
-];
-
-function getAirportCoordinate(iata: string): Coordinate {
-  return airportCoordinates[iata] || { lat: 0, lng: 0 };
+function getCoord(iata: string): Coord {
+  return AIRPORTS[iata] ?? { lat: 0, lng: 0 };
 }
+
+// ─── World country outlines (simplified polygons, one ring per country) ─────────
+// Each entry is an array of [lat, lng] pairs forming a closed polygon.
+const COUNTRIES: [number, number][][] = [
+  // Greenland
+  [[83,15],[83,-60],[76,-73],[70,-55],[60,-44],[62,-30],[70,-22],[75,-18],[80,-10],[83,15]],
+  // Canada
+  [[72,-80],[72,-120],[68,-140],[60,-135],[54,-130],[50,-128],[48,-85],[45,-65],[50,-55],[58,-62],[65,-64],[70,-70],[75,-78],[72,-80]],
+  // USA (lower 48)
+  [[48,-123],[45,-124],[42,-124],[38,-123],[34,-118],[32,-117],[30,-103],[25,-97],[25,-80],[30,-81],[35,-76],[40,-74],[44,-67],[46,-68],[47,-70],[49,-95],[49,-110],[48,-123]],
+  // Alaska
+  [[71,-156],[68,-166],[60,-165],[55,-160],[58,-136],[62,-141],[68,-141],[71,-156]],
+  // Mexico
+  [[30,-110],[25,-97],[22,-97],[18,-92],[16,-88],[16,-92],[19,-87],[21,-87],[22,-90],[25,-90],[30,-110]],
+  // Cuba
+  [[23,-74],[22,-78],[20,-77],[20,-75],[22,-73],[23,-74]],
+  // Greenland (ice sheet simplified)
+  // UK & Ireland
+  [[58,-5],[55,-6],[52,-10],[51,-5],[51,1],[53,2],[56,0],[58,-5]],
+  [[54,-8],[54,-6],[52,-6],[52,-10],[54,-8]],
+  // Iceland
+  [[66,-14],[64,-24],[63,-18],[64,-12],[66,-14]],
+  // Norway
+  [[71,28],[70,22],[65,14],[60,5],[58,8],[62,14],[68,18],[71,28]],
+  // Sweden
+  [[69,28],[60,18],[56,13],[56,18],[60,22],[65,22],[69,28]],
+  // Finland
+  [[70,28],[65,28],[60,25],[60,20],[65,22],[70,28]],
+  // Denmark
+  [[57,12],[55,8],[55,10],[57,12]],
+  // Netherlands + Belgium
+  [[53,7],[52,4],[50,3],[50,6],[53,7]],
+  // France
+  [[51,2],[48,-5],[44,-2],[43,3],[43,7],[46,7],[49,8],[51,2]],
+  // Spain & Portugal
+  [[44,-9],[36,-9],[36,-6],[38,-1],[41,3],[44,3],[44,-9]],
+  // Portugal
+  [[42,-9],[37,-9],[36,-7],[38,-7],[40,-7],[42,-9]],
+  // Germany
+  [[55,8],[52,6],[48,8],[48,14],[52,14],[55,12],[55,8]],
+  // Italy
+  [[47,12],[44,8],[38,15],[38,16],[40,18],[44,12],[47,12]],
+  [[38,15],[37,14],[38,16]],
+  // Switzerland & Austria
+  [[48,8],[46,6],[46,10],[48,14],[48,8]],
+  // Czech + Slovakia
+  [[52,12],[48,12],[48,18],[52,18],[52,12]],
+  // Poland
+  [[54,14],[50,14],[50,24],[54,24],[54,14]],
+  // Ukraine + Belarus
+  [[52,23],[46,22],[46,38],[52,38],[52,23]],
+  // Romania + Hungary
+  [[48,16],[44,22],[44,30],[48,30],[48,16]],
+  // Greece
+  [[42,20],[36,22],[36,28],[38,28],[42,26],[42,20]],
+  // Turkey
+  [[42,26],[36,26],[36,36],[38,44],[42,44],[42,36],[42,26]],
+  // Russia (Europe)
+  [[70,30],[55,28],[55,60],[60,60],[68,55],[70,50],[70,30]],
+  // Russia (Asia – west)
+  [[70,60],[55,60],[55,80],[65,80],[70,70],[70,60]],
+  // Russia (Asia – east)
+  [[70,130],[60,130],[55,135],[60,150],[66,170],[70,160],[70,130]],
+  // Kazakhstan
+  [[55,50],[46,50],[46,80],[55,80],[55,50]],
+  // China
+  [[53,74],[40,74],[22,100],[22,120],[40,135],[53,135],[53,74]],
+  // India
+  [[36,70],[8,68],[8,80],[20,88],[28,98],[36,76],[36,70]],
+  // Japan
+  [[44,142],[30,130],[32,132],[36,140],[40,140],[44,142]],
+  // South Korea
+  [[38,126],[34,126],[34,130],[38,130],[38,126]],
+  // Mongolia
+  [[52,88],[42,88],[42,120],[52,120],[52,88]],
+  // Southeast Asia
+  [[28,92],[10,98],[5,100],[1,104],[5,116],[20,108],[28,100],[28,92]],
+  // Indonesia (Sumatra + Java)
+  [[6,96],[0,96],[-8,115],[-5,120],[0,110],[6,106],[6,96]],
+  // Philippines
+  [[20,118],[5,118],[5,127],[12,124],[18,122],[20,118]],
+  // Australia
+  [[-10,130],[-15,125],[-20,114],[-30,114],[-36,136],[-38,147],[-34,151],[-24,152],[-18,146],[-12,136],[-10,130]],
+  // New Zealand
+  [[-34,172],[-44,168],[-46,168],[-44,170],[-40,174],[-34,172]],
+  // Middle East (Saudi + Gulf)
+  [[30,36],[22,36],[12,44],[22,56],[26,56],[30,48],[30,36]],
+  // Iran
+  [[38,44],[26,56],[26,62],[36,62],[38,58],[38,44]],
+  // Pakistan + Afghanistan
+  [[38,60],[24,62],[24,70],[36,76],[38,70],[38,60]],
+  // Egypt + Libya
+  [[32,24],[22,24],[22,36],[30,34],[32,34],[32,24]],
+  // Libya + Algeria + Morocco + Tunisia
+  [[36,8],[20,8],[20,24],[32,24],[36,24],[36,8]],
+  // West Africa
+  [[22,0],[4,-16],[4,8],[12,8],[22,8],[22,0]],
+  // East Africa (Ethiopia + Somalia)
+  [[14,40],[0,42],[2,48],[12,48],[14,44],[14,40]],
+  // Central Africa
+  [[4,8],[0,8],[-5,12],[-5,30],[4,30],[4,8]],
+  // Southern Africa
+  [[-5,20],[-30,16],[-34,18],[-30,30],[-20,36],[-5,40],[-5,20]],
+  // Madagascar
+  [[-12,44],[-26,44],[-25,48],[-12,50],[-12,44]],
+  // Brazil
+  [[4,-52],[4,-34],[-5,-36],[-10,-38],[-20,-40],[-30,-50],[-34,-52],[-30,-60],[-20,-58],[-10,-68],[-4,-60],[0,-50],[4,-52]],
+  // Argentina + Chile
+  [[-22,-70],[-40,-72],[-56,-68],[-50,-68],[-40,-62],[-30,-58],[-22,-58],[-22,-70]],
+  // Colombia + Venezuela
+  [[12,-72],[0,-76],[4,-60],[10,-60],[12,-72]],
+  // Peru + Bolivia + Ecuador
+  [[0,-76],[-20,-70],[-20,-58],[-10,-58],[0,-60],[0,-76]],
+  // Siberia / Far East stub
+  [[74,130],[70,160],[68,180],[70,170],[74,160],[74,130]],
+];
 
 interface GlobeViewProps {
   flights: Flight[];
@@ -96,256 +182,167 @@ interface GlobeViewProps {
 }
 
 export function GlobeView({ flights, size = GLOBE_SIZE }: GlobeViewProps) {
-  const radius = size / 2;
-  const [rotation, setRotation] = useState(0);
-  const animRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const rotRef = useRef(0);
+  const R = size / 2;
+  const [rotation, setRotation] = useState(0.3);
+  const rotRef = useRef(0.3);
 
   useEffect(() => {
-    // ~30fps smooth rotation — full rotation every 25 seconds
-    const SPEED = (2 * Math.PI) / (25 * 30);
-    animRef.current = setInterval(() => {
+    const SPEED = (2 * Math.PI) / (30 * 30); // full rotation in 30 s at 30 fps
+    const id = setInterval(() => {
       rotRef.current = (rotRef.current + SPEED) % (2 * Math.PI);
       setRotation(rotRef.current);
     }, 1000 / 30);
-    return () => {
-      if (animRef.current) clearInterval(animRef.current);
-    };
+    return () => clearInterval(id);
   }, []);
 
-  // Draw country borders on the globe
-  function drawCountryBorders(rotation: number) {
-    return WORLD_BORDERS.map((border, idx) => {
-      const pathSegments = border
-        .map((coord) => {
-          const [lat, lng] = coord;
-          const pos3d = latLngTo3D(lat, lng, radius);
-          const pos2d = project3DTo2D(pos3d.x, pos3d.y, pos3d.z, rotation);
-          return pos2d.visible ? `${pos2d.x},${pos2d.y}` : null;
-        })
-        .filter((seg) => seg !== null);
-      
-      if (pathSegments.length < 2) return null;
-      
-      return (
-        <Path
-          key={`country-${idx}`}
-          d={`M${pathSegments.join(' L')}`}
-          stroke="#B0C4DE"
-          strokeWidth="0.8"
-          fill="none"
-          opacity={0.4}
-        />
-      );
-    }).filter(Boolean);
-  }
-
-  // Draw a great-circle arc between two airports
-  const drawFlightPath = useCallback(
-    (from: Coordinate, to: Coordinate, rot: number, key: string) => {
-      const fromPoint = latLngTo3D(from.lat, from.lng, radius * 0.95);
-      const toPoint = latLngTo3D(to.lat, to.lng, radius * 0.95);
-
-      const from2D = project3DTo2D(fromPoint.x, fromPoint.y, fromPoint.z, rot);
-      const to2D = project3DTo2D(toPoint.x, toPoint.y, toPoint.z, rot);
-
-      if (!from2D.visible && !to2D.visible) return null;
-
-      // Control point elevated above globe surface for arc effect
-      const midPoint3D = {
-        x: (fromPoint.x + toPoint.x) / 2,
-        y: (fromPoint.y + toPoint.y) / 2,
-        z: (fromPoint.z + toPoint.z) / 2,
-      };
-      const dist = Math.sqrt(
-        midPoint3D.x ** 2 + midPoint3D.y ** 2 + midPoint3D.z ** 2,
-      );
-      const height = radius * 1.18;
-      const controlPoint3D = {
-        x: (midPoint3D.x / dist) * height,
-        y: (midPoint3D.y / dist) * height,
-        z: (midPoint3D.z / dist) * height,
-      };
-      const control2D = project3DTo2D(
-        controlPoint3D.x,
-        controlPoint3D.y,
-        controlPoint3D.z,
-        rot,
-      );
-
-      const pathData = `M ${from2D.x + radius},${-from2D.y + radius} Q ${control2D.x + radius},${-control2D.y + radius} ${to2D.x + radius},${-to2D.y + radius}`;
-
-      const opacity = from2D.visible && to2D.visible ? 0.75 : 0.35;
-
-      return (
-        <Path
-          key={key}
-          d={pathData}
-          stroke={Colors.accent}
-          strokeWidth="1.8"
-          fill="none"
-          opacity={opacity}
-          strokeLinecap="round"
-        />
-      );
-    },
-    [radius],
-  );
-
-  // Draw airport dot
-  const drawAirportDot = useCallback(
-    (coord: Coordinate, rot: number, key: string) => {
-      const p3D = latLngTo3D(coord.lat, coord.lng, radius * 0.97);
-      const p2D = project3DTo2D(p3D.x, p3D.y, p3D.z, rot);
-      if (!p2D.visible) return null;
-      return (
-        <Circle
-          key={key}
-          cx={p2D.x + radius}
-          cy={-p2D.y + radius}
-          r={2.5}
-          fill={Colors.accent}
-          opacity={0.9}
-        />
-      );
-    },
-    [radius],
-  );
-
-  // Latitude grid lines
-  const latLines = [-60, -30, 0, 30, 60].map((lat) => {
-    const points: string[] = [];
-    for (let lng = -180; lng <= 180; lng += 6) {
-      const p3D = latLngTo3D(lat, lng, radius * 0.99);
-      const p2D = project3DTo2D(p3D.x, p3D.y, p3D.z, rotation);
-      if (p2D.visible) {
-        points.push(`${p2D.x + radius},${-p2D.y + radius}`);
+  // ── Grid lines ──────────────────────────────────────────────────────────────
+  const gridLines = useMemo(() => {
+    const lines: React.ReactNode[] = [];
+    // Latitude
+    for (const lat of [-60, -30, 0, 30, 60]) {
+      const pts: string[] = [];
+      for (let lng = -180; lng <= 180; lng += 4) {
+        const p3 = latLngTo3D(lat, lng, R * 0.995);
+        const p = project(p3.x, p3.y, p3.z, rotation);
+        if (p.visible) pts.push(`${p.sx + R},${-p.sy + R}`);
+        else if (pts.length) { lines.push(<Path key={`la${lat}${lng}`} d={`M${pts.join("L")}`} fill="none" stroke={Colors.border} strokeWidth="0.5" opacity={0.7} />); pts.length = 0; }
       }
+      if (pts.length > 1) lines.push(<Path key={`la${lat}e`} d={`M${pts.join("L")}`} fill="none" stroke={Colors.border} strokeWidth="0.5" opacity={0.7} />);
     }
-    if (points.length < 2) return null;
-    const d = "M " + points.join(" L ");
-    return (
-      <Path
-        key={`lat-${lat}`}
-        d={d}
-        fill="none"
-        stroke={Colors.textMuted}
-        strokeWidth="0.4"
-        opacity={0.5}
-      />
-    );
-  });
-
-  // Longitude grid lines
-  const lngLines = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map(
-    (lng) => {
-      const points: string[] = [];
-      for (let lat = -90; lat <= 90; lat += 6) {
-        const p3D = latLngTo3D(lat, lng, radius * 0.99);
-        const p2D = project3DTo2D(p3D.x, p3D.y, p3D.z, rotation);
-        if (p2D.visible) {
-          points.push(`${p2D.x + radius},${-p2D.y + radius}`);
-        }
+    // Longitude
+    for (const lng of [0,30,60,90,120,150,180,210,240,270,300,330]) {
+      const pts: string[] = [];
+      for (let lat = -90; lat <= 90; lat += 4) {
+        const p3 = latLngTo3D(lat, lng, R * 0.995);
+        const p = project(p3.x, p3.y, p3.z, rotation);
+        if (p.visible) pts.push(`${p.sx + R},${-p.sy + R}`);
+        else if (pts.length) { lines.push(<Path key={`ln${lng}${lat}`} d={`M${pts.join("L")}`} fill="none" stroke={Colors.border} strokeWidth="0.5" opacity={0.7} />); pts.length = 0; }
       }
-      if (points.length < 2) return null;
-      const d = "M " + points.join(" L ");
-      return (
-        <Path
-          key={`lng-${lng}`}
-          d={d}
-          fill="none"
-          stroke={Colors.textMuted}
-          strokeWidth="0.4"
-          opacity={0.5}
-        />
-      );
-    },
-  );
+      if (pts.length > 1) lines.push(<Path key={`ln${lng}e`} d={`M${pts.join("L")}`} fill="none" stroke={Colors.border} strokeWidth="0.5" opacity={0.7} />);
+    }
+    return lines;
+  }, [rotation, R]);
 
-  // Collect unique airports from flights
-  const airportSet = new Set<string>();
-  flights.forEach((f) => {
-    airportSet.add(f.departureAirport);
-    airportSet.add(f.arrivalAirport);
-  });
+  // ── Country borders ─────────────────────────────────────────────────────────
+  const countryPaths = useMemo(() => {
+    return COUNTRIES.flatMap((polygon, ci) => {
+      const paths: React.ReactNode[] = [];
+      let seg: string[] = [];
+      polygon.forEach(([lat, lng], i) => {
+        const p3 = latLngTo3D(lat, lng, R * 0.997);
+        const p = project(p3.x, p3.y, p3.z, rotation);
+        if (p.visible) {
+          seg.push(`${p.sx + R},${-p.sy + R}`);
+        } else {
+          if (seg.length > 1) paths.push(<Path key={`c${ci}-${i}`} d={`M${seg.join("L")}`} fill="none" stroke="#5A8FC8" strokeWidth="0.9" opacity={0.55} />);
+          seg = [];
+        }
+      });
+      if (seg.length > 1) paths.push(<Path key={`c${ci}-e`} d={`M${seg.join("L")}`} fill="none" stroke="#5A8FC8" strokeWidth="0.9" opacity={0.55} />);
+      return paths;
+    });
+  }, [rotation, R]);
+
+  // ── Flight arcs ─────────────────────────────────────────────────────────────
+  const flightArcs = useMemo(() => {
+    return flights.slice(0, 20).map((f, idx) => {
+      const from = getCoord(f.departureAirport);
+      const to = getCoord(f.arrivalAirport);
+
+      const fp = latLngTo3D(from.lat, from.lng, R * 0.97);
+      const tp = latLngTo3D(to.lat, to.lng, R * 0.97);
+      const f2 = project(fp.x, fp.y, fp.z, rotation);
+      const t2 = project(tp.x, tp.y, tp.z, rotation);
+
+      if (!f2.visible && !t2.visible) return null;
+
+      // Great-circle midpoint lifted above surface
+      const mid = {
+        x: (fp.x + tp.x) / 2,
+        y: (fp.y + tp.y) / 2,
+        z: (fp.z + tp.z) / 2,
+      };
+      const dist = Math.sqrt(mid.x ** 2 + mid.y ** 2 + mid.z ** 2) || 1;
+      const lift = R * 1.2;
+      const cp3 = { x: (mid.x / dist) * lift, y: (mid.y / dist) * lift, z: (mid.z / dist) * lift };
+      const c2 = project(cp3.x, cp3.y, cp3.z, rotation);
+
+      const opacity = f2.visible && t2.visible ? 0.85 : 0.3;
+      const d = `M${f2.sx + R},${-f2.sy + R} Q${c2.sx + R},${-c2.sy + R} ${t2.sx + R},${-t2.sy + R}`;
+
+      return (
+        <G key={`arc-${idx}`}>
+          {/* Shadow / glow */}
+          <Path d={d} stroke={Colors.accent} strokeWidth="4" fill="none" opacity={0.12} strokeLinecap="round" />
+          {/* Main arc */}
+          <Path d={d} stroke={Colors.accent} strokeWidth="1.8" fill="none" opacity={opacity} strokeLinecap="round" />
+        </G>
+      );
+    });
+  }, [flights, rotation, R]);
+
+  // ── Airport dots ────────────────────────────────────────────────────────────
+  const airportDots = useMemo(() => {
+    const iatas = new Set<string>();
+    flights.forEach((f) => { iatas.add(f.departureAirport); iatas.add(f.arrivalAirport); });
+    return Array.from(iatas).slice(0, 40).map((iata) => {
+      const coord = getCoord(iata);
+      const p3 = latLngTo3D(coord.lat, coord.lng, R * 0.978);
+      const p = project(p3.x, p3.y, p3.z, rotation);
+      if (!p.visible) return null;
+      const cx = p.sx + R;
+      const cy = -p.sy + R;
+      return (
+        <G key={`dot-${iata}`}>
+          {/* Pulse ring */}
+          <Circle cx={cx} cy={cy} r={5} fill={Colors.accent} opacity={0.15} />
+          {/* Solid dot */}
+          <Circle cx={cx} cy={cy} r={2.8} fill={Colors.accent} opacity={0.95} />
+          <Circle cx={cx} cy={cy} r={1.2} fill="#fff" opacity={0.9} />
+        </G>
+      );
+    });
+  }, [flights, rotation, R]);
 
   return (
     <View style={[styles.container, { width: size, height: size }]}>
       <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <Defs>
-          <RadialGradient id="globeGrad" cx="40%" cy="35%">
-            <Stop offset="0%" stopColor="#E8F0FF" stopOpacity="1" />
-            <Stop offset="60%" stopColor="#D0E4FF" stopOpacity="1" />
-            <Stop offset="100%" stopColor="#B8D0F5" stopOpacity="1" />
+          <RadialGradient id="globeGrad" cx="38%" cy="32%">
+            <Stop offset="0%" stopColor="#EEF4FF" stopOpacity="1" />
+            <Stop offset="55%" stopColor="#D6E8FF" stopOpacity="1" />
+            <Stop offset="100%" stopColor="#BDD4F5" stopOpacity="1" />
           </RadialGradient>
-          <RadialGradient id="globeShine" cx="35%" cy="30%">
-            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.6" />
-            <Stop offset="50%" stopColor="#FFFFFF" stopOpacity="0" />
+          <RadialGradient id="shine" cx="32%" cy="28%">
+            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.55" />
+            <Stop offset="60%" stopColor="#FFFFFF" stopOpacity="0" />
           </RadialGradient>
         </Defs>
 
-        {/* Globe base sphere */}
-        <Circle
-          cx={radius}
-          cy={radius}
-          r={radius * 0.98}
-          fill="url(#globeGrad)"
-          stroke={Colors.border}
-          strokeWidth="1"
-        />
+        {/* Base sphere */}
+        <Circle cx={R} cy={R} r={R * 0.985} fill="url(#globeGrad)" stroke={Colors.border} strokeWidth="1" />
 
-        {/* Grid lines */}
-        <G opacity={1}>
-          {latLines}
-          {lngLines}
-        </G>
+        {/* Grid */}
+        <G>{gridLines}</G>
 
-        {/* Country borders */}
-        <G opacity={0.5}>
-          {drawCountryBorders(rotation)}
-        </G>
+        {/* Country outlines */}
+        <G>{countryPaths}</G>
 
-        {/* Flight routes */}
-        <G>
-          {flights.slice(0, 15).map((flight, index) => {
-            const from = getAirportCoordinate(flight.departureAirport);
-            const to = getAirportCoordinate(flight.arrivalAirport);
-            return drawFlightPath(
-              from,
-              to,
-              rotation,
-              `route-${index}-${flight.id}`,
-            );
-          })}
-        </G>
+        {/* Flight arcs */}
+        <G>{flightArcs}</G>
 
         {/* Airport dots */}
-        <G>
-          {Array.from(airportSet)
-            .slice(0, 30)
-            .map((iata) => {
-              const coord = getAirportCoordinate(iata);
-              return drawAirportDot(coord, rotation, `dot-${iata}`);
-            })}
-        </G>
+        <G>{airportDots}</G>
 
-        {/* Specular shine overlay */}
-        <Circle
-          cx={radius * 0.78}
-          cy={radius * 0.62}
-          r={radius * 0.45}
-          fill="url(#globeShine)"
-        />
+        {/* Shine */}
+        <Circle cx={R * 0.76} cy={R * 0.60} r={R * 0.42} fill="url(#shine)" />
       </Svg>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  container: { alignItems: "center", justifyContent: "center" },
 });
 
 export default GlobeView;
