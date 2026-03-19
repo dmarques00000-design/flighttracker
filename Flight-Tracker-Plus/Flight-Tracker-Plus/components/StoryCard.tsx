@@ -38,14 +38,14 @@ function computeRank(n: number): number {
 function getTopRoutes(flights: Flight[]): { dep: string; arr: string }[] {
   const freq: Record<string, number> = {};
   flights.forEach((f) => {
-    const key = `${f.departureAirport}→${f.arrivalAirport}`;
+    const key = `${f.departureAirport}\u2192${f.arrivalAirport}`;
     freq[key] = (freq[key] || 0) + 1;
   });
   return Object.entries(freq)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
     .map(([k]) => {
-      const [dep, arr] = k.split("→");
+      const [dep, arr] = k.split("\u2192");
       return { dep, arr };
     });
 }
@@ -61,6 +61,7 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
   const delayMin = flights.reduce((s, f) => s + f.delayMinutes, 0);
   const rank = computeRank(count);
   const topRoutes = getTopRoutes(flights);
+  const verifiedCount = flights.filter((f) => f.verified).length;
 
   return (
     <View style={styles.card}>
@@ -99,7 +100,7 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
           </View>
           <View style={styles.statRow}>
             <Ionicons name="leaf" size={14} color="#10B981" />
-            <Text style={styles.statText}>{formatNum(co2)} kg CO₂</Text>
+            <Text style={styles.statText}>{formatNum(co2)} kg CO\u2082</Text>
           </View>
           <View style={styles.statRow}>
             <Ionicons name="time" size={14} color="#F59E0B" />
@@ -112,6 +113,14 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
               <Ionicons name="hourglass" size={14} color="#EF4444" />
               <Text style={styles.statText}>
                 {formatHours(delayMin)} delayed
+              </Text>
+            </View>
+          )}
+          {verifiedCount > 0 && (
+            <View style={styles.statRow}>
+              <Ionicons name="checkmark-circle" size={14} color="#4F8EF0" />
+              <Text style={styles.statText}>
+                {verifiedCount} verified flight{verifiedCount !== 1 ? "s" : ""}
               </Text>
             </View>
           )}

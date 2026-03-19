@@ -92,6 +92,11 @@ function FlightItem({ flight, onDelete, index }: { flight: Flight; onDelete: () 
               <Text style={styles.airport}>{flight.departureAirport}</Text>
               <Ionicons name="arrow-forward" size={12} color={Colors.textSec} style={{ marginHorizontal: 6 }} />
               <Text style={styles.airport}>{flight.arrivalAirport}</Text>
+              {flight.verified && (
+                <View style={styles.verifiedBadge}>
+                  <Ionicons name="checkmark-circle" size={13} color="#4F8EF0" />
+                </View>
+              )}
             </View>
             <Text style={styles.meta}>{flight.flightCode} \u00b7 {formatDate(flight.date)}</Text>
           </View>
@@ -132,7 +137,6 @@ export default function FlightsScreen() {
   const [groupBy, setGroupBy] = useState<GroupBy>("month");
   const [timeFilter, setTimeFilter] = useState<TimeFilter>(new Date().getFullYear());
 
-  // Apply filter from navigation params (e.g. from home screen "See all")
   useEffect(() => {
     if (params.filter === "upcoming") setTimeFilter("upcoming");
     else if (params.filter === "past") setTimeFilter("past");
@@ -297,6 +301,7 @@ const styles = StyleSheet.create({
   routeCol: { flex: 1, gap: 4 },
   routeRow: { flexDirection: "row", alignItems: "center" },
   airport: { fontSize: 18, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  verifiedBadge: { marginLeft: 6, justifyContent: "center" },
   meta: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
   rightCol: { flexDirection: "row", alignItems: "center", gap: 12 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },

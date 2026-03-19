@@ -259,6 +259,12 @@ export default function FlightDetailScreen() {
               {isDelayed ? `Delayed +${flight.delayMinutes} min` : "On Time"}
             </Text>
           </View>
+          {flight.verified && (
+            <View style={styles.verifiedBadge}>
+              <Ionicons name="checkmark-circle" size={14} color={Colors.accent} />
+              <Text style={styles.verifiedText}>Wallet Verified</Text>
+            </View>
+          )}
         </Animated.View>
 
         <Animated.View
@@ -497,6 +503,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     marginBottom: 12,
+    flexWrap: "wrap",
   },
   codeBadge: {
     backgroundColor: Colors.accentDim,
@@ -525,6 +532,22 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 13,
+    fontFamily: "DMSans_500Medium",
+  },
+  verifiedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(79,142,240,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(79,142,240,0.25)",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  verifiedText: {
+    fontSize: 12,
+    color: Colors.accent,
     fontFamily: "DMSans_500Medium",
   },
   statsRow: {
