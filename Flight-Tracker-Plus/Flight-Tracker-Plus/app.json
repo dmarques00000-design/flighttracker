@@ -15,10 +15,12 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.logbookapp"
+      "bundleIdentifier": "com.logbookapp",
+      "usesAppleSignIn": true
     },
     "android": {
       "package": "com.logbookapp",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#0A0A0F",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -37,7 +39,14 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-apple-authentication",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.REPLACE_WITH_YOUR_REVERSED_CLIENT_ID"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
