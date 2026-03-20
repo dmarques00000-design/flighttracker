@@ -16,6 +16,7 @@ import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { Colors } from "@/constants/colors";
 import { useFlights, Flight } from "@/context/flights";
+import { useUser } from "@/context/user";
 import GlobeView from "@/components/GlobeView";
 import { LogbookLogo } from "@/components/LogbookLogo";
 import { getCO2FunFact } from "@/utils/co2FunFact";
@@ -168,14 +169,40 @@ function HamburgerMenu({ visible, onClose, onSelect }: { visible: boolean; onClo
   );
 }
 
+// ─── Login prompt banner ───────────────────────────────────────────
+function LoginPromptBanner({ onSignUp, onDismiss }: { onSignUp: () => void; onDismiss: () => void }) {
+  return (
+    <Animated.View entering={FadeInDown.delay(30).springify()} style={styles.loginBanner}>
+      <View style={styles.loginBannerIcon}>
+        <Ionicons name="cloud-upload-outline" size={18} color={Colors.accent} />
+      </View>
+      <View style={styles.loginBannerText}>
+        <Text style={styles.loginBannerTitle}>Back up your flights</Text>
+        <Text style={styles.loginBannerSub}>Create a free account to sync across devices.</Text>
+      </View>
+      <View style={styles.loginBannerActions}>
+        <Pressable onPress={onSignUp} style={styles.loginBannerBtn}>
+          <Text style={styles.loginBannerBtnText}>Sign Up</Text>
+        </Pressable>
+        <Pressable onPress={onDismiss} hitSlop={8}>
+          <Ionicons name="close" size={16} color={Colors.textMuted} />
+        </Pressable>
+      </View>
+    </Animated.View>
+  );
+}
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { flights } = useFlights();
+  const { profile, isLoggedIn, dismissedPrompt, dismissPrompt } = useUser();
   const [period, setPeriod] = useState<"all" | number>(new Date().getFullYear());
   const [menuOpen, setMenuOpen] = useState(false);
 
   const topPadding    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
+
+  const showLoginPrompt = !isLoggedIn && !dismissedPrompt;
 
   const years = useMemo(() => {
     const set = new Set<number>();
@@ -213,6 +240,15 @@ export default function HomeScreen() {
     setPeriod(p);
   }
 
+  function handleAvatarPress() {
+    Haptics.selectionAsync();
+    if (isLoggedIn) {
+      router.push("/(tabs)/profile");
+    } else {
+      router.push("/auth");
+    }
+  }
+
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
       <HamburgerMenu visible={menuOpen} onClose={() => setMenuOpen(false)} onSelect={handleMenuSelect} />
@@ -224,10 +260,26 @@ export default function HomeScreen() {
       >
         {/* ─────────────────────── HEADER ─────────────────────── */}
         <Animated.View entering={FadeInDown.delay(0).springify()} style={styles.header}>
-          {/* Logo mark + wordmark */}
           <LogbookLogo size={38} showName />
 
           <View style={styles.headerRight}>
+            {/* Avatar / Login icon */}
+            <Pressable
+              onPress={handleAvatarPress}
+              style={({ pressed }) => [styles.avatarBtn, { opacity: pressed ? 0.8 : 1 }]}
+              hitSlop={6}
+            >
+              {isLoggedIn && profile.avatarInitials ? (
+                <View style={styles.avatarFilled}>
+                  <Text style={styles.avatarInitials}>{profile.avatarInitials}</Text>
+                </View>
+              ) : (
+                <View style={styles.avatarEmpty}>
+                  <Ionicons name="person-outline" size={18} color={Colors.textSec} />
+                </View>
+              )}
+            </Pressable>
+
             <Pressable
               onPress={handleAdd}
               style={({ pressed }) => [styles.addBtn, { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] }]}
@@ -245,6 +297,14 @@ export default function HomeScreen() {
             </Pressable>
           </View>
         </Animated.View>
+
+        {/* ─── Login prompt banner ─── */}
+        {showLoginPrompt && (
+          <LoginPromptBanner
+            onSignUp={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/auth"); }}
+            onDismiss={() => { Haptics.selectionAsync(); dismissPrompt(); }}
+          />
+        )}
 
         {hasFlights ? (
           <>
@@ -354,9 +414,49 @@ const styles = StyleSheet.create({
   scroll:       { paddingHorizontal: 20 },
   header:       { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 20 },
   headerRight:  { flexDirection: "row", alignItems: "center", gap: 10 },
+
+  avatarBtn:    { justifyContent: "center", alignItems: "center" },
+  avatarFilled: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: Colors.accent,
+    alignItems: "center", justifyContent: "center",
+    shadowColor: Colors.accent, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25, shadowRadius: 6, elevation: 3,
+  },
+  avatarInitials: { fontSize: 13, color: Colors.white, fontFamily: "DMSans_700Bold" },
+  avatarEmpty: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: Colors.surface,
+    borderWidth: 1.5, borderColor: Colors.border,
+    alignItems: "center", justifyContent: "center",
+  },
+
   addBtn:       { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.accent, alignItems: "center", justifyContent: "center" },
   menuBtn:      { width: 36, height: 36, alignItems: "center", justifyContent: "center", gap: 4 },
   burgerLine:   { width: 18, height: 2, borderRadius: 1, backgroundColor: Colors.text },
+
+  // Login prompt banner
+  loginBanner: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    backgroundColor: Colors.accentDim,
+    borderRadius: 14, borderWidth: 1, borderColor: Colors.accent + "33",
+    padding: 12, marginBottom: 16,
+  },
+  loginBannerIcon: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: Colors.accent + "22",
+    alignItems: "center", justifyContent: "center",
+  },
+  loginBannerText: { flex: 1 },
+  loginBannerTitle: { fontSize: 13, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  loginBannerSub:   { fontSize: 11, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 1 },
+  loginBannerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
+  loginBannerBtn: {
+    backgroundColor: Colors.accent,
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderRadius: 20,
+  },
+  loginBannerBtnText: { fontSize: 12, color: Colors.white, fontFamily: "DMSans_700Bold" },
 
   menuOverlay:  { flex: 1, backgroundColor: "rgba(0,0,0,0.18)" },
   menuCard: {

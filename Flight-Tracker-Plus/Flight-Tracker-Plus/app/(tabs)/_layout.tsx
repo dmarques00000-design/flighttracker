@@ -2,11 +2,12 @@ import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
 import { NativeTabs, Icon, Label } from "expo-router/unstable-native-tabs";
 import { BlurView } from "expo-blur";
-import { Platform, StyleSheet, View, useColorScheme } from "react-native";
+import { Platform, StyleSheet, View, useColorScheme, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Colors } from "@/constants/colors";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useUser } from "@/context/user";
 
 function NativeTabLayout() {
   return (
@@ -33,6 +34,7 @@ function ClassicTabLayout() {
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
   const insets = useSafeAreaInsets();
+  const { isLoggedIn, profile } = useUser();
 
   return (
     <Tabs
@@ -115,11 +117,21 @@ function ClassicTabLayout() {
           title: "Profile",
           tabBarIcon: ({ color, focused }) => (
             <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
-              <Ionicons
-                name={focused ? "person" : "person-outline"}
-                size={22}
-                color={color}
-              />
+              {isLoggedIn && profile.avatarInitials ? (
+                <>
+                  <View style={[styles.avatarTabBadge, focused && styles.avatarTabBadgeFocused]}>
+                    <Text style={[styles.avatarTabText, focused && styles.avatarTabTextFocused]}>
+                      {profile.avatarInitials}
+                    </Text>
+                  </View>
+                </>
+              ) : (
+                <Ionicons
+                  name={focused ? "person" : "person-outline"}
+                  size={22}
+                  color={color}
+                />
+              )}
             </View>
           ),
         }}
@@ -138,6 +150,22 @@ const styles = StyleSheet.create({
   },
   iconWrapActive: {
     backgroundColor: Colors.accentDim,
+  },
+  avatarTabBadge: {
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderWidth: 1.5, borderColor: Colors.border,
+    alignItems: "center", justifyContent: "center",
+  },
+  avatarTabBadgeFocused: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+  },
+  avatarTabText: {
+    fontSize: 9, color: Colors.textSec, fontFamily: "DMSans_700Bold",
+  },
+  avatarTabTextFocused: {
+    color: Colors.white,
   },
 });
 
