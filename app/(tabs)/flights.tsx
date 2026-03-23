@@ -31,6 +31,11 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+function daysUntil(dateStr: string): number {
+  const diff = new Date(dateStr + "T00:00:00").getTime() - new Date(TODAY + "T00:00:00").getTime();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
 function groupFlights(
   flights: Flight[],
   groupBy: GroupBy,
@@ -82,46 +87,73 @@ function groupFlights(
 
 function FlightItem({ flight, onDelete, index }: { flight: Flight; onDelete: () => void; index: number }) {
   const [confirming, setConfirming] = useState(false);
+  const isUpcoming = flight.date >= TODAY;
+  const accentColor = isUpcoming ? Colors.accent : flight.status === "delayed" ? Colors.red : Colors.green;
+
+  // countdown / status pill
+  let pillBg: string;
+  let pillText: string;
+  let pillColor: string;
+  if (isUpcoming) {
+    const days = daysUntil(flight.date);
+    pillBg    = days === 0 ? Colors.accent : days <= 7 ? Colors.amber + "22" : Colors.accentDim ?? Colors.accent + "18";
+    pillColor = days === 0 ? Colors.white  : days <= 7 ? Colors.amber       : Colors.accent;
+    pillText  = days === 0 ? "Today!" : days === 1 ? "Tomorrow" : `In ${days} days`;
+  } else {
+    pillBg    = flight.status === "delayed" ? Colors.red + "18" : Colors.green + "18";
+    pillColor = flight.status === "delayed" ? Colors.red        : Colors.green;
+    pillText  = flight.status === "delayed" ? "Delayed" : flight.status === "cancelled" ? "Cancelled" : "Completed";
+  }
 
   return (
     <Pressable onPress={() => { if (confirming) { setConfirming(false); return; } router.push({ pathname: "/flight/[id]", params: { id: flight.id } }); }}>
       <Animated.View entering={FadeInDown.delay(index * 30).springify()} style={styles.card}>
-        <View style={styles.cardMain}>
-          <View style={styles.routeCol}>
-            <View style={styles.routeRow}>
-              <Text style={styles.airport}>{flight.departureAirport}</Text>
-              <Ionicons name="arrow-forward" size={12} color={Colors.textSec} style={{ marginHorizontal: 6 }} />
-              <Text style={styles.airport}>{flight.arrivalAirport}</Text>
-              {flight.verified && (
-                <View style={styles.verifiedBadge}>
-                  <Ionicons name="checkmark-circle" size={13} color="#4F8EF0" />
+        {/* Left accent bar — blue for upcoming, green for past, red for delayed */}
+        <View style={[styles.accentBar, { backgroundColor: accentColor }]} />
+
+        <View style={styles.cardInner}>
+          <View style={styles.cardMain}>
+            <View style={styles.routeCol}>
+              <View style={styles.routeRow}>
+                <Text style={styles.airport}>{flight.departureAirport}</Text>
+                <View style={styles.arrowWrap}>
+                  <View style={styles.arrowLine} />
+                  <Ionicons name="airplane" size={11} color={accentColor} />
+                  <View style={styles.arrowLine} />
                 </View>
+                <Text style={styles.airport}>{flight.arrivalAirport}</Text>
+                {flight.verified && (
+                  <View style={styles.verifiedBadge}>
+                    <Ionicons name="checkmark-circle" size={13} color={Colors.accent} />
+                  </View>
+                )}
+              </View>
+              <Text style={styles.meta}>{flight.flightCode} \u00b7 {formatDate(flight.date)}</Text>
+            </View>
+            <View style={styles.rightCol}>
+              <View style={[styles.pill, { backgroundColor: pillBg }]}>
+                <Text style={[styles.pillText, { color: pillColor }]}>{pillText}</Text>
+              </View>
+              {!confirming && (
+                <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setConfirming(true); }} hitSlop={14} style={styles.trashBtn}>
+                  <Ionicons name="trash-outline" size={16} color={Colors.textSec} />
+                </Pressable>
               )}
             </View>
-            <Text style={styles.meta}>{flight.flightCode} \u00b7 {formatDate(flight.date)}</Text>
           </View>
-          <View style={styles.rightCol}>
-            <View style={[styles.statusDot, {
-              backgroundColor: flight.date >= TODAY ? Colors.accent : flight.status === "delayed" ? Colors.red : Colors.green
-            }]} />
-            {!confirming && (
-              <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setConfirming(true); }} hitSlop={14} style={styles.trashBtn}>
-                <Ionicons name="trash-outline" size={16} color={Colors.textSec} />
+
+          {confirming && (
+            <Animated.View entering={FadeIn.duration(150)} style={styles.confirmRow}>
+              <Pressable onPress={() => setConfirming(false)} style={styles.cancelBtn}>
+                <Text style={styles.cancelText}>Cancel</Text>
               </Pressable>
-            )}
-          </View>
+              <Pressable onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); setConfirming(false); onDelete(); }} style={styles.deleteBtn}>
+                <Ionicons name="trash" size={14} color={Colors.white} />
+                <Text style={styles.deleteText}>Remove</Text>
+              </Pressable>
+            </Animated.View>
+          )}
         </View>
-        {confirming && (
-          <Animated.View entering={FadeIn.duration(150)} style={styles.confirmRow}>
-            <Pressable onPress={() => setConfirming(false)} style={styles.cancelBtn}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
-            <Pressable onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); setConfirming(false); onDelete(); }} style={styles.deleteBtn}>
-              <Ionicons name="trash" size={14} color={Colors.white} />
-              <Text style={styles.deleteText}>Remove</Text>
-            </Pressable>
-          </Animated.View>
-        )}
       </Animated.View>
     </Pressable>
   );
@@ -296,22 +328,42 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 8 },
   sectionHeaderText: { fontSize: 15, color: Colors.text, fontFamily: "DMSans_700Bold" },
   sectionCount: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
-  card: { backgroundColor: Colors.card, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 13, marginBottom: 8, borderWidth: 1, borderColor: Colors.border },
+
+  // Card: row container so the accent bar sits flush on the left
+  card: {
+    flexDirection: "row",
+    backgroundColor: Colors.card,
+    borderRadius: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: "hidden",
+  },
+  accentBar: { width: 3 },
+  cardInner: { flex: 1, paddingHorizontal: 14, paddingVertical: 13 },
   cardMain: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  routeCol: { flex: 1, gap: 4 },
+
+  routeCol: { flex: 1, gap: 5 },
   routeRow: { flexDirection: "row", alignItems: "center" },
+  arrowWrap: { flex: 0, flexDirection: "row", alignItems: "center", marginHorizontal: 8, gap: 3, maxWidth: 48 },
+  arrowLine: { flex: 1, height: 1, backgroundColor: Colors.border },
   airport: { fontSize: 18, color: Colors.text, fontFamily: "DMSans_700Bold" },
   verifiedBadge: { marginLeft: 6, justifyContent: "center" },
   meta: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
-  rightCol: { flexDirection: "row", alignItems: "center", gap: 12 },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
+
+  rightCol: { flexDirection: "row", alignItems: "center", gap: 10, marginLeft: 8 },
+  pill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8 },
+  pillText: { fontSize: 11, fontFamily: "DMSans_700Bold" },
   trashBtn: { padding: 4 },
+
   confirmRow: { flexDirection: "row", gap: 8, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.border },
-  cancelBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: Colors.surface, alignItems: "center" },
+  cancelBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: Colors.surface ?? Colors.card, alignItems: "center" },
   cancelText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
   deleteBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: Colors.red, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5 },
   deleteText: { fontSize: 13, color: Colors.white, fontFamily: "DMSans_700Bold" },
+
   fab: { position: "absolute", right: 20, width: 52, height: 52, borderRadius: 26, backgroundColor: Colors.accent, alignItems: "center", justifyContent: "center", shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 6 },
+
   empty: { paddingTop: 60, alignItems: "center", paddingHorizontal: 20 },
   emptyIcon: { width: 72, height: 72, borderRadius: 20, backgroundColor: Colors.card, alignItems: "center", justifyContent: "center", marginBottom: 16, borderWidth: 1, borderColor: Colors.border },
   emptyTitle: { fontSize: 20, color: Colors.text, fontFamily: "DMSans_700Bold", marginBottom: 8 },
