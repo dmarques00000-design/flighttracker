@@ -1,78 +1,48 @@
 /**
- * Maps IATA airline codes to a representative emoji flag + short brand colour.
- * Used on the flight detail page next to the airline name.
+ * Returns the URL for an airline's logo from the AirHex CDN,
+ * which hosts high-quality airline logos by IATA code.
+ * Falls back to a placeholder colour per airline for consistent tinting.
  */
 export interface AirlineInfo {
-  emoji: string;   // flag or brand emoji
-  color: string;   // brand accent colour (hex)
+  logoUrl: string;
+  color: string; // brand accent colour (hex)
 }
 
-const AIRLINE_MAP: Record<string, AirlineInfo> = {
-  // European carriers
-  LX: { emoji: "🇨🇭", color: "#CC0000" }, // SWISS
-  LH: { emoji: "🇩🇪", color: "#05164D" }, // Lufthansa
-  BA: { emoji: "🇬🇧", color: "#075AAA" }, // British Airways
-  FR: { emoji: "🇮🇪", color: "#073590" }, // Ryanair
-  U2: { emoji: "🇬🇧", color: "#FF6600" }, // easyJet
-  AF: { emoji: "🇫🇷", color: "#002157" }, // Air France
-  KL: { emoji: "🇳🇱", color: "#00A1DE" }, // KLM
-  IB: { emoji: "🇪🇸", color: "#CC0000" }, // Iberia
-  VY: { emoji: "🇪🇸", color: "#FD9912" }, // Vueling
-  AZ: { emoji: "🇮🇹", color: "#009246" }, // ITA Airways
-  OS: { emoji: "🇦🇹", color: "#CC0000" }, // Austrian
-  SK: { emoji: "🇸🇪", color: "#00457C" }, // SAS
-  AY: { emoji: "🇫🇮", color: "#00AEEF" }, // Finnair
-  TP: { emoji: "🇵🇹", color: "#006633" }, // TAP Air Portugal
-  SN: { emoji: "🇧🇪", color: "#003082" }, // Brussels Airlines
-  EI: { emoji: "🇮🇪", color: "#169B62" }, // Aer Lingus
-  TK: { emoji: "🇹🇷", color: "#CC0001" }, // Turkish Airlines
-  W6: { emoji: "🇭🇺", color: "#C8102E" }, // Wizz Air
+const BRAND_COLORS: Record<string, string> = {
+  // European
+  LX: "#CC0000", LH: "#05164D", BA: "#075AAA", FR: "#073590",
+  U2: "#FF6600", AF: "#002157", KL: "#00A1DE", IB: "#CC0000",
+  VY: "#FD9912", AZ: "#009246", OS: "#CC0000", SK: "#00457C",
+  AY: "#00AEEF", TP: "#006633", SN: "#003082", EI: "#169B62",
+  TK: "#CC0001", W6: "#C8102E", BE: "#E2231A", PC: "#D0021B",
   // Middle East
-  EK: { emoji: "🇦🇪", color: "#D71921" }, // Emirates
-  QR: { emoji: "🇶🇦", color: "#5C0E30" }, // Qatar Airways
-  EY: { emoji: "🇦🇪", color: "#BD8B13" }, // Etihad
-  GF: { emoji: "🇧🇭", color: "#CC2229" }, // Gulf Air
-  // Asian carriers
-  SQ: { emoji: "🇸🇬", color: "#F0A500" }, // Singapore Airlines
-  CX: { emoji: "🇭🇰", color: "#006564" }, // Cathay Pacific
-  JL: { emoji: "🇯🇵", color: "#CC0000" }, // JAL
-  NH: { emoji: "🇯🇵", color: "#12559A" }, // ANA
-  OZ: { emoji: "🇰🇷", color: "#00418D" }, // Asiana
-  KE: { emoji: "🇰🇷", color: "#00256C" }, // Korean Air
-  TG: { emoji: "🇹🇭", color: "#51247A" }, // Thai Airways
-  MH: { emoji: "🇲🇾", color: "#CC0001" }, // Malaysia Airlines
-  GA: { emoji: "🇮🇩", color: "#00529B" }, // Garuda
-  AI: { emoji: "🇮🇳", color: "#D4222A" }, // Air India
+  EK: "#D71921", QR: "#5C0E30", EY: "#BD8B13", GF: "#CC2229",
+  // Asian
+  SQ: "#F0A500", CX: "#006564", JL: "#CC0000", NH: "#12559A",
+  OZ: "#00418D", KE: "#00256C", TG: "#51247A", MH: "#CC0001",
+  GA: "#00529B", AI: "#D4222A", BR: "#009B77", CI: "#003087",
   // North America
-  AA: { emoji: "🇺🇸", color: "#0078D2" }, // American Airlines
-  UA: { emoji: "🇺🇸", color: "#005DAA" }, // United
-  DL: { emoji: "🇺🇸", color: "#003366" }, // Delta
-  WN: { emoji: "🇺🇸", color: "#304CB2" }, // Southwest
-  B6: { emoji: "🇺🇸", color: "#003876" }, // JetBlue
-  AS: { emoji: "🇺🇸", color: "#01426A" }, // Alaska
-  F9: { emoji: "🇺🇸", color: "#006747" }, // Frontier
-  NK: { emoji: "🇺🇸", color: "#FFCD41" }, // Spirit
-  AC: { emoji: "🇨🇦", color: "#CC0000" }, // Air Canada
-  WS: { emoji: "🇨🇦", color: "#1B3D6F" }, // WestJet
-  AM: { emoji: "🇲🇽", color: "#006400" }, // Aeromexico
+  AA: "#0078D2", UA: "#005DAA", DL: "#003366", WN: "#304CB2",
+  B6: "#003876", AS: "#01426A", F9: "#006747", NK: "#FFCD41",
+  AC: "#CC0000", WS: "#1B3D6F", AM: "#006400",
   // Latin America
-  LA: { emoji: "🇨🇱", color: "#D4001A" }, // LATAM
-  G3: { emoji: "🇧🇷", color: "#F7941E" }, // GOL
-  AD: { emoji: "🇧🇷", color: "#009B3A" }, // Azul
+  LA: "#D4001A", G3: "#F7941E", AD: "#009B3A",
   // Oceania
-  QF: { emoji: "🇦🇺", color: "#E40000" }, // Qantas
-  VA: { emoji: "🇦🇺", color: "#CC0000" }, // Virgin Australia
-  NZ: { emoji: "🇳🇿", color: "#000000" }, // Air New Zealand
+  QF: "#E40000", VA: "#CC0000", NZ: "#000000",
   // Africa
-  ET: { emoji: "🇪🇹", color: "#009A44" }, // Ethiopian
-  SA: { emoji: "🇿🇦", color: "#005C97" }, // SAA
-  MS: { emoji: "🇪🇬", color: "#C8102E" }, // EgyptAir
-  AT: { emoji: "🇲🇦", color: "#CC0000" }, // Royal Air Maroc
-  KQ: { emoji: "🇰🇪", color: "#8B1A1A" }, // Kenya Airways
+  ET: "#009A44", SA: "#005C97", MS: "#C8102E", AT: "#CC0000", KQ: "#8B1A1A",
 };
 
-const DEFAULT: AirlineInfo = { emoji: "✈️", color: "#4F8EF0" };
+const DEFAULT_COLOR = "#4F8EF0";
 
+/**
+ * AirHex provides airline logos by IATA code at:
+ * https://content.airhex.com/content/logos/airlines_<CODE>_200_200_r.png
+ */
 export function getAirlineInfo(airlineCode: string): AirlineInfo {
-  return AIRLINE_MAP[airlineCode?.toUpperCase()] ?? DEFAULT;
+  const code = airlineCode?.toUpperCase() ?? "";
+  return {
+    logoUrl: `https://content.airhex.com/content/logos/airlines_${code}_200_200_r.png`,
+    color: BRAND_COLORS[code] ?? DEFAULT_COLOR,
+  };
 }
