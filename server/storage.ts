@@ -257,10 +257,6 @@ const AIRCRAFT_POOL = [
   "Embraer E175", "Bombardier CRJ-900", "Boeing 757-200",
 ];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -296,14 +292,12 @@ function extractAirlineCode(code: string): string {
   return match ? match[1] : code.substring(0, 2);
 }
 
-/** Parse a time string from Aviationstack (ISO 8601 or HH:MM) to "HH:MM" */
 function toHHMM(isoOrTime: string | null | undefined): string {
   if (!isoOrTime) return "00:00";
   if (isoOrTime.includes("T")) return isoOrTime.substring(11, 16);
   return isoOrTime.substring(0, 5);
 }
 
-/** Compute flight duration in minutes from two ISO strings */
 function durationFromISO(dep: string | null | undefined, arr: string | null | undefined): number | null {
   if (!dep || !arr) return null;
   try {
@@ -314,10 +308,6 @@ function durationFromISO(dep: string | null | undefined, arr: string | null | un
     return null;
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Mock flight generator (deterministic fallback)
-// ─────────────────────────────────────────────────────────────────────────────
 
 function generateMockFlight(
   code: string,
@@ -388,12 +378,13 @@ function generateMockFlight(
     delayMinutes,
     aircraft,
     isMock: true,
+    tailNumber: undefined,
+    departureTerminal: undefined,
+    arrivalTerminal: undefined,
+    departureGate: undefined,
+    arrivalGate: undefined,
   };
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Aviationstack API integration
-// ─────────────────────────────────────────────────────────────────────────────
 
 interface AviationstackFlight {
   flight_date: string;
@@ -402,6 +393,8 @@ interface AviationstackFlight {
     airport: string;
     iata: string;
     icao: string;
+    terminal: string | null;
+    gate: string | null;
     scheduled: string;
     estimated: string | null;
     actual: string | null;
@@ -411,6 +404,8 @@ interface AviationstackFlight {
     airport: string;
     iata: string;
     icao: string;
+    terminal: string | null;
+    gate: string | null;
     scheduled: string;
     estimated: string | null;
     actual: string | null;
@@ -452,8 +447,6 @@ async function lookupFromAviationstack(
     return null;
   }
 
-  // NOTE: flight_date is a paid-only filter — omit it on the free plan.
-  // We fetch by flight_iata only and filter locally by date.
   const params = new URLSearchParams({
     access_key: apiKey,
     flight_iata: code.toUpperCase(),
@@ -467,14 +460,14 @@ async function lookupFromAviationstack(
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      console.error(`[Aviationstack] HTTP ${res.status} — ${body.slice(0, 200)}`);
+      console.error(`[Aviationstack] HTTP ${res.status} \u2014 ${body.slice(0, 200)}`);
       return null;
     }
 
     const json = (await res.json()) as AviationstackResponse;
 
     if (json.error) {
-      console.error(`[Aviationstack] API error: ${json.error.code} — ${json.error.message}`);
+      console.error(`[Aviationstack] API error: ${json.error.code} \u2014 ${json.error.message}`);
       return null;
     }
 
@@ -482,7 +475,6 @@ async function lookupFromAviationstack(
     console.log(`[Aviationstack] Got ${flights?.length ?? 0} result(s)`);
     if (!flights || flights.length === 0) return null;
 
-    // Rank: exact date match first, then active → landed → scheduled
     const statusScore = (s: string) =>
       s === "active" ? 0 : s === "landed" ? 1 : s === "scheduled" ? 2 : 3;
 
@@ -554,6 +546,12 @@ async function lookupFromAviationstack(
       delayMinutes,
       aircraft: aircraftLabel,
       isMock: false,
+      // Enriched fields
+      tailNumber: f.aircraft?.registration ?? undefined,
+      departureTerminal: f.departure.terminal ?? undefined,
+      arrivalTerminal: f.arrival.terminal ?? undefined,
+      departureGate: f.departure.gate ?? undefined,
+      arrivalGate: f.arrival.gate ?? undefined,
     };
   } catch (err) {
     console.error("[Aviationstack] fetch error:", err);
@@ -561,7 +559,6 @@ async function lookupFromAviationstack(
   }
 }
 
-/** Map common ICAO aircraft type codes to human-readable names */
 function icaoToReadable(icao: string): string {
   const map: Record<string, string> = {
     B738: "Boeing 737-800",
@@ -602,10 +599,6 @@ function icaoToReadable(icao: string): string {
   return map[icao.toUpperCase()] || icao;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Legacy Airlabs fallback
-// ─────────────────────────────────────────────────────────────────────────────
-
 async function lookupFromAirlabs(code: string, date: string) {
   const apiKey = process.env.AIRLABS_API_KEY;
   if (!apiKey) return null;
@@ -630,6 +623,11 @@ async function lookupFromAirlabs(code: string, date: string) {
         duration?: number | null;
         status?: string;
         aircraft_icao?: string;
+        reg_number?: string;
+        dep_terminal?: string;
+        arr_terminal?: string;
+        dep_gate?: string;
+        arr_gate?: string;
       };
       error?: { message?: string };
     };
@@ -673,15 +671,16 @@ async function lookupFromAirlabs(code: string, date: string) {
       delayMinutes,
       aircraft: f.aircraft_icao ? icaoToReadable(f.aircraft_icao) : "Commercial Aircraft",
       isMock: false,
+      tailNumber: f.reg_number ?? undefined,
+      departureTerminal: f.dep_terminal ?? undefined,
+      arrivalTerminal: f.arr_terminal ?? undefined,
+      departureGate: f.dep_gate ?? undefined,
+      arrivalGate: f.arr_gate ?? undefined,
     };
   } catch {
     return null;
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Public export — priority: Aviationstack → Airlabs → Mock
-// ─────────────────────────────────────────────────────────────────────────────
 
 export async function lookupFlight(
   code: string,

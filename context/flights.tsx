@@ -20,8 +20,14 @@ export interface Flight {
   delayMinutes: number;
   aircraft: string;
   addedAt: string;
-  /** true when the flight was imported from an Apple Wallet boarding pass */
+  /** true when the flight was enriched from a real API source */
   verified: boolean;
+  // Optional fields from API enrichment
+  tailNumber?: string;         // e.g. "HB-JHF"
+  departureTerminal?: string;  // e.g. "2"
+  arrivalTerminal?: string;
+  departureGate?: string;      // e.g. "B42"
+  arrivalGate?: string;
 }
 
 interface FlightStats {
@@ -57,7 +63,6 @@ function computeStats(flights: Flight[]): FlightStats {
   const totalDelayMinutes = flights.reduce((s, f) => s + f.delayMinutes, 0);
   const yearMiles = yearFlights.reduce((s, f) => s + f.distanceMiles, 0);
   const yearCo2 = yearFlights.reduce((s, f) => s + f.co2Kg, 0);
-
   const rankPercentile = computeRank(yearFlights.length);
 
   return {
