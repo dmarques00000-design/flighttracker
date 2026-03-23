@@ -90,7 +90,6 @@ function FlightItem({ flight, onDelete, index }: { flight: Flight; onDelete: () 
   const isUpcoming = flight.date >= TODAY;
   const accentColor = isUpcoming ? Colors.accent : flight.status === "delayed" ? Colors.red : Colors.green;
 
-  // countdown / status pill
   let pillBg: string;
   let pillText: string;
   let pillColor: string;
@@ -108,7 +107,7 @@ function FlightItem({ flight, onDelete, index }: { flight: Flight; onDelete: () 
   return (
     <Pressable onPress={() => { if (confirming) { setConfirming(false); return; } router.push({ pathname: "/flight/[id]", params: { id: flight.id } }); }}>
       <Animated.View entering={FadeInDown.delay(index * 30).springify()} style={styles.card}>
-        {/* Left accent bar — blue for upcoming, green for past, red for delayed */}
+        {/* Left accent bar */}
         <View style={[styles.accentBar, { backgroundColor: accentColor }]} />
 
         <View style={styles.cardInner}>
@@ -128,7 +127,12 @@ function FlightItem({ flight, onDelete, index }: { flight: Flight; onDelete: () 
                   </View>
                 )}
               </View>
-              <Text style={styles.meta}>{flight.flightCode} \u00b7 {formatDate(flight.date)}</Text>
+              {/* Split into JSX children so the middle-dot renders correctly on all platforms */}
+              <Text style={styles.meta}>
+                {flight.flightCode}
+                {"  \u00b7  "}
+                {formatDate(flight.date)}
+              </Text>
             </View>
             <View style={styles.rightCol}>
               <View style={[styles.pill, { backgroundColor: pillBg }]}>
@@ -198,17 +202,18 @@ export default function FlightsScreen() {
     router.push("/add-flight");
   }
 
+  // Plain text labels only — no raw unicode escapes in string values
   const TIME_FILTERS: { key: TimeFilter; label: string; show: boolean }[] = [
-    { key: "upcoming", label: "\u23F0 Upcoming", show: hasUpcoming },
-    { key: "past", label: "\u2713 Past", show: hasPast },
-    { key: "all", label: "All Time", show: true },
+    { key: "upcoming", label: "Upcoming", show: hasUpcoming },
+    { key: "past",     label: "Past",     show: hasPast },
+    { key: "all",      label: "All Time", show: true },
     ...years.map((y) => ({ key: y as TimeFilter, label: String(y), show: true })),
   ];
 
   const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
     { key: "month", label: "By Month" },
-    { key: "year", label: "By Year" },
-    { key: "all", label: "All" },
+    { key: "year",  label: "By Year" },
+    { key: "all",   label: "All" },
   ];
 
   return (
@@ -329,7 +334,6 @@ const styles = StyleSheet.create({
   sectionHeaderText: { fontSize: 15, color: Colors.text, fontFamily: "DMSans_700Bold" },
   sectionCount: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
 
-  // Card: row container so the accent bar sits flush on the left
   card: {
     flexDirection: "row",
     backgroundColor: Colors.card,
