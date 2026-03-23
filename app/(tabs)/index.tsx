@@ -104,8 +104,11 @@ function FlightRow({ flight, isUpcoming }: { flight: Flight; isUpcoming: boolean
           <Text style={styles.flightAirport}>{flight.arrivalAirport}</Text>
         </View>
         <View style={styles.flightMetaRow}>
+          {/* Safe JSX children so the middle-dot always renders correctly */}
           <Text style={styles.flightMeta}>
-            {flight.flightCode}{" \u00b7 "}{formatDateShort(flight.date)}
+            {flight.flightCode}
+            {"  \u00b7  "}
+            {formatDateShort(flight.date)}
           </Text>
           {isUpcoming && days !== null ? (
             <View style={[styles.countdownPill, { backgroundColor: days === 0 ? Colors.accent : days <= 7 ? Colors.amber + "22" : Colors.accentDim }]}>
@@ -169,7 +172,6 @@ function HamburgerMenu({ visible, onClose, onSelect }: { visible: boolean; onClo
   );
 }
 
-// ─── Login prompt banner ───────────────────────────────────────────
 function LoginPromptBanner({ onSignUp, onDismiss }: { onSignUp: () => void; onDismiss: () => void }) {
   return (
     <Animated.View entering={FadeInDown.delay(30).springify()} style={styles.loginBanner}>
@@ -258,12 +260,11 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.scroll, { paddingBottom: bottomPadding + 100 }]}
         contentInsetAdjustmentBehavior="automatic"
       >
-        {/* ─────────────────────── HEADER ─────────────────────── */}
+        {/* ─── HEADER — avatar + hamburger only, no + button ─── */}
         <Animated.View entering={FadeInDown.delay(0).springify()} style={styles.header}>
           <LogbookLogo size={38} showName />
 
           <View style={styles.headerRight}>
-            {/* Avatar / Login icon */}
             <Pressable
               onPress={handleAvatarPress}
               style={({ pressed }) => [styles.avatarBtn, { opacity: pressed ? 0.8 : 1 }]}
@@ -280,12 +281,7 @@ export default function HomeScreen() {
               )}
             </Pressable>
 
-            <Pressable
-              onPress={handleAdd}
-              style={({ pressed }) => [styles.addBtn, { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] }]}
-            >
-              <Ionicons name="add" size={22} color={Colors.white} />
-            </Pressable>
+            {/* hamburger — no + button here anymore */}
             <Pressable
               onPress={() => { Haptics.selectionAsync(); setMenuOpen(true); }}
               style={({ pressed }) => [styles.menuBtn, { opacity: pressed ? 0.7 : 1 }]}
@@ -335,7 +331,7 @@ export default function HomeScreen() {
               <View style={styles.heroBottomRow}>
                 <Text style={styles.heroStat}>{formatNumber(stats.miles)} mi</Text>
                 <View style={styles.heroDot} />
-                <Text style={styles.heroStat}>{stats.co2.toFixed(0)} kg CO\u2082</Text>
+                <Text style={styles.heroStat}>{stats.co2.toFixed(0)} kg CO{"\u2082"}</Text>
                 {stats.rank > 0 && (
                   <View style={styles.rankPill}>
                     <Text style={styles.rankPillText}>Top {100 - stats.rank}%</Text>
@@ -357,10 +353,10 @@ export default function HomeScreen() {
             <Animated.View entering={FadeInDown.delay(140).springify()}>
               <Text style={styles.sectionTitle}>Statistics</Text>
               <View style={styles.statsGrid}>
-                <StatCard label="Miles Flown"  value={formatNumber(stats.miles)}                               icon="globe-outline"     accent={Colors.accent} />
-                <StatCard label="CO\u2082 Emitted" value={`${formatNumber(stats.co2)}kg`}                    icon="leaf-outline"      accent={Colors.green} />
-                <StatCard label="Time in Air"  value={formatHours(stats.flightMin)}                           icon="time-outline"      accent={Colors.amber} />
-                <StatCard label="Delay Time"   value={stats.delayMin > 0 ? formatHours(stats.delayMin) : "\u2014"} icon="hourglass-outline" accent={Colors.red} />
+                <StatCard label="Miles Flown"     value={formatNumber(stats.miles)}                                    icon="globe-outline"     accent={Colors.accent} />
+                <StatCard label={"CO\u2082 Emitted"} value={`${formatNumber(stats.co2)}kg`}                          icon="leaf-outline"      accent={Colors.green} />
+                <StatCard label="Time in Air"     value={formatHours(stats.flightMin)}                                icon="time-outline"      accent={Colors.amber} />
+                <StatCard label="Delay Time"       value={stats.delayMin > 0 ? formatHours(stats.delayMin) : "\u2014"} icon="hourglass-outline" accent={Colors.red} />
               </View>
             </Animated.View>
 
@@ -405,6 +401,21 @@ export default function HomeScreen() {
           </Animated.View>
         )}
       </ScrollView>
+
+      {/* ─── Sticky FAB — same as flights list page ─── */}
+      <Pressable
+        onPress={handleAdd}
+        style={({ pressed }) => [
+          styles.fab,
+          {
+            bottom: (Platform.OS === "web" ? 34 : insets.bottom) + 80,
+            opacity: pressed ? 0.85 : 1,
+            transform: [{ scale: pressed ? 0.95 : 1 }],
+          },
+        ]}
+      >
+        <Ionicons name="add" size={26} color={Colors.white} />
+      </Pressable>
     </View>
   );
 }
@@ -412,6 +423,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container:    { flex: 1, backgroundColor: Colors.bg },
   scroll:       { paddingHorizontal: 20 },
+  // Header: no + button slot needed anymore
   header:       { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 20 },
   headerRight:  { flexDirection: "row", alignItems: "center", gap: 10 },
 
@@ -431,11 +443,20 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
 
-  addBtn:       { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.accent, alignItems: "center", justifyContent: "center" },
-  menuBtn:      { width: 36, height: 36, alignItems: "center", justifyContent: "center", gap: 4 },
-  burgerLine:   { width: 18, height: 2, borderRadius: 1, backgroundColor: Colors.text },
+  menuBtn:    { width: 36, height: 36, alignItems: "center", justifyContent: "center", gap: 4 },
+  burgerLine: { width: 18, height: 2, borderRadius: 1, backgroundColor: Colors.text },
 
-  // Login prompt banner
+  // Sticky FAB — identical to flights.tsx
+  fab: {
+    position: "absolute", right: 20,
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: Colors.accent,
+    alignItems: "center", justifyContent: "center",
+    shadowColor: Colors.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4, shadowRadius: 12, elevation: 6,
+  },
+
   loginBanner: {
     flexDirection: "row", alignItems: "center", gap: 10,
     backgroundColor: Colors.accentDim,
@@ -447,18 +468,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent + "22",
     alignItems: "center", justifyContent: "center",
   },
-  loginBannerText: { flex: 1 },
-  loginBannerTitle: { fontSize: 13, color: Colors.text, fontFamily: "DMSans_700Bold" },
-  loginBannerSub:   { fontSize: 11, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 1 },
+  loginBannerText:    { flex: 1 },
+  loginBannerTitle:   { fontSize: 13, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  loginBannerSub:     { fontSize: 11, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 1 },
   loginBannerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
-  loginBannerBtn: {
-    backgroundColor: Colors.accent,
-    paddingHorizontal: 12, paddingVertical: 7,
-    borderRadius: 20,
-  },
+  loginBannerBtn:     { backgroundColor: Colors.accent, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 },
   loginBannerBtnText: { fontSize: 12, color: Colors.white, fontFamily: "DMSans_700Bold" },
 
-  menuOverlay:  { flex: 1, backgroundColor: "rgba(0,0,0,0.18)" },
+  menuOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.18)" },
   menuCard: {
     position: "absolute", top: 90, right: 20, width: 260,
     backgroundColor: Colors.card, borderRadius: 16,
