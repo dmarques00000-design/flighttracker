@@ -4,6 +4,9 @@
  * Social logins:
  *  - Apple Sign In  : uses expo-apple-authentication (native, iOS only)
  *  - Google Sign In : uses @react-native-google-signin/google-signin
+ *                     ⚠️  This is a NATIVE module — it will NOT work in Expo Go.
+ *                         It is lazy-loaded and guarded so the app still runs in
+ *                         Expo Go (the button shows an info alert instead of crashing).
  *
  * Before building for a real device you must:
  *  1. Apple  : enable "Sign In with Apple" capability in your Apple Developer portal
@@ -15,7 +18,7 @@
  *              at the root of the project (next to app.json) for Android.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -39,12 +42,37 @@ import { useUser } from "@/context/user";
 // ─── Apple ───────────────────────────────────────────────────────────────────
 import * as AppleAuthentication from "expo-apple-authentication";
 
-// ─── Google ──────────────────────────────────────────────────────────────────
-import {
-  GoogleSignin,
-  GoogleSigninButton,
-  statusCodes,
-} from "@react-native-google-signin/google-signin";
+// ─── Google (lazy — native module not available in Expo Go) ──────────────────
+// We require() at runtime inside the handler so Metro bundles the module but the
+// TurboModule registry is only accessed when the user actually taps the button,
+// giving us a chance to show a friendly message instead of a hard crash.
+type GoogleSigninType = typeof import("@react-native-google-signin/google-signin");
+let _googleModule: GoogleSigninType | null = null;
+function getGoogleSignin(): GoogleSigninType | null {
+  if (_googleModule) return _googleModule;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    _googleModule = require("@react-native-google-signin/google-signin");
+    return _googleModule;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Detect Expo Go at runtime — it does NOT include the RNGoogleSignin native module.
+ * We use this flag to show a helpful message rather than letting the app crash.
+ */
+function isExpoGo(): boolean {
+  try {
+    // expo-constants is always available
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const Constants = require("expo-constants").default;
+    return Constants.executionEnvironment === "storeClient";
+  } catch {
+    return false;
+  }
+}
 
 /**
  * REPLACE THIS with your OAuth 2.0 Web Client ID from Google Cloud Console.
@@ -66,12 +94,17 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(false);
 
-  // Configure Google Sign-In and check Apple availability on mount
+  // Configure Google Sign-In (only in a real native build, not Expo Go)
   useEffect(() => {
-    GoogleSignin.configure({
-      webClientId: GOOGLE_WEB_CLIENT_ID,
-      offlineAccess: true,
-    });
+    if (!isExpoGo()) {
+      const g = getGoogleSignin();
+      if (g) {
+        g.GoogleSignin.configure({
+          webClientId: GOOGLE_WEB_CLIENT_ID,
+          offlineAccess: true,
+        });
+      }
+    }
 
     if (Platform.OS === "ios") {
       AppleAuthentication.isAvailableAsync().then(setAppleAvailable);
@@ -116,8 +149,6 @@ export default function AuthScreen() {
         ],
       });
 
-      // Apple only sends name/email on the very first sign-in per device.
-      // Cache them so we can use them on subsequent logins.
       const fullName = [
         credential.fullName?.givenName ?? "",
         credential.fullName?.familyName ?? "",
@@ -143,6 +174,15 @@ export default function AuthScreen() {
 
   // ─── Google Sign In ─────────────────────────────────────────────────────────
   async function handleGoogleSignIn() {
+    // Show friendly message in Expo Go instead of crashing
+    if (isExpoGo()) {
+      Alert.alert(
+        "Not available in Expo Go",
+        "Google Sign In requires a custom development build. Use email sign-in for now, or run `eas build --profile development` to test Google Sign In on a real device."
+      );
+      return;
+    }
+
     if (GOOGLE_WEB_CLIENT_ID === "REPLACE_WITH_YOUR_WEB_CLIENT_ID") {
       Alert.alert(
         "Setup required",
@@ -151,10 +191,18 @@ export default function AuthScreen() {
       return;
     }
 
+    const g = getGoogleSignin();
+    if (!g) {
+      Alert.alert("Error", "Google Sign In module could not be loaded.");
+      return;
+    }
+
+    const { GoogleSignin, statusCodes } = g;
+
     try {
       await GoogleSignin.hasPlayServices();
       const userInfo = await GoogleSignin.signIn();
-      const googleUser = userInfo.data?.user;
+      const googleUser = (userInfo as any).data?.user ?? (userInfo as any).user;
 
       if (!googleUser) throw new Error("No user data returned from Google.");
 
@@ -244,7 +292,6 @@ export default function AuthScreen() {
             style={({ pressed }) => [styles.googleBtn, { opacity: pressed ? 0.85 : 1 }]}
             onPress={handleGoogleSignIn}
           >
-            {/* Google G icon — SVG-free colour dots approach */}
             <View style={styles.googleIconWrap}>
               <Text style={styles.googleG}>G</Text>
             </View>
@@ -394,7 +441,6 @@ const styles = StyleSheet.create({
   headline: { fontSize: 26, color: Colors.text, fontFamily: "DMSans_700Bold", textAlign: "center", marginBottom: 8 },
   subline:  { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 20 },
 
-  // Social buttons block
   socialBlock: { gap: 12, marginBottom: 20 },
 
   appleNativeBtn: { width: "100%", height: 52 },
@@ -422,12 +468,10 @@ const styles = StyleSheet.create({
   googleG: { fontSize: 15, fontFamily: "DMSans_700Bold", color: "#4285F4" },
   googleBtnText: { fontSize: 15, color: Colors.text, fontFamily: "DMSans_700Bold" },
 
-  // Divider
   dividerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
   dividerLine: { flex: 1, height: 1, backgroundColor: Colors.border },
   dividerText: { fontSize: 12, color: Colors.textMuted, fontFamily: "DMSans_400Regular" },
 
-  // Tab toggle
   tabRow: {
     flexDirection: "row",
     backgroundColor: Colors.surface,
@@ -436,10 +480,9 @@ const styles = StyleSheet.create({
   },
   tabBtn:       { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: "center" },
   tabBtnActive: { backgroundColor: Colors.accent },
-  tabText:       { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_600SemiBold" },
+  tabText:       { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
   tabTextActive: { color: Colors.white, fontFamily: "DMSans_700Bold" },
 
-  // Email form
   form: { gap: 0 },
   inputGroup: { marginBottom: 16 },
   inputLabel: {
