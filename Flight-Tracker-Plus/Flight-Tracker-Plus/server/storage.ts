@@ -1,3 +1,9 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Aviationstack API — https://aviationstack.com
+// Set AVIATIONSTACK_API_KEY in your .env file.
+// Falls back to deterministic mock data if the key is missing or the API fails.
+// ─────────────────────────────────────────────────────────────────────────────
+
 const AIRLINES: Record<string, string> = {
   AA: "American Airlines",
   UA: "United Airlines",
@@ -31,31 +37,19 @@ const AIRLINES: Record<string, string> = {
   TO: "Transavia France",
   BE: "flybe",
   LS: "Jet2",
-  MT: "Thomas Cook Airlines",
-  ZB: "Monarch Airlines",
-  VU: "Volotea",
-  V7: "Volotea",
-  FR2: "Ryanair",
   EI: "Aer Lingus",
-  VK: "Air Europa",
   BV: "Blue Air",
-  SL: "Jet2",
-  TUI: "TUI Airways",
-  VLM: "VLM Airlines",
   FB: "Bulgaria Air",
   OK: "Czech Airlines",
   BT: "airBaltic",
-  W3: "Arik Air",
   ET: "Ethiopian Airlines",
   KQ: "Kenya Airways",
   SA: "South African Airways",
   MS: "EgyptAir",
-  TK2: "Turkish Airlines",
   RO: "TAROM",
-  JP: "Adria Airways",
   JU: "Air Serbia",
   OU: "Croatia Airlines",
-  TP2: "TAP Air Portugal",
+  TP: "TAP Air Portugal",
   AZ: "ITA Airways",
   JL: "Japan Airlines",
   NH: "All Nippon Airways",
@@ -86,7 +80,8 @@ const AIRLINES: Record<string, string> = {
   PR: "Philippine Airlines",
   VN: "Vietnam Airlines",
   AI: "Air India",
-  TP: "TAP Air Portugal",
+  VU: "Volotea",
+  TUI: "TUI Airways",
 };
 
 const AIRPORTS: Record<string, { city: string; lat: number; lon: number }> = {
@@ -174,7 +169,6 @@ const AIRPORTS: Record<string, { city: string; lat: number; lon: number }> = {
   ATH: { city: "Athens", lat: 37.9364, lon: 23.9445 },
   SKG: { city: "Thessaloniki", lat: 40.5197, lon: 22.9709 },
   SOF: { city: "Sofia", lat: 42.6967, lon: 23.4116 },
-  BUH: { city: "Bucharest", lat: 44.5723, lon: 26.102 },
   OTP: { city: "Bucharest", lat: 44.5723, lon: 26.102 },
   PRG: { city: "Prague", lat: 50.1008, lon: 14.26 },
   BUD: { city: "Budapest", lat: 47.4298, lon: 19.2611 },
@@ -200,11 +194,7 @@ const AIRPORTS: Record<string, { city: string; lat: number; lon: number }> = {
   TIA: { city: "Tirana", lat: 41.4147, lon: 19.7206 },
   SKP: { city: "Skopje", lat: 41.9614, lon: 21.6214 },
   SJJ: { city: "Sarajevo", lat: 43.8246, lon: 18.3315 },
-  POD: { city: "Podgorica", lat: 42.3594, lon: 19.2519 },
   KBP: { city: "Kyiv", lat: 50.345, lon: 30.8947 },
-  SVO: { city: "Moscow", lat: 55.9726, lon: 37.4146 },
-  LED: { city: "St. Petersburg", lat: 59.8003, lon: 30.2625 },
-  TXL: { city: "Berlin", lat: 52.5597, lon: 13.2877 },
   CAI: { city: "Cairo", lat: 30.1219, lon: 31.4056 },
   CMN: { city: "Casablanca", lat: 33.3675, lon: -7.5897 },
   TUN: { city: "Tunis", lat: 36.851, lon: 10.2272 },
@@ -233,7 +223,6 @@ const AIRPORTS: Record<string, { city: string; lat: number; lon: number }> = {
   CTU: { city: "Chengdu", lat: 30.5786, lon: 103.9478 },
 };
 
-// Airline-code to known hub routes for deterministic route resolution
 const AIRLINE_HUB_ROUTES: Record<string, [string, string][]> = {
   LX: [["GVA", "ZRH"], ["ZRH", "GVA"], ["ZRH", "LHR"], ["ZRH", "FRA"], ["GVA", "LHR"], ["ZRH", "JFK"], ["GVA", "JFK"]],
   LH: [["FRA", "MUC"], ["MUC", "FRA"], ["FRA", "LHR"], ["FRA", "JFK"]],
@@ -245,92 +234,42 @@ const AIRLINE_HUB_ROUTES: Record<string, [string, string][]> = {
 };
 
 const ROUTE_POOL: [string, string][] = [
-  ["JFK", "LAX"],
-  ["JFK", "LHR"],
-  ["JFK", "CDG"],
-  ["JFK", "ORD"],
-  ["LAX", "SFO"],
-  ["LAX", "DEN"],
-  ["LAX", "NRT"],
-  ["LAX", "SIN"],
-  ["LHR", "DXB"],
-  ["LHR", "SIN"],
-  ["LHR", "CDG"],
-  ["LHR", "FRA"],
-  ["DXB", "SIN"],
-  ["DXB", "LHR"],
-  ["DXB", "DEL"],
-  ["DXB", "BOM"],
-  ["SFO", "JFK"],
-  ["SFO", "ORD"],
-  ["SFO", "NRT"],
-  ["ORD", "ATL"],
-  ["ATL", "MIA"],
-  ["ATL", "DFW"],
-  ["DFW", "LAX"],
-  ["DFW", "ORD"],
-  ["MIA", "JFK"],
-  ["MIA", "LHR"],
-  ["MIA", "GRU"],
-  ["BOS", "LHR"],
-  ["SEA", "LAX"],
-  ["SEA", "SFO"],
-  ["NRT", "ICN"],
-  ["NRT", "HKG"],
-  ["SIN", "HKG"],
-  ["SIN", "SYD"],
-  ["CDG", "FCO"],
-  ["CDG", "MAD"],
-  ["FRA", "DXB"],
-  ["FRA", "IST"],
-  ["IST", "LHR"],
-  ["IST", "DXB"],
-  ["JFK", "MIA"],
-  ["LAX", "ORD"],
-  ["ORD", "DFW"],
-  ["SEA", "DEN"],
-  ["SFO", "LAX"],
-  ["LHR", "AMS"],
-  ["CDG", "FRA"],
-  ["DXB", "DOH"],
-  ["GVA", "ZRH"],
-  ["ZRH", "GVA"],
-  ["ZRH", "LHR"],
-  ["ZRH", "FRA"],
-  ["GVA", "LHR"],
-  ["LIS", "OPO"],
-  ["LIS", "LHR"],
+  ["JFK", "LAX"], ["JFK", "LHR"], ["JFK", "CDG"], ["JFK", "ORD"],
+  ["LAX", "SFO"], ["LAX", "DEN"], ["LAX", "NRT"], ["LAX", "SIN"],
+  ["LHR", "DXB"], ["LHR", "SIN"], ["LHR", "CDG"], ["LHR", "FRA"],
+  ["DXB", "SIN"], ["DXB", "LHR"], ["DXB", "DEL"], ["DXB", "BOM"],
+  ["SFO", "JFK"], ["SFO", "ORD"], ["SFO", "NRT"],
+  ["ORD", "ATL"], ["ATL", "MIA"], ["ATL", "DFW"],
+  ["DFW", "LAX"], ["DFW", "ORD"],
+  ["MIA", "JFK"], ["MIA", "LHR"], ["MIA", "GRU"],
+  ["BOS", "LHR"], ["SEA", "LAX"], ["SEA", "SFO"],
+  ["NRT", "ICN"], ["NRT", "HKG"], ["SIN", "HKG"], ["SIN", "SYD"],
+  ["CDG", "FCO"], ["CDG", "MAD"], ["FRA", "DXB"], ["FRA", "IST"],
+  ["IST", "LHR"], ["IST", "DXB"],
+  ["GVA", "ZRH"], ["ZRH", "GVA"], ["ZRH", "LHR"], ["ZRH", "FRA"],
+  ["GVA", "LHR"], ["LIS", "OPO"], ["LIS", "LHR"],
 ];
 
 const AIRCRAFT_POOL = [
-  "Boeing 737-800",
-  "Boeing 737 MAX 8",
-  "Boeing 787-9 Dreamliner",
-  "Boeing 777-300ER",
-  "Airbus A320neo",
-  "Airbus A321neo",
-  "Airbus A350-900",
-  "Airbus A380-800",
-  "Boeing 767-300ER",
-  "Embraer E175",
-  "Bombardier CRJ-900",
-  "Boeing 757-200",
+  "Boeing 737-800", "Boeing 737 MAX 8", "Boeing 787-9 Dreamliner",
+  "Boeing 777-300ER", "Airbus A320neo", "Airbus A321neo",
+  "Airbus A350-900", "Airbus A380-800", "Boeing 767-300ER",
+  "Embraer E175", "Bombardier CRJ-900", "Boeing 757-200",
 ];
 
-function haversineKm(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
@@ -353,10 +292,34 @@ function seededRandom(seed: number, index: number): number {
 }
 
 function extractAirlineCode(code: string): string {
-  // Handle codes like LX2819 -> LX, AA123 -> AA, EJU1234 -> EJU
   const match = code.match(/^([A-Z]{2,3})/);
   return match ? match[1] : code.substring(0, 2);
 }
+
+/** Parse a time string from Aviationstack (ISO 8601 or HH:MM) to "HH:MM" */
+function toHHMM(isoOrTime: string | null | undefined): string {
+  if (!isoOrTime) return "00:00";
+  // ISO 8601: "2024-03-15T14:35:00+00:00" → take chars 11-15
+  if (isoOrTime.includes("T")) return isoOrTime.substring(11, 16);
+  // Already HH:MM or HH:MM:SS
+  return isoOrTime.substring(0, 5);
+}
+
+/** Compute flight duration in minutes from two ISO strings */
+function durationFromISO(dep: string | null | undefined, arr: string | null | undefined): number | null {
+  if (!dep || !arr) return null;
+  try {
+    const diff = new Date(arr).getTime() - new Date(dep).getTime();
+    if (isNaN(diff) || diff <= 0) return null;
+    return Math.round(diff / 60000);
+  } catch {
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mock flight generator (deterministic fallback)
+// ─────────────────────────────────────────────────────────────────────────────
 
 function generateMockFlight(
   code: string,
@@ -375,7 +338,6 @@ function generateMockFlight(
     depIata = hintDep.toUpperCase();
     arrIata = hintArr.toUpperCase();
   } else if (AIRLINE_HUB_ROUTES[airlineCode]) {
-    // Use airline-specific routes for better accuracy
     const routes = AIRLINE_HUB_ROUTES[airlineCode];
     const routeIndex = seed % routes.length;
     depIata = routes[routeIndex][0];
@@ -397,9 +359,7 @@ function generateMockFlight(
 
   const delayRoll = seededRandom(seed, 5);
   const isDelayed = delayRoll < 0.2;
-  const delayMinutes = isDelayed
-    ? Math.round(seededRandom(seed, 6) * 120 + 10)
-    : 0;
+  const delayMinutes = isDelayed ? Math.round(seededRandom(seed, 6) * 120 + 10) : 0;
 
   const depHour = 6 + Math.floor(seededRandom(seed, 7) * 14);
   const depMin = Math.floor(seededRandom(seed, 8) * 4) * 15;
@@ -429,19 +389,242 @@ function generateMockFlight(
     status: (isDelayed ? "delayed" : "on_time") as "on_time" | "delayed",
     delayMinutes,
     aircraft,
+    isMock: true,
   };
 }
 
-async function lookupFromApi(code: string, date: string) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Aviationstack API integration
+// Docs: https://aviationstack.com/documentation
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Aviationstack /v1/flights response shape (partial — only fields we use).
+ */
+interface AviationstackFlight {
+  flight_date: string;
+  flight_status: "scheduled" | "active" | "landed" | "cancelled" | "incident" | "diverted" | string;
+  departure: {
+    airport: string;
+    iata: string;
+    icao: string;
+    scheduled: string;  // ISO 8601
+    estimated: string | null;
+    actual: string | null;
+    delay: number | null;
+  };
+  arrival: {
+    airport: string;
+    iata: string;
+    icao: string;
+    scheduled: string;
+    estimated: string | null;
+    actual: string | null;
+    delay: number | null;
+  };
+  airline: {
+    name: string;
+    iata: string;
+    icao: string;
+  };
+  flight: {
+    number: string;
+    iata: string;
+    icao: string;
+  };
+  aircraft: {
+    registration: string | null;
+    iata: string | null;
+    icao: string | null;
+    icao24: string | null;
+  } | null;
+}
+
+interface AviationstackResponse {
+  pagination?: { total: number; count: number; offset: number; limit: number };
+  data?: AviationstackFlight[];
+  error?: { code: string; message: string };
+}
+
+async function lookupFromAviationstack(
+  code: string,
+  date: string,
+  dep?: string,
+  arr?: string,
+) {
+  const apiKey = process.env.AVIATIONSTACK_API_KEY;
+  if (!apiKey) return null;
+
+  // Build URL — use http (HTTPS requires paid plan on Aviationstack)
+  const params = new URLSearchParams({
+    access_key: apiKey,
+    flight_iata: code.toUpperCase(),
+    flight_date: date,
+    limit: "5",
+  });
+  if (dep) params.set("dep_iata", dep.toUpperCase());
+  if (arr) params.set("arr_iata", arr.toUpperCase());
+
+  const url = `http://api.aviationstack.com/v1/flights?${params.toString()}`;
+
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) {
+      console.error(`[Aviationstack] HTTP ${res.status}`);
+      return null;
+    }
+
+    const json = (await res.json()) as AviationstackResponse;
+
+    if (json.error) {
+      console.error(`[Aviationstack] API error: ${json.error.code} — ${json.error.message}`);
+      return null;
+    }
+
+    const flights = json.data;
+    if (!flights || flights.length === 0) return null;
+
+    // Pick the best matching flight: prefer the one whose date matches exactly,
+    // then prefer active/landed over scheduled.
+    const ranked = [...flights].sort((a, b) => {
+      const statusScore = (s: string) =>
+        s === "active" ? 0 : s === "landed" ? 1 : s === "scheduled" ? 2 : 3;
+      const dateMatchA = a.flight_date === date ? 0 : 1;
+      const dateMatchB = b.flight_date === date ? 0 : 1;
+      return dateMatchA - dateMatchB || statusScore(a.flight_status) - statusScore(b.flight_status);
+    });
+
+    const f = ranked[0];
+
+    const depIata = f.departure.iata?.toUpperCase() || "";
+    const arrIata = f.arrival.iata?.toUpperCase() || "";
+    const depAirportData = AIRPORTS[depIata];
+    const arrAirportData = AIRPORTS[arrIata];
+
+    // Compute distance and CO2 from coordinates if we have them
+    let distMiles = 0;
+    let co2Kg = 0;
+    if (depAirportData && arrAirportData) {
+      const distKm = haversineKm(
+        depAirportData.lat, depAirportData.lon,
+        arrAirportData.lat, arrAirportData.lon,
+      );
+      distMiles = Math.round(kmToMiles(distKm));
+      co2Kg = Math.round(distKm * 0.115);
+    }
+
+    // Prefer actual times, then estimated, then scheduled
+    const depTime = toHHMM(f.departure.actual ?? f.departure.estimated ?? f.departure.scheduled);
+    const arrTime = toHHMM(f.arrival.actual ?? f.arrival.estimated ?? f.arrival.scheduled);
+
+    // Duration: derive from actual/estimated times where available
+    const depISO = f.departure.actual ?? f.departure.estimated ?? f.departure.scheduled;
+    const arrISO = f.arrival.actual ?? f.arrival.estimated ?? f.arrival.scheduled;
+    const durationMinutes =
+      durationFromISO(depISO, arrISO) ??
+      (depAirportData && arrAirportData
+        ? Math.round((haversineKm(
+            depAirportData.lat, depAirportData.lon,
+            arrAirportData.lat, arrAirportData.lon,
+          ) / 870) * 60 + 30)
+        : 120);
+
+    const delayMinutes = f.departure.delay ?? f.arrival.delay ?? 0;
+    const rawStatus = f.flight_status;
+    const status: "on_time" | "delayed" =
+      rawStatus === "cancelled" || rawStatus === "incident" || rawStatus === "diverted"
+        ? "delayed" // surface unusual statuses as delayed until we add a cancelled state
+        : delayMinutes > 15 ? "delayed" : "on_time";
+
+    const airlineCode = f.airline.iata?.toUpperCase() || extractAirlineCode(code);
+    const airlineName =
+      AIRLINES[airlineCode] || f.airline.name || "Unknown Airlines";
+
+    // Aircraft: Aviationstack returns ICAO type codes (e.g. "B738"), map best-effort
+    const aircraftLabel = f.aircraft?.icao
+      ? icaoToReadable(f.aircraft.icao)
+      : "Commercial Aircraft";
+
+    return {
+      flightCode: f.flight.iata || code,
+      date: f.flight_date || date,
+      airline: airlineName,
+      airlineCode,
+      departureAirport: depIata,
+      arrivalAirport: arrIata,
+      departureCity: depAirportData?.city || f.departure.airport || depIata,
+      arrivalCity: arrAirportData?.city || f.arrival.airport || arrIata,
+      departureTime: depTime,
+      arrivalTime: arrTime,
+      durationMinutes,
+      distanceMiles: distMiles,
+      co2Kg,
+      status,
+      delayMinutes,
+      aircraft: aircraftLabel,
+      isMock: false,
+    };
+  } catch (err) {
+    console.error("[Aviationstack] fetch error:", err);
+    return null;
+  }
+}
+
+/** Map common ICAO aircraft type codes to human-readable names */
+function icaoToReadable(icao: string): string {
+  const map: Record<string, string> = {
+    B738: "Boeing 737-800",
+    B739: "Boeing 737-900",
+    B37M: "Boeing 737 MAX 7",
+    B38M: "Boeing 737 MAX 8",
+    B39M: "Boeing 737 MAX 9",
+    B788: "Boeing 787-8 Dreamliner",
+    B789: "Boeing 787-9 Dreamliner",
+    B78X: "Boeing 787-10 Dreamliner",
+    B77W: "Boeing 777-300ER",
+    B772: "Boeing 777-200",
+    B748: "Boeing 747-8",
+    B744: "Boeing 747-400",
+    B763: "Boeing 767-300ER",
+    B752: "Boeing 757-200",
+    A19N: "Airbus A319neo",
+    A20N: "Airbus A320neo",
+    A21N: "Airbus A321neo",
+    A319: "Airbus A319",
+    A320: "Airbus A320",
+    A321: "Airbus A321",
+    A332: "Airbus A330-200",
+    A333: "Airbus A330-300",
+    A339: "Airbus A330-900neo",
+    A359: "Airbus A350-900",
+    A35K: "Airbus A350-1000",
+    A388: "Airbus A380-800",
+    E170: "Embraer E170",
+    E175: "Embraer E175",
+    E190: "Embraer E190",
+    E195: "Embraer E195",
+    CRJ9: "Bombardier CRJ-900",
+    AT75: "ATR 72-500",
+    AT76: "ATR 72-600",
+    DH8D: "Bombardier Q400",
+  };
+  return map[icao.toUpperCase()] || icao;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Legacy Airlabs fallback (kept for backwards compatibility)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function lookupFromAirlabs(code: string, date: string) {
   const apiKey = process.env.AIRLABS_API_KEY;
   if (!apiKey) return null;
 
   try {
     const iataUrl = `https://airlabs.co/api/v9/flight?flight_iata=${code}&api_key=${apiKey}`;
-    let res = await fetch(iataUrl);
+    let res = await fetch(iataUrl, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) {
       const icaoUrl = `https://airlabs.co/api/v9/flight?flight_icao=${code}&api_key=${apiKey}`;
-      res = await fetch(icaoUrl);
+      res = await fetch(icaoUrl, { signal: AbortSignal.timeout(8000) });
       if (!res.ok) return null;
     }
     const json = (await res.json()) as {
@@ -469,18 +652,14 @@ async function lookupFromApi(code: string, date: string) {
     const arr = AIRPORTS[arrIata];
     if (!dep || !arr) return null;
 
-    const airlineCode =
-      f.airline_iata || extractAirlineCode(code);
+    const airlineCode = f.airline_iata || extractAirlineCode(code);
     const distKm = haversineKm(dep.lat, dep.lon, arr.lat, arr.lon);
     const distMiles = Math.round(kmToMiles(distKm));
     const co2Kg = Math.round(distKm * 0.115);
-
     const depTime = f.dep_time ? f.dep_time.substring(0, 5) : "00:00";
     const arrTime = f.arr_time ? f.arr_time.substring(0, 5) : "00:00";
-
     const durationMinutes = f.duration ?? Math.round((distKm / 870) * 60 + 30);
     const delayMinutes = f.dep_delayed ?? f.arr_delayed ?? 0;
-
     const rawStatus = f.status || "scheduled";
     const status: "on_time" | "delayed" =
       rawStatus === "delayed" || (delayMinutes !== null && delayMinutes > 15) ? "delayed" : "on_time";
@@ -501,12 +680,17 @@ async function lookupFromApi(code: string, date: string) {
       co2Kg,
       status,
       delayMinutes,
-      aircraft: f.aircraft_icao || "Commercial Aircraft",
+      aircraft: f.aircraft_icao ? icaoToReadable(f.aircraft_icao) : "Commercial Aircraft",
+      isMock: false,
     };
   } catch {
     return null;
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public export — priority: Aviationstack → Airlabs → Mock
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function lookupFlight(
   code: string,
@@ -514,7 +698,14 @@ export async function lookupFlight(
   dep?: string,
   arr?: string,
 ) {
-  const apiResult = await lookupFromApi(code, date);
-  if (apiResult) return apiResult;
+  // 1. Try Aviationstack (primary)
+  const aviationstackResult = await lookupFromAviationstack(code, date, dep, arr);
+  if (aviationstackResult) return aviationstackResult;
+
+  // 2. Try Airlabs (legacy fallback if key present)
+  const airlabsResult = await lookupFromAirlabs(code, date);
+  if (airlabsResult) return airlabsResult;
+
+  // 3. Deterministic mock (always works offline / in dev)
   return generateMockFlight(code, date, dep, arr);
 }
