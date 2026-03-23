@@ -104,7 +104,6 @@ function FlightRow({ flight, isUpcoming }: { flight: Flight; isUpcoming: boolean
           <Text style={styles.flightAirport}>{flight.arrivalAirport}</Text>
         </View>
         <View style={styles.flightMetaRow}>
-          {/* Safe JSX children so the middle-dot always renders correctly */}
           <Text style={styles.flightMeta}>
             {flight.flightCode}
             {"  \u00b7  "}
@@ -244,11 +243,8 @@ export default function HomeScreen() {
 
   function handleAvatarPress() {
     Haptics.selectionAsync();
-    if (isLoggedIn) {
-      router.push("/(tabs)/profile");
-    } else {
-      router.push("/auth");
-    }
+    if (isLoggedIn) router.push("/(tabs)/profile");
+    else            router.push("/auth");
   }
 
   return (
@@ -260,10 +256,9 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.scroll, { paddingBottom: bottomPadding + 100 }]}
         contentInsetAdjustmentBehavior="automatic"
       >
-        {/* ─── HEADER — avatar + hamburger only, no + button ─── */}
+        {/* ─── HEADER ─── */}
         <Animated.View entering={FadeInDown.delay(0).springify()} style={styles.header}>
           <LogbookLogo size={38} showName />
-
           <View style={styles.headerRight}>
             <Pressable
               onPress={handleAvatarPress}
@@ -280,8 +275,6 @@ export default function HomeScreen() {
                 </View>
               )}
             </Pressable>
-
-            {/* hamburger — no + button here anymore */}
             <Pressable
               onPress={() => { Haptics.selectionAsync(); setMenuOpen(true); }}
               style={({ pressed }) => [styles.menuBtn, { opacity: pressed ? 0.7 : 1 }]}
@@ -294,7 +287,6 @@ export default function HomeScreen() {
           </View>
         </Animated.View>
 
-        {/* ─── Login prompt banner ─── */}
         {showLoginPrompt && (
           <LoginPromptBanner
             onSignUp={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/auth"); }}
@@ -331,7 +323,7 @@ export default function HomeScreen() {
               <View style={styles.heroBottomRow}>
                 <Text style={styles.heroStat}>{formatNumber(stats.miles)} mi</Text>
                 <View style={styles.heroDot} />
-                <Text style={styles.heroStat}>{stats.co2.toFixed(0)} kg CO{"\u2082"}</Text>
+                <Text style={styles.heroStat}>{stats.co2.toFixed(0)}{" kg CO"}{"\u2082"}</Text>
                 {stats.rank > 0 && (
                   <View style={styles.rankPill}>
                     <Text style={styles.rankPillText}>Top {100 - stats.rank}%</Text>
@@ -345,7 +337,8 @@ export default function HomeScreen() {
               )}
             </Animated.View>
 
-            <Animated.View entering={FadeInDown.delay(120).springify()} style={styles.globeContainer}>
+            {/* ─── Route Map (replaces globe) ─── */}
+            <Animated.View entering={FadeInDown.delay(120).springify()} style={styles.mapContainer}>
               <Text style={styles.sectionTitle}>Your Flight Network</Text>
               <GlobeView flights={flights} />
             </Animated.View>
@@ -353,10 +346,10 @@ export default function HomeScreen() {
             <Animated.View entering={FadeInDown.delay(140).springify()}>
               <Text style={styles.sectionTitle}>Statistics</Text>
               <View style={styles.statsGrid}>
-                <StatCard label="Miles Flown"     value={formatNumber(stats.miles)}                                    icon="globe-outline"     accent={Colors.accent} />
-                <StatCard label={"CO\u2082 Emitted"} value={`${formatNumber(stats.co2)}kg`}                          icon="leaf-outline"      accent={Colors.green} />
-                <StatCard label="Time in Air"     value={formatHours(stats.flightMin)}                                icon="time-outline"      accent={Colors.amber} />
-                <StatCard label="Delay Time"       value={stats.delayMin > 0 ? formatHours(stats.delayMin) : "\u2014"} icon="hourglass-outline" accent={Colors.red} />
+                <StatCard label="Miles Flown"       value={formatNumber(stats.miles)}                                    icon="globe-outline"     accent={Colors.accent} />
+                <StatCard label={"CO\u2082 Emitted"} value={`${formatNumber(stats.co2)}kg`}                            icon="leaf-outline"      accent={Colors.green} />
+                <StatCard label="Time in Air"       value={formatHours(stats.flightMin)}                                icon="time-outline"      accent={Colors.amber} />
+                <StatCard label="Delay Time"         value={stats.delayMin > 0 ? formatHours(stats.delayMin) : "\u2014"} icon="hourglass-outline" accent={Colors.red} />
               </View>
             </Animated.View>
 
@@ -402,7 +395,7 @@ export default function HomeScreen() {
         )}
       </ScrollView>
 
-      {/* ─── Sticky FAB — same as flights list page ─── */}
+      {/* ─── Sticky FAB ─── */}
       <Pressable
         onPress={handleAdd}
         style={({ pressed }) => [
@@ -423,22 +416,19 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container:    { flex: 1, backgroundColor: Colors.bg },
   scroll:       { paddingHorizontal: 20 },
-  // Header: no + button slot needed anymore
   header:       { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 20 },
   headerRight:  { flexDirection: "row", alignItems: "center", gap: 10 },
 
   avatarBtn:    { justifyContent: "center", alignItems: "center" },
   avatarFilled: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: Colors.accent,
+    width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.accent,
     alignItems: "center", justifyContent: "center",
     shadowColor: Colors.accent, shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25, shadowRadius: 6, elevation: 3,
   },
   avatarInitials: { fontSize: 13, color: Colors.white, fontFamily: "DMSans_700Bold" },
   avatarEmpty: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: Colors.surface,
+    width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.surface,
     borderWidth: 1.5, borderColor: Colors.border,
     alignItems: "center", justifyContent: "center",
   },
@@ -446,28 +436,22 @@ const styles = StyleSheet.create({
   menuBtn:    { width: 36, height: 36, alignItems: "center", justifyContent: "center", gap: 4 },
   burgerLine: { width: 18, height: 2, borderRadius: 1, backgroundColor: Colors.text },
 
-  // Sticky FAB — identical to flights.tsx
   fab: {
     position: "absolute", right: 20,
     width: 52, height: 52, borderRadius: 26,
     backgroundColor: Colors.accent,
     alignItems: "center", justifyContent: "center",
-    shadowColor: Colors.accent,
-    shadowOffset: { width: 0, height: 4 },
+    shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4, shadowRadius: 12, elevation: 6,
   },
 
   loginBanner: {
     flexDirection: "row", alignItems: "center", gap: 10,
-    backgroundColor: Colors.accentDim,
-    borderRadius: 14, borderWidth: 1, borderColor: Colors.accent + "33",
+    backgroundColor: Colors.accentDim, borderRadius: 14,
+    borderWidth: 1, borderColor: Colors.accent + "33",
     padding: 12, marginBottom: 16,
   },
-  loginBannerIcon: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: Colors.accent + "22",
-    alignItems: "center", justifyContent: "center",
-  },
+  loginBannerIcon:    { width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.accent + "22", alignItems: "center", justifyContent: "center" },
   loginBannerText:    { flex: 1 },
   loginBannerTitle:   { fontSize: 13, color: Colors.text, fontFamily: "DMSans_700Bold" },
   loginBannerSub:     { fontSize: 11, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 1 },
@@ -510,7 +494,10 @@ const styles = StyleSheet.create({
   rankPill:      { backgroundColor: Colors.accentDim, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 },
   rankPillText:  { fontSize: 12, color: Colors.accent, fontFamily: "DMSans_700Bold" },
 
-  sectionTitle:    { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase" },
+  // Route map section
+  mapContainer:  { marginTop: 4, marginBottom: 24 },
+
+  sectionTitle:    { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 },
   sectionRow:      { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   sectionTitleRow: { flexDirection: "row", alignItems: "center", gap: 7 },
   sectionDot:      { width: 6, height: 6, borderRadius: 3 },
@@ -535,10 +522,9 @@ const styles = StyleSheet.create({
   countdownPill:   { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 8 },
   countdownText:   { fontSize: 11, fontFamily: "DMSans_700Bold" },
 
-  globeContainer: { marginTop: 4, marginBottom: 24, alignItems: "center" },
-  emptyState:     { flex: 1, alignItems: "center", paddingTop: 60, paddingHorizontal: 20 },
-  emptyTitle:     { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold", marginBottom: 10, marginTop: 24 },
-  emptyText:      { fontSize: 15, color: Colors.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 22, marginBottom: 28 },
-  emptyBtn:       { backgroundColor: Colors.accent, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30 },
-  emptyBtnText:   { fontSize: 15, color: Colors.white, fontFamily: "DMSans_700Bold" },
+  emptyState:  { flex: 1, alignItems: "center", paddingTop: 60, paddingHorizontal: 20 },
+  emptyTitle:  { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold", marginBottom: 10, marginTop: 24 },
+  emptyText:   { fontSize: 15, color: Colors.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 22, marginBottom: 28 },
+  emptyBtn:    { backgroundColor: Colors.accent, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30 },
+  emptyBtnText:{ fontSize: 15, color: Colors.white, fontFamily: "DMSans_700Bold" },
 });

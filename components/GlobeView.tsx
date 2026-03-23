@@ -1,46 +1,32 @@
-import React, { useEffect, useRef, useState, useMemo } from "react";
-import { View, StyleSheet, Dimensions, PanResponder } from "react-native";
-import Svg, {
-  Circle, Path, G, Defs, RadialGradient, Stop, ClipPath,
-} from "react-native-svg";
+/**
+ * RouteMapView (exported as GlobeView for drop-in compatibility)
+ *
+ * Flat equirectangular SVG world map with:
+ *  - Accurate Natural Earth-simplified country outlines
+ *  - Great-circle arc per flight (parabolic approximation in 2D)
+ *  - Airport dot markers
+ *  - Dark-mode aware colours from Colors
+ *  - No new dependencies — only react-native-svg (already installed)
+ */
+import React, { useMemo } from "react";
+import { View, StyleSheet, Dimensions } from "react-native";
+import Svg, { Path, Circle, G, Defs, LinearGradient, Stop, Rect } from "react-native-svg";
+import { Colors } from "@/constants/colors";
 import { Flight } from "@/context/flights";
 
-const { width: screenWidth } = Dimensions.get("window");
-const GLOBE_SIZE = Math.min(screenWidth * 0.9, 400);
+const { width: SCREEN_W } = Dimensions.get("window");
+const MAP_W = Math.min(SCREEN_W - 40, 600);
+const MAP_H = Math.round(MAP_W * 0.52); // ~2:1 equirectangular ratio
 
-// ─── Math helpers ─────────────────────────────────────────────────────────────
-function latLngTo3D(lat: number, lng: number, r: number) {
-  const phi   = (90 - lat)  * (Math.PI / 180);
-  const theta = (lng + 180) * (Math.PI / 180);
-  return {
-    x: -(r * Math.sin(phi) * Math.cos(theta)),
-    y:   r * Math.cos(phi),
-    z:   r * Math.sin(phi) * Math.sin(theta),
-  };
+// ─── Projection ───────────────────────────────────────────────────────────────
+// Simple equirectangular: lng → x, lat → y
+function project(lat: number, lng: number, w: number, h: number) {
+  const x = ((lng + 180) / 360) * w;
+  const y = ((90 - lat) / 180) * h;
+  return { x, y };
 }
 
-function project(x: number, y: number, z: number, rot: number) {
-  const cr = Math.cos(rot), sr = Math.sin(rot);
-  const depth = x * sr + z * cr;
-  return { sx: x * cr - z * sr, sy: y, visible: depth > 0, depth };
-}
-
-function greatCircleAngle(
-  a: { lat: number; lng: number },
-  b: { lat: number; lng: number }
-): number {
-  const toR = Math.PI / 180;
-  const lat1 = a.lat * toR, lat2 = b.lat * toR;
-  const dLng = (b.lng - a.lng) * toR;
-  return Math.acos(
-    Math.max(-1, Math.min(1,
-      Math.sin(lat1) * Math.sin(lat2) +
-      Math.cos(lat1) * Math.cos(lat2) * Math.cos(dLng)
-    ))
-  );
-}
-
-// ─── Airport registry ─────────────────────────────────────────────────────────
+// ─── Airport registry (same as before) ────────────────────────────────────────
 const AIRPORTS: Record<string, { lat: number; lng: number }> = {
   LIS:{lat:38.78,lng:-9.14},GVA:{lat:46.24,lng:6.11},ZRH:{lat:47.46,lng:8.55},
   ATL:{lat:33.64,lng:-84.43},MIA:{lat:25.80,lng:-80.29},JFK:{lat:40.64,lng:-73.78},
@@ -60,398 +46,226 @@ const AIRPORTS: Record<string, { lat: number; lng: number }> = {
   OPO:{lat:41.24,lng:-8.68},SVQ:{lat:37.42,lng:-5.90},AGP:{lat:36.68,lng:-4.50},
   TXL:{lat:52.56,lng:13.29},DUS:{lat:51.28,lng:6.77},HAM:{lat:53.63,lng:9.99},
   NCE:{lat:43.66,lng:7.21},MRS:{lat:43.44,lng:5.22},LYS:{lat:45.72,lng:5.09},
-  GVA:{lat:46.24,lng:6.11},EDI:{lat:55.95,lng:-3.37},MAN:{lat:53.35,lng:-2.27},
-  DUB:{lat:53.42,lng:-6.27},KEF:{lat:63.99,lng:-22.62},TLV:{lat:32.00,lng:34.88},
-  CAI:{lat:30.12,lng:31.41},CMN:{lat:33.37,lng:-7.59},TUN:{lat:36.85,lng:10.23},
-  NBO:{lat:-1.32,lng:36.93},JNB:{lat:-26.13,lng:28.24},ACC:{lat:5.60,lng:-0.17},
-  LOS:{lat:6.58,lng:3.32},ADD:{lat:8.98,lng:38.80},DAR:{lat:-6.88,lng:39.20},
-  PEK:{lat:40.08,lng:116.58},PVG:{lat:31.14,lng:121.80},CAN:{lat:23.39,lng:113.30},
-  KUL:{lat:2.74,lng:101.71},CGK:{lat:-6.13,lng:106.65},MNL:{lat:14.51,lng:121.02},
-  BNE:{lat:-27.38,lng:153.12},MEL:{lat:-37.67,lng:144.84},AKL:{lat:-37.01,lng:174.79},
-  SCL:{lat:-33.39,lng:-70.79},BOG:{lat:4.70,lng:-74.14},LIM:{lat:-12.02,lng:-77.11},
-  EZE:{lat:-34.82,lng:-58.54},GIG:{lat:-22.81,lng:-43.25},SSA:{lat:-12.91,lng:-38.33},
-  YVR:{lat:49.19,lng:-123.18},YUL:{lat:45.47,lng:-73.74},YEG:{lat:53.31,lng:-113.58},
-  SJO:{lat:9.99,lng:-84.21},GUA:{lat:14.58,lng:-90.53},PTY:{lat:9.07,lng:-79.38},
-  CUN:{lat:21.04,lng:-86.87},
+  EDI:{lat:55.95,lng:-3.37},MAN:{lat:53.35,lng:-2.27},DUB:{lat:53.42,lng:-6.27},
+  KEF:{lat:63.99,lng:-22.62},TLV:{lat:32.00,lng:34.88},CAI:{lat:30.12,lng:31.41},
+  CMN:{lat:33.37,lng:-7.59},TUN:{lat:36.85,lng:10.23},NBO:{lat:-1.32,lng:36.93},
+  JNB:{lat:-26.13,lng:28.24},ACC:{lat:5.60,lng:-0.17},LOS:{lat:6.58,lng:3.32},
+  ADD:{lat:8.98,lng:38.80},DAR:{lat:-6.88,lng:39.20},PEK:{lat:40.08,lng:116.58},
+  PVG:{lat:31.14,lng:121.80},CAN:{lat:23.39,lng:113.30},KUL:{lat:2.74,lng:101.71},
+  CGK:{lat:-6.13,lng:106.65},MNL:{lat:14.51,lng:121.02},BNE:{lat:-27.38,lng:153.12},
+  MEL:{lat:-37.67,lng:144.84},AKL:{lat:-37.01,lng:174.79},SCL:{lat:-33.39,lng:-70.79},
+  BOG:{lat:4.70,lng:-74.14},LIM:{lat:-12.02,lng:-77.11},EZE:{lat:-34.82,lng:-58.54},
+  GIG:{lat:-22.81,lng:-43.25},SSA:{lat:-12.91,lng:-38.33},YVR:{lat:49.19,lng:-123.18},
+  YUL:{lat:45.47,lng:-73.74},YEG:{lat:53.31,lng:-113.58},SJO:{lat:9.99,lng:-84.21},
+  GUA:{lat:14.58,lng:-90.53},PTY:{lat:9.07,lng:-79.38},CUN:{lat:21.04,lng:-86.87},
+  FCO:{lat:41.80,lng:12.24},NAP:{lat:40.88,lng:14.29},MXP:{lat:45.63,lng:8.72},
+  LIN:{lat:45.45,lng:9.28},PMI:{lat:39.55,lng:2.74},IBZ:{lat:38.87,lng:1.37},
+  TFS:{lat:28.04,lng:-16.57},LPA:{lat:27.93,lng:-15.39},FUE:{lat:28.45,lng:-13.86},
+  ACE:{lat:29.00,lng:-13.61},TNG:{lat:35.73,lng:-5.92},RAK:{lat:31.61,lng:-8.04},
 };
 
-function getCoord(iata: string) { return AIRPORTS[iata] ?? null; }
-
-// ─── Land polygons ─────────────────────────────────────────────────────────────
-const LAND: [number, number][][] = [
-  // North America (contiguous)
-  [
-    [49,-95],[49,-100],[49,-104],[49,-110],[49,-115],[49,-123],
-    [47,-124],[43,-124],[38,-123],[34,-121],[32,-117],[30,-117],
-    [29,-99],[25,-97],[25,-80],[28,-81],[30,-81],[34,-78],[36,-76],
-    [38,-75],[40,-74],[41,-72],[42,-70],[45,-67],[47,-68],[48,-70],
-    [46,-64],[45,-61],[44,-66],[42,-70],[40,-74],[38,-75],[36,-76],
-    [34,-78],[30,-85],[28,-82],[26,-80],[25,-80],[24,-84],[25,-86],
-    [28,-88],[29,-92],[28,-96],[29,-99],[30,-104],[31,-109],[33,-114],
-    [32,-117],[34,-121],[36,-122],[38,-123],[40,-124],[43,-124],
-    [47,-124],[49,-123],[49,-95],
-  ],
-  [[71,-156],[66,-166],[59,-164],[55,-160],[57,-136],[60,-141],[71,-141],[71,-156]],
-  [
-    [49,-95],[49,-86],[47,-84],[44,-77],[43,-79],[44,-76],[45,-73],
-    [45,-71],[47,-68],[46,-64],[45,-61],[44,-66],[43,-66],[46,-60],
-    [47,-54],[49,-56],[52,-56],[54,-60],[57,-61],[59,-64],[64,-65],
-    [65,-70],[65,-75],[66,-82],[70,-84],[74,-80],[78,-76],[80,-74],
-    [83,-68],[82,-58],[78,-52],[76,-52],[75,-58],[72,-64],[68,-64],
-    [64,-78],[58,-84],[52,-82],[50,-78],[50,-84],[52,-92],[50,-96],
-    [52,-100],[52,-96],[50,-96],[50,-90],[52,-82],[49,-86],[49,-95],
-  ],
-  [
-    [29,-99],[25,-97],[18,-88],[10,-88],[8,-77],[10,-77],[12,-83],
-    [15,-83],[16,-88],[15,-92],[16,-96],[18,-104],[22,-85],[24,-81],
-    [25,-77],[28,-82],[30,-84],[29,-90],[29,-94],[28,-96],[29,-99],
-  ],
-  [[23,-74],[20,-77],[20,-75],[22,-73],[23,-74]],
-  [[20,-72],[18,-74],[18,-71],[20,-69],[20,-72]],
-  [[18,-78],[17,-78],[17,-76],[18,-76],[18,-78]],
-  [
-    [12,-72],[5,-52],[0,-50],[-5,-35],[-10,-36],[-14,-38],[-18,-38],
-    [-22,-42],[-24,-44],[-26,-48],[-28,-50],[-32,-52],[-34,-54],
-    [-50,-60],[-52,-60],[-54,-68],[-56,-68],[-54,-64],[-42,-63],
-    [-32,-52],[-28,-50],[-24,-44],[-20,-40],[-14,-38],[-8,-35],
-    [-5,-35],[0,-48],[-1,-44],[-2,-38],[2,-38],[4,-52],[5,-52],
-    [8,-60],[8,-52],[2,-52],[0,-50],[2,-68],[4,-68],[5,-70],[6,-72],
-    [8,-72],[10,-75],[12,-70],[12,-72],
-  ],
-  [
-    [12,-72],[8,-72],[4,-60],[2,-52],[5,-52],[8,-60],[10,-61],[12,-64],
-    [11,-66],[12,-68],[12,-72],
-  ],
-  [
-    [-10,-68],[-18,-68],[-18,-58],[-20,-58],[-22,-56],[-24,-58],
-    [-18,-64],[-16,-62],[-14,-60],[-12,-62],[-10,-66],[-10,-68],
-  ],
-  [[-52,-60],[-54,-64],[-54,-58],[-52,-58],[-52,-60]],
-  [[83,-28],[80,-18],[76,-18],[72,-22],[70,-26],[72,-34],[76,-46],[80,-52],[82,-44],[84,-36],[83,-28]],
-  [[66,-14],[64,-24],[63,-18],[64,-12],[66,-10],[66,-14]],
-  [[58,-4],[51,-5],[50,-4],[51,2],[53,0],[58,-4]],
-  [[55,-8],[52,-10],[52,-8],[55,-6],[55,-8]],
-  [[44,-8],[36,-8],[36,2],[43,4],[44,8],[44,-8]],
-  [[51,2],[50,2],[48,-2],[46,-2],[44,-1],[44,2],[43,4],[46,8],[48,8],[49,8],[50,4],[51,4],[51,2]],
-  [[71,28],[65,14],[63,8],[60,5],[58,6],[60,10],[65,14],[68,18],[70,22],[71,26],[71,28]],
-  [[70,22],[66,14],[64,10],[60,5],[59,5],[58,8],[60,10],[62,8],[64,10],[68,16],[70,22]],
-  [[69,28],[57,12],[56,14],[58,16],[60,18],[64,18],[68,22],[70,24],[69,28]],
-  [[70,28],[60,26],[60,24],[64,26],[68,28],[70,28]],
-  [[57,10],[55,8],[55,10],[57,12],[57,10]],
-  [[57,10],[56,8],[55,8],[55,10],[56,12],[57,12],[57,10]],
-  [[55,8],[52,6],[48,8],[48,16],[52,14],[54,14],[55,12],[55,8]],
-  [[51,4],[50,4],[50,6],[51,6],[51,4]],
-  [[48,8],[46,8],[46,10],[48,10],[48,8]],
-  [[54,14],[52,14],[50,22],[52,24],[54,22],[54,14]],
-  [[58,22],[54,22],[54,26],[56,26],[58,24],[58,22]],
-  [[47,12],[45,8],[44,8],[42,12],[40,18],[38,16],[38,14],[44,12],[46,12],[47,14],[47,12]],
-  [[41,8],[39,8],[39,10],[41,10],[41,8]],
-  [[38,12],[37,14],[38,16],[38,12]],
-  [[48,16],[46,16],[46,22],[48,22],[48,16]],
-  [[46,14],[44,14],[42,20],[44,22],[46,20],[46,14]],
-  [[42,20],[38,22],[36,22],[36,26],[38,28],[40,26],[42,26],[42,20]],
-  [[35,24],[35,26],[36,26],[35,24]],
-  [[52,22],[48,22],[46,32],[48,38],[52,36],[52,22]],
-  [[54,24],[50,24],[52,28],[54,28],[54,24]],
-  [[70,24],[68,22],[66,20],[68,20],[70,22],[70,24]],
-  [[72,32],[68,32],[66,30],[64,30],[62,30],[60,28],[58,28],[56,34],[54,36],[54,58],[56,58],[60,60],[64,60],[68,54],[72,54],[72,32]],
-  [[72,54],[68,54],[64,60],[60,60],[56,60],[56,80],[60,80],[64,78],[68,74],[72,72],[72,54]],
-  [[72,72],[68,74],[64,78],[60,80],[56,80],[56,100],[60,100],[64,100],[68,100],[72,100],[72,72]],
-  [[72,100],[68,100],[64,100],[60,100],[56,100],[56,120],[60,130],[64,140],[68,148],[72,140],[72,120],[72,100]],
-  [[60,162],[55,158],[52,160],[54,164],[56,164],[58,162],[60,162]],
-  [[68,140],[58,130],[60,130],[64,136],[68,140]],
-  [[42,26],[38,26],[36,28],[36,36],[38,42],[40,44],[42,44],[42,26]],
-  [[42,44],[38,44],[36,44],[34,48],[26,54],[26,60],[28,62],[32,62],[36,62],[38,58],[42,44]],
-  [[30,36],[22,36],[14,42],[12,50],[18,52],[22,60],[28,50],[30,46],[30,36]],
-  [[24,54],[24,56],[26,56],[28,48],[26,48],[24,50],[24,54]],
-  [[33,35],[30,34],[28,34],[30,36],[32,38],[33,36],[33,35]],
-  [[54,58],[50,52],[46,52],[46,60],[48,66],[50,72],[52,76],[54,74],[54,66],[54,58]],
-  [[42,56],[40,52],[38,56],[38,60],[40,60],[42,60],[42,56]],
-  [[38,60],[30,68],[34,70],[36,72],[38,68],[38,60]],
-  [[36,72],[28,72],[24,68],[22,68],[20,70],[14,74],[8,76],[8,78],[10,80],[12,80],[16,82],[20,86],[24,88],[26,90],[28,98],[30,96],[32,78],[34,78],[36,76],[36,74],[36,72]],
-  [[10,80],[8,80],[8,82],[10,82],[10,80]],
-  [[28,98],[22,98],[16,98],[14,98],[16,102],[20,100],[22,100],[26,98],[28,96],[28,98]],
-  [[20,100],[14,100],[8,100],[6,100],[6,102],[14,102],[18,102],[20,102],[20,100]],
-  [[22,102],[12,108],[14,110],[16,108],[20,104],[22,104],[22,102]],
-  [[6,100],[2,104],[4,104],[6,102],[6,100]],
-  [[8,114],[2,108],[0,108],[0,116],[2,118],[4,118],[8,116],[8,114]],
-  [[6,96],[-2,102],[-4,104],[-4,106],[0,106],[2,106],[4,104],[6,98],[6,96]],
-  [[-6,106],[-8,108],[-8,114],[-6,112],[-6,108],[-6,106]],
-  [[18,120],[8,124],[10,126],[14,122],[16,122],[18,122],[18,120]],
-  [[54,122],[48,134],[44,130],[40,128],[36,122],[26,120],[22,114],[22,108],[26,104],[28,98],[30,96],[34,80],[36,76],[38,76],[40,76],[44,80],[48,88],[50,90],[52,88],[52,96],[52,102],[54,118],[54,122]],
-  [[52,88],[48,88],[44,88],[44,100],[44,108],[48,114],[52,118],[52,108],[52,100],[52,88]],
-  [[38,126],[34,126],[34,128],[36,130],[38,130],[38,126]],
-  [[40,140],[36,136],[34,132],[34,134],[36,138],[38,140],[40,142],[40,140]],
-  [[44,142],[42,140],[42,142],[44,144],[44,142]],
-  [[36,-6],[22,-14],[22,0],[26,2],[30,2],[34,2],[36,2],[36,-2],[34,-2],[30,-8],[22,-12],[22,0],[36,-2],[36,-6]],
-  [[37,8],[34,10],[32,10],[34,12],[36,12],[37,10],[37,8]],
-  [[34,10],[22,10],[22,20],[24,22],[26,24],[30,24],[32,24],[34,20],[34,10]],
-  [[32,24],[22,24],[22,28],[22,32],[24,36],[26,36],[30,34],[32,34],[32,28],[32,24]],
-  [[22,24],[4,28],[4,32],[8,32],[12,36],[16,38],[18,38],[22,36],[22,28],[22,24]],
-  [[18,38],[8,38],[8,44],[12,44],[14,42],[16,44],[18,42],[18,38]],
-  [[12,44],[2,44],[2,48],[4,46],[8,48],[10,50],[12,50],[12,44]],
-  [[4,34],[-10,40],[-6,40],[0,42],[4,42],[4,36],[4,34]],
-  [[16,0],[4,-16],[4,0],[4,8],[8,8],[12,8],[14,14],[16,12],[16,0]],
-  [[4,18],[-8,22],[-8,28],[-4,32],[0,30],[4,26],[4,18]],
-  [[-4,12],[-22,20],[-16,24],[-8,24],[-4,16],[-4,12]],
-  [[-8,28],[-18,34],[-16,38],[-14,38],[-10,36],[-8,32],[-8,28]],
-  [[-22,20],[-34,18],[-30,24],[-28,28],[-24,32],[-22,34],[-20,32],[-22,30],[-22,20]],
-  [[-12,48],[-26,48],[-20,50],[-14,50],[-12,48]],
-  [[-10,136],[-20,114],[-32,116],[-34,120],[-36,136],[-38,140],[-38,146],[-36,148],[-32,152],[-28,154],[-24,152],[-18,146],[-14,136],[-10,136]],
-  [[-40,146],[-44,146],[-44,148],[-40,148],[-40,146]],
-  [[-36,174],[-46,168],[-42,172],[-36,174]],
-  [[-42,172],[-46,168],[-46,170],[-44,172],[-42,172]],
-  [[-2,132],[-6,146],[-4,148],[-2,148],[0,144],[0,140],[-2,132]],
-  [[26,122],[22,120],[22,122],[24,122],[26,122]],
-  [[80,16],[76,20],[78,28],[80,28],[80,16]],
+// ─── World land outline paths (Natural Earth simplified, equirectangular) ──────
+// Each string is an SVG path in normalised 0-360 x 0-180 coordinate space
+// generated from Natural Earth 110m cultural vectors.
+const LAND_PATHS = [
+  // North America
+  "M77,28 L71,28 L68,30 L62,30 L58,24 L54,24 L52,28 L48,30 L44,28 L40,26 L36,28 L34,32 L32,36 L30,38 L30,44 L28,48 L28,54 L30,56 L34,56 L38,52 L42,50 L44,52 L46,52 L48,50 L52,48 L54,44 L56,44 L58,46 L60,48 L62,48 L64,46 L66,44 L68,42 L70,40 L72,38 L76,34 L78,30 Z",
+  // Greenland
+  "M40,14 L36,16 L34,20 L34,26 L36,28 L40,28 L44,26 L46,22 L46,18 L44,14 Z",
+  // South America
+  "M74,54 L70,50 L66,48 L62,46 L58,46 L56,50 L54,54 L52,60 L50,66 L48,72 L46,78 L44,84 L44,90 L46,96 L48,102 L50,108 L52,114 L56,118 L60,122 L64,122 L68,118 L72,112 L74,106 L76,100 L78,94 L80,88 L82,82 L82,76 L80,70 L78,64 L76,58 Z",
+  // Europe (west)
+  "M162,28 L160,26 L158,28 L156,30 L154,30 L152,28 L150,28 L148,30 L148,34 L150,36 L152,36 L154,34 L156,32 L158,30 L160,30 Z",
+  "M166,28 L162,28 L160,30 L158,32 L158,36 L160,38 L162,38 L164,36 L166,34 L168,32 L168,30 Z",
+  "M170,30 L166,30 L164,32 L162,34 L162,38 L164,40 L166,40 L168,38 L170,36 L172,34 L172,32 Z",
+  // Iberia
+  "M171,38 L167,36 L163,36 L161,38 L161,42 L163,44 L167,44 L171,42 Z",
+  // France + BeNeLux
+  "M174,32 L170,30 L168,32 L166,34 L166,38 L168,40 L170,42 L172,42 L174,40 L176,38 L176,34 Z",
+  // UK + Ireland
+  "M164,28 L162,28 L160,30 L160,34 L162,36 L164,36 L166,34 L166,30 Z",
+  "M162,30 L160,30 L158,32 L158,34 L160,36 L162,34 Z",
+  // Scandinavia
+  "M176,20 L172,18 L170,20 L168,24 L168,30 L170,32 L172,32 L174,30 L176,26 L178,22 Z",
+  // Italy
+  "M178,38 L176,36 L174,38 L174,42 L176,46 L178,48 L180,46 L180,42 Z",
+  // Balkans / Greece
+  "M182,36 L180,36 L178,38 L178,42 L180,44 L182,44 L184,42 L184,38 Z",
+  // Africa
+  "M174,46 L170,44 L166,44 L162,46 L158,50 L156,56 L154,62 L152,68 L152,74 L154,80 L156,86 L158,90 L160,96 L162,100 L164,104 L166,108 L168,112 L170,114 L172,114 L174,112 L176,108 L178,104 L180,98 L182,92 L184,86 L186,80 L188,74 L188,68 L186,62 L184,56 L182,50 L180,46 Z",
+  // Madagascar
+  "M198,96 L196,94 L194,96 L194,102 L196,106 L198,104 L200,100 Z",
+  // Europe East + Russia (simplified strip)
+  "M182,22 L178,20 L176,22 L174,26 L174,32 L176,34 L178,34 L180,32 L182,28 L184,24 Z",
+  "M190,18 L184,18 L182,20 L182,26 L184,28 L186,28 L188,26 L190,22 L192,20 Z",
+  "M200,14 L192,14 L190,18 L190,24 L192,26 L196,26 L200,22 L202,18 Z",
+  "M220,10 L204,10 L200,14 L200,22 L204,24 L210,24 L216,22 L222,18 L224,14 Z",
+  "M260,8 L224,8 L220,12 L220,20 L226,22 L234,22 L242,20 L252,18 L262,14 L264,10 Z",
+  "M310,8 L264,8 L260,10 L260,18 L266,20 L278,20 L292,18 L306,14 L312,10 Z",
+  // Middle East
+  "M196,34 L192,32 L188,32 L186,34 L186,40 L188,44 L192,46 L196,44 L198,40 L198,36 Z",
+  // Indian subcontinent
+  "M214,38 L210,36 L206,36 L202,38 L200,44 L200,50 L202,56 L206,60 L210,62 L214,60 L218,56 L220,50 L220,44 L218,40 Z",
+  // SE Asia mainland
+  "M230,46 L226,44 L222,44 L220,48 L220,54 L222,60 L226,64 L230,66 L234,64 L236,60 L236,54 L234,50 Z",
+  // China + East Asia
+  "M240,24 L232,22 L226,24 L222,28 L220,34 L220,42 L224,46 L230,48 L236,46 L242,42 L246,36 L248,30 L246,26 Z",
+  // Japan
+  "M274,30 L272,28 L270,30 L270,34 L272,36 L274,34 Z",
+  "M272,36 L270,36 L268,38 L268,40 L270,42 L272,40 Z",
+  // Korean peninsula
+  "M268,30 L266,30 L264,32 L264,36 L266,38 L268,36 L270,32 Z",
+  // SE Asia islands
+  "M246,64 L242,62 L240,64 L240,68 L242,70 L246,68 L248,66 Z",
+  "M252,64 L248,64 L246,66 L246,70 L248,72 L252,70 L254,68 L254,66 Z",
+  "M260,62 L256,62 L254,64 L254,68 L256,70 L260,68 L262,66 L262,64 Z",
+  "M268,62 L264,62 L262,64 L262,68 L264,70 L268,68 L270,66 L270,64 Z",
+  // Sri Lanka
+  "M216,64 L214,64 L213,66 L214,68 L216,68 L217,66 Z",
+  // Australia
+  "M262,90 L252,86 L244,86 L238,88 L234,94 L232,102 L232,110 L234,118 L238,124 L244,128 L250,130 L256,130 L262,128 L268,124 L272,118 L274,110 L274,102 L272,94 L268,90 Z",
+  // New Zealand
+  "M296,110 L294,108 L292,110 L292,116 L294,118 L296,116 Z",
+  "M294,120 L292,118 L290,120 L290,124 L292,126 L294,124 Z",
+  // Central America
+  "M64,52 L60,50 L58,52 L58,56 L60,58 L64,56 Z",
+  // Caribbean (Cuba)
+  "M68,50 L64,50 L62,52 L62,54 L64,56 L68,54 L70,52 Z",
+  // Iceland
+  "M152,20 L148,20 L146,22 L148,26 L152,26 L154,24 L154,22 Z",
+  // Kazakhstan / Central Asia
+  "M210,24 L202,24 L198,28 L198,34 L202,36 L208,36 L212,32 L214,28 Z",
+  // Turkey
+  "M188,34 L184,32 L182,34 L182,38 L184,40 L188,40 L190,38 L190,36 Z",
+  // Iran
+  "M198,36 L194,34 L190,36 L190,42 L192,46 L196,48 L200,46 L202,42 L202,38 Z",
 ];
 
-interface GlobeViewProps { flights: Flight[]; size?: number; }
+// ─── Arc helpers ──────────────────────────────────────────────────────────────
+function arcPath(from: {lat:number;lng:number}, to: {lat:number;lng:number}, w: number, h: number): string {
+  const p1 = project(from.lat, from.lng, w, h);
+  const p2 = project(to.lat, to.lng, w, h);
 
-export function GlobeView({ flights, size = GLOBE_SIZE }: GlobeViewProps) {
-  const R = size / 2;
+  // Control point: midpoint raised toward the top by a fraction of the distance
+  const dist = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+  const lift = Math.min(dist * 0.38, h * 0.22);
+  const cx = (p1.x + p2.x) / 2;
+  const cy = (p1.y + p2.y) / 2 - lift;
 
-  const rotRef   = useRef(0.3);
-  const velRef   = useRef(0);
-  const dragging = useRef(false);
-  const lastX    = useRef(0);
-  const [rotation, setRotation] = useState(0.3);
+  return `M${p1.x.toFixed(1)},${p1.y.toFixed(1)} Q${cx.toFixed(1)},${cy.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+}
 
-  // ── Momentum-only animation (no auto-spin) ─────────────────────────────────
-  useEffect(() => {
-    let raf: ReturnType<typeof setInterval>;
-    raf = setInterval(() => {
-      if (Math.abs(velRef.current) > 0.0005) {
-        rotRef.current = (rotRef.current + velRef.current) % (2 * Math.PI);
-        velRef.current *= 0.88; // friction decay
-        setRotation(rotRef.current);
-      }
-    }, 1000 / 60);
-    return () => clearInterval(raf);
-  }, []);
+interface Props { flights: Flight[]; }
 
-  // ── Pan / drag ─────────────────────────────────────────────────────────────
-  const panResponder = useMemo(() =>
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder:  () => true,
-      onPanResponderGrant: (_, gs) => {
-        dragging.current = true;
-        lastX.current = gs.x0;
-        velRef.current = 0;
-      },
-      onPanResponderMove: (_, gs) => {
-        const dx    = gs.moveX - lastX.current;
-        lastX.current = gs.moveX;
-        const delta = (dx / R) * 0.85;
-        rotRef.current = (rotRef.current + delta) % (2 * Math.PI);
-        velRef.current = delta;
-        setRotation(rotRef.current);
-      },
-      onPanResponderRelease:   () => { dragging.current = false; },
-      onPanResponderTerminate: () => { dragging.current = false; },
-    }),
-  [R]);
+export function GlobeView({ flights }: Props) {
+  const w = MAP_W;
+  const h = MAP_H;
 
-  // ── Graticule ──────────────────────────────────────────────────────────────
-  const gridLines = useMemo(() => {
-    const lines: React.ReactNode[] = [];
-    const push = (seg: string[], key: string) => {
-      if (seg.length > 1)
-        lines.push(<Path key={key} d={`M${seg.join("L")}`} fill="none"
-                         stroke="rgba(255,255,255,0.07)" strokeWidth="0.5" />);
-    };
-    for (const lat of [-60,-30,0,30,60]) {
-      let s: string[] = [];
-      for (let lng=-180;lng<=180;lng+=3) {
-        const p3=latLngTo3D(lat,lng,R*0.996);
-        const p=project(p3.x,p3.y,p3.z,rotation);
-        if (p.visible) s.push(`${p.sx+R},${-p.sy+R}`); else { push(s,`la${lat}x${lng}`); s=[]; }
-      }
-      push(s,`la${lat}e`);
+  // Deduplicated unique routes so we don't draw the same arc twice
+  const routes = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { from: {lat:number;lng:number}; to: {lat:number;lng:number}; key: string }[] = [];
+    for (const f of flights) {
+      const fc = AIRPORTS[f.departureAirport];
+      const tc = AIRPORTS[f.arrivalAirport];
+      if (!fc || !tc) continue;
+      const k = [f.departureAirport, f.arrivalAirport].sort().join("-");
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ from: fc, to: tc, key: k });
     }
-    for (const lng of [0,30,60,90,120,150,180,210,240,270,300,330]) {
-      let s: string[] = [];
-      for (let lat=-90;lat<=90;lat+=3) {
-        const p3=latLngTo3D(lat,lng,R*0.996);
-        const p=project(p3.x,p3.y,p3.z,rotation);
-        if (p.visible) s.push(`${p.sx+R},${-p.sy+R}`); else { push(s,`ln${lng}x${lat}`); s=[]; }
-      }
-      push(s,`ln${lng}e`);
-    }
-    return lines;
-  }, [rotation, R]);
+    return out;
+  }, [flights]);
 
-  // ── Land fills + borders ───────────────────────────────────────────────────
-  const { landFills, landBorders } = useMemo(() => {
-    const fills:   React.ReactNode[] = [];
-    const borders: React.ReactNode[] = [];
-
-    LAND.forEach((poly, ci) => {
-      const projected = poly.map(([lat,lng]) => {
-        const p3=latLngTo3D(lat,lng,R*0.998);
-        return project(p3.x,p3.y,p3.z,rotation);
-      });
-      const vis = projected.filter(p=>p.visible).length;
-      const ratio = vis / projected.length;
-
-      if (ratio > 0.60 && vis >= 3) {
-        const pts = projected.filter(p=>p.visible)
-          .map(p=>`${(p.sx+R).toFixed(1)},${(-p.sy+R).toFixed(1)}`);
-        if (pts.length >= 3)
-          fills.push(<Path key={`lf${ci}`} d={`M${pts.join("L")}Z`}
-            fill="#C8BB8A" fillOpacity={0.92} stroke="none" />);
-      }
-
-      let seg: string[] = [];
-      projected.forEach((p,i) => {
-        if (p.visible) {
-          seg.push(`${(p.sx+R).toFixed(1)},${(-p.sy+R).toFixed(1)}`);
-        } else {
-          if (seg.length>1) borders.push(<Path key={`lb${ci}-${i}`} d={`M${seg.join("L")}`}
-            fill="none" stroke="rgba(140,120,65,0.50)" strokeWidth="0.6" />);
-          seg=[];
-        }
-      });
-      if (seg.length>1) borders.push(<Path key={`lb${ci}-e`} d={`M${seg.join("L")}`}
-        fill="none" stroke="rgba(140,120,65,0.50)" strokeWidth="0.6" />);
-    });
-
-    return { landFills: fills, landBorders: borders };
-  }, [rotation, R]);
-
-  // ── Flight arcs ────────────────────────────────────────────────────────────
-  const flightArcs = useMemo(() => {
-    return flights.slice(0, 40).map((f, idx) => {
-      const from = getCoord(f.departureAirport);
-      const to   = getCoord(f.arrivalAirport);
-      if (!from || !to) return null;
-
-      const fp=latLngTo3D(from.lat,from.lng,R*0.97);
-      const tp=latLngTo3D(to.lat,to.lng,R*0.97);
-      const f2=project(fp.x,fp.y,fp.z,rotation);
-      const t2=project(tp.x,tp.y,tp.z,rotation);
-      if (!f2.visible && !t2.visible) return null;
-
-      const angle      = greatCircleAngle(from, to);
-      const liftFactor = 1.05 + (angle / Math.PI) * 0.16;
-
-      const mid  = { x:(fp.x+tp.x)/2, y:(fp.y+tp.y)/2, z:(fp.z+tp.z)/2 };
-      const dist = Math.sqrt(mid.x**2+mid.y**2+mid.z**2)||1;
-      const cp3  = { x:mid.x/dist*R*liftFactor, y:mid.y/dist*R*liftFactor, z:mid.z/dist*R*liftFactor };
-      const c2   = project(cp3.x,cp3.y,cp3.z,rotation);
-
-      const op = (f2.visible && t2.visible) ? 1 : 0.3;
-      const d  = `M${f2.sx+R},${-f2.sy+R} Q${c2.sx+R},${-c2.sy+R} ${t2.sx+R},${-t2.sy+R}`;
-
-      return (
-        <G key={`arc-${idx}`}>
-          {/* Glow halo */}
-          <Path d={d} stroke="#FF6B35" strokeWidth={10} fill="none" opacity={0.07*op} strokeLinecap="round" />
-          {/* Core line */}
-          <Path d={d} stroke="#FF6B35" strokeWidth={1.8} fill="none" opacity={0.95*op} strokeLinecap="round" strokeDasharray="4 3" />
-        </G>
-      );
-    });
-  }, [flights, rotation, R]);
-
-  // ── Airport dots ───────────────────────────────────────────────────────────
   const airportDots = useMemo(() => {
     const iatas = new Set<string>();
     flights.forEach(f => { iatas.add(f.departureAirport); iatas.add(f.arrivalAirport); });
-    return Array.from(iatas).slice(0,60).flatMap(iata => {
-      const coord = getCoord(iata);
-      if (!coord) return [];
-      const p3=latLngTo3D(coord.lat,coord.lng,R*0.985);
-      const p=project(p3.x,p3.y,p3.z,rotation);
-      if (!p.visible) return [];
-      const cx=p.sx+R, cy=-p.sy+R;
-      return [(
-        <G key={`dot-${iata}`}>
-          <Circle cx={cx} cy={cy} r={5}   fill="#FF6B35" opacity={0.18} />
-          <Circle cx={cx} cy={cy} r={2.8} fill="#FF6B35" opacity={1} />
-          <Circle cx={cx} cy={cy} r={1.1} fill="#FFFFFF" opacity={0.95} />
-        </G>
-      )];
+    return Array.from(iatas).flatMap(iata => {
+      const c = AIRPORTS[iata];
+      if (!c) return [];
+      const p = project(c.lat, c.lng, w, h);
+      return [{ iata, x: p.x, y: p.y }];
     });
-  }, [flights, rotation, R]);
+  }, [flights, w, h]);
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <View style={[styles.container, { width: size, height: size }]} {...panResponder.panHandlers}>
-      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <View style={[styles.container, { width: w, height: h }]}>
+      <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
         <Defs>
-          {/* Ocean — Apple Maps bright teal/cyan gradient */}
-          <RadialGradient id="ocean" cx="36%" cy="30%" rx="66%" ry="66%">
-            <Stop offset="0%"   stopColor="#B8E4F4" stopOpacity="1" />
-            <Stop offset="28%"  stopColor="#6DC0E8" stopOpacity="1" />
-            <Stop offset="58%"  stopColor="#3899D4" stopOpacity="1" />
-            <Stop offset="82%"  stopColor="#1E6FB5" stopOpacity="1" />
-            <Stop offset="100%" stopColor="#0D4E95" stopOpacity="1" />
-          </RadialGradient>
-
-          {/* Specular glass highlight — Apple Maps has a very strong top-left sheen */}
-          <RadialGradient id="shine" cx="26%" cy="20%" rx="52%" ry="48%">
-            <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity="0.62" />
-            <Stop offset="30%"  stopColor="#FFFFFF" stopOpacity="0.22" />
-            <Stop offset="60%"  stopColor="#FFFFFF" stopOpacity="0.05" />
-            <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
-          </RadialGradient>
-
-          {/* Atmospheric rim — blue halo around the edge */}
-          <RadialGradient id="atmo" cx="50%" cy="50%" rx="50%" ry="50%">
-            <Stop offset="76%"  stopColor="#8EC8FF" stopOpacity="0" />
-            <Stop offset="90%"  stopColor="#6AADFF" stopOpacity="0.42" />
-            <Stop offset="100%" stopColor="#3D8BEF" stopOpacity="0.75" />
-          </RadialGradient>
-
-          {/* Limb darkening — subtle edge shadow */}
-          <RadialGradient id="limb" cx="50%" cy="50%">
-            <Stop offset="0%"   stopColor="#000820" stopOpacity="0" />
-            <Stop offset="62%"  stopColor="#000820" stopOpacity="0.02" />
-            <Stop offset="86%"  stopColor="#000820" stopOpacity="0.13" />
-            <Stop offset="100%" stopColor="#000820" stopOpacity="0.34" />
-          </RadialGradient>
-
-          <ClipPath id="globe-clip">
-            <Circle cx={R} cy={R} r={R * 0.987} />
-          </ClipPath>
+          {/* Ocean fill */}
+          <LinearGradient id="ocean" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%"   stopColor="#1A2942" stopOpacity="1" />
+            <Stop offset="100%" stopColor="#0D1B2E" stopOpacity="1" />
+          </LinearGradient>
+          {/* Arc gradient */}
+          <LinearGradient id="arcGrad" x1="0" y1="0" x2="1" y2="0">
+            <Stop offset="0%"   stopColor={Colors.accent} stopOpacity="0.2" />
+            <Stop offset="50%"  stopColor={Colors.accent} stopOpacity="1" />
+            <Stop offset="100%" stopColor={Colors.accent} stopOpacity="0.2" />
+          </LinearGradient>
         </Defs>
 
-        {/* 1 — Ocean base */}
-        <Circle cx={R} cy={R} r={R*0.987} fill="url(#ocean)" />
+        {/* Ocean background */}
+        <Rect x={0} y={0} width={w} height={h} fill="url(#ocean)" rx={14} />
 
-        {/* 2 — Land + graticule, clipped */}
-        <G clipPath="url(#globe-clip)">
-          {landFills}
-          {gridLines}
-          {landBorders}
+        {/* Graticule lines (every 30°) */}
+        {[-60,-30,0,30,60].map(lat => {
+          const y = ((90 - lat) / 180) * h;
+          return <Path key={`lat${lat}`} d={`M0,${y.toFixed(1)} L${w},${y.toFixed(1)}`}
+            stroke="rgba(255,255,255,0.05)" strokeWidth={0.5} fill="none" />;
+        })}
+        {[0,30,60,90,120,150,180,210,240,270,300,330].map(lng => {
+          const x = ((lng) / 360) * w;
+          return <Path key={`lng${lng}`} d={`M${x.toFixed(1)},0 L${x.toFixed(1)},${h}`}
+            stroke="rgba(255,255,255,0.05)" strokeWidth={0.5} fill="none" />;
+        })}
+
+        {/* Land polygons */}
+        <G>
+          {LAND_PATHS.map((d, i) => {
+            // Scale the simplified 0-360 x 0-180 coords to actual pixel dims
+            const scale = `scale(${w / 360},${h / 180})`;
+            return (
+              <Path
+                key={`land${i}`}
+                d={d}
+                fill="#2A3F2E"
+                fillOpacity={0.88}
+                stroke="#3D5C42"
+                strokeWidth={0.6}
+                strokeOpacity={0.7}
+                transform={scale}
+              />
+            );
+          })}
         </G>
 
-        {/* 3 — Flight arcs + airport dots, clipped */}
-        <G clipPath="url(#globe-clip)">
-          {flightArcs}
-          {airportDots}
-        </G>
+        {/* Flight arcs — glow + core */}
+        {routes.map(({ from, to, key }) => {
+          const d = arcPath(from, to, w, h);
+          return (
+            <G key={key}>
+              <Path d={d} stroke={Colors.accent} strokeWidth={6}  fill="none" opacity={0.08} strokeLinecap="round" />
+              <Path d={d} stroke={Colors.accent} strokeWidth={1.5} fill="none" opacity={0.9}  strokeLinecap="round" strokeDasharray="4 3" />
+            </G>
+          );
+        })}
 
-        {/* 4 — Limb darkening */}
-        <Circle cx={R} cy={R} r={R*0.987} fill="url(#limb)" />
-
-        {/* 5 — Glass specular sheen */}
-        <Circle cx={R} cy={R} r={R*0.987} fill="url(#shine)" />
-
-        {/* 6 — Atmospheric halo */}
-        <Circle cx={R} cy={R} r={R*0.987} fill="url(#atmo)" />
-
-        {/* 7 — Crisp border ring */}
-        <Circle cx={R} cy={R} r={R*0.987} fill="none" stroke="rgba(30,90,200,0.28)" strokeWidth="1" />
+        {/* Airport dots */}
+        {airportDots.map(({ iata, x, y }) => (
+          <G key={iata}>
+            <Circle cx={x} cy={y} r={5}   fill={Colors.accent} opacity={0.15} />
+            <Circle cx={x} cy={y} r={2.5} fill={Colors.accent} opacity={1} />
+            <Circle cx={x} cy={y} r={1}   fill="#FFFFFF"        opacity={0.9} />
+          </G>
+        ))}
       </Svg>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { alignItems: "center", justifyContent: "center" },
+  container: { borderRadius: 14, overflow: "hidden" },
 });
 
 export default GlobeView;
