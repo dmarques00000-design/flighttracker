@@ -299,9 +299,7 @@ function extractAirlineCode(code: string): string {
 /** Parse a time string from Aviationstack (ISO 8601 or HH:MM) to "HH:MM" */
 function toHHMM(isoOrTime: string | null | undefined): string {
   if (!isoOrTime) return "00:00";
-  // ISO 8601: "2024-03-15T14:35:00+00:00" → take chars 11-15
   if (isoOrTime.includes("T")) return isoOrTime.substring(11, 16);
-  // Already HH:MM or HH:MM:SS
   return isoOrTime.substring(0, 5);
 }
 
@@ -395,12 +393,8 @@ function generateMockFlight(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Aviationstack API integration
-// Docs: https://aviationstack.com/documentation
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Aviationstack /v1/flights response shape (partial — only fields we use).
- */
 interface AviationstackFlight {
   flight_date: string;
   flight_status: "scheduled" | "active" | "landed" | "cancelled" | "incident" | "diverted" | string;
@@ -408,7 +402,7 @@ interface AviationstackFlight {
     airport: string;
     iata: string;
     icao: string;
-    scheduled: string;  // ISO 8601
+    scheduled: string;
     estimated: string | null;
     actual: string | null;
     delay: number | null;
@@ -453,24 +447,27 @@ async function lookupFromAviationstack(
   arr?: string,
 ) {
   const apiKey = process.env.AVIATIONSTACK_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    console.log("[Aviationstack] No API key found, skipping");
+    return null;
+  }
 
-  // Build URL — use http (HTTPS requires paid plan on Aviationstack)
+  // NOTE: flight_date is a paid-only filter — omit it on the free plan.
+  // We fetch by flight_iata only and filter locally by date.
   const params = new URLSearchParams({
     access_key: apiKey,
     flight_iata: code.toUpperCase(),
-    flight_date: date,
-    limit: "5",
+    limit: "10",
   });
-  if (dep) params.set("dep_iata", dep.toUpperCase());
-  if (arr) params.set("arr_iata", arr.toUpperCase());
 
   const url = `http://api.aviationstack.com/v1/flights?${params.toString()}`;
+  console.log(`[Aviationstack] Fetching ${code} (date filter: ${date})`);
 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) {
-      console.error(`[Aviationstack] HTTP ${res.status}`);
+      const body = await res.text().catch(() => "");
+      console.error(`[Aviationstack] HTTP ${res.status} — ${body.slice(0, 200)}`);
       return null;
     }
 
@@ -482,26 +479,27 @@ async function lookupFromAviationstack(
     }
 
     const flights = json.data;
+    console.log(`[Aviationstack] Got ${flights?.length ?? 0} result(s)`);
     if (!flights || flights.length === 0) return null;
 
-    // Pick the best matching flight: prefer the one whose date matches exactly,
-    // then prefer active/landed over scheduled.
+    // Rank: exact date match first, then active → landed → scheduled
+    const statusScore = (s: string) =>
+      s === "active" ? 0 : s === "landed" ? 1 : s === "scheduled" ? 2 : 3;
+
     const ranked = [...flights].sort((a, b) => {
-      const statusScore = (s: string) =>
-        s === "active" ? 0 : s === "landed" ? 1 : s === "scheduled" ? 2 : 3;
       const dateMatchA = a.flight_date === date ? 0 : 1;
       const dateMatchB = b.flight_date === date ? 0 : 1;
       return dateMatchA - dateMatchB || statusScore(a.flight_status) - statusScore(b.flight_status);
     });
 
     const f = ranked[0];
+    console.log(`[Aviationstack] Using flight: ${f.flight.iata} on ${f.flight_date} status=${f.flight_status}`);
 
     const depIata = f.departure.iata?.toUpperCase() || "";
     const arrIata = f.arrival.iata?.toUpperCase() || "";
     const depAirportData = AIRPORTS[depIata];
     const arrAirportData = AIRPORTS[arrIata];
 
-    // Compute distance and CO2 from coordinates if we have them
     let distMiles = 0;
     let co2Kg = 0;
     if (depAirportData && arrAirportData) {
@@ -513,11 +511,9 @@ async function lookupFromAviationstack(
       co2Kg = Math.round(distKm * 0.115);
     }
 
-    // Prefer actual times, then estimated, then scheduled
     const depTime = toHHMM(f.departure.actual ?? f.departure.estimated ?? f.departure.scheduled);
     const arrTime = toHHMM(f.arrival.actual ?? f.arrival.estimated ?? f.arrival.scheduled);
 
-    // Duration: derive from actual/estimated times where available
     const depISO = f.departure.actual ?? f.departure.estimated ?? f.departure.scheduled;
     const arrISO = f.arrival.actual ?? f.arrival.estimated ?? f.arrival.scheduled;
     const durationMinutes =
@@ -533,17 +529,12 @@ async function lookupFromAviationstack(
     const rawStatus = f.flight_status;
     const status: "on_time" | "delayed" =
       rawStatus === "cancelled" || rawStatus === "incident" || rawStatus === "diverted"
-        ? "delayed" // surface unusual statuses as delayed until we add a cancelled state
+        ? "delayed"
         : delayMinutes > 15 ? "delayed" : "on_time";
 
     const airlineCode = f.airline.iata?.toUpperCase() || extractAirlineCode(code);
-    const airlineName =
-      AIRLINES[airlineCode] || f.airline.name || "Unknown Airlines";
-
-    // Aircraft: Aviationstack returns ICAO type codes (e.g. "B738"), map best-effort
-    const aircraftLabel = f.aircraft?.icao
-      ? icaoToReadable(f.aircraft.icao)
-      : "Commercial Aircraft";
+    const airlineName = AIRLINES[airlineCode] || f.airline.name || "Unknown Airlines";
+    const aircraftLabel = f.aircraft?.icao ? icaoToReadable(f.aircraft.icao) : "Commercial Aircraft";
 
     return {
       flightCode: f.flight.iata || code,
@@ -612,7 +603,7 @@ function icaoToReadable(icao: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Legacy Airlabs fallback (kept for backwards compatibility)
+// Legacy Airlabs fallback
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function lookupFromAirlabs(code: string, date: string) {
@@ -698,14 +689,11 @@ export async function lookupFlight(
   dep?: string,
   arr?: string,
 ) {
-  // 1. Try Aviationstack (primary)
   const aviationstackResult = await lookupFromAviationstack(code, date, dep, arr);
   if (aviationstackResult) return aviationstackResult;
 
-  // 2. Try Airlabs (legacy fallback if key present)
   const airlabsResult = await lookupFromAirlabs(code, date);
   if (airlabsResult) return airlabsResult;
 
-  // 3. Deterministic mock (always works offline / in dev)
   return generateMockFlight(code, date, dep, arr);
 }
