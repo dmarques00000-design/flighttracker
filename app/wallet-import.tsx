@@ -21,44 +21,12 @@ import {
   fetchBoardingPasses,
   WalletBoardingPass,
 } from "@/modules/WalletModule";
+import { apiRequest } from "@/lib/query-client";
 
-// Distance & CO2 estimates (same logic as add-flight)
-const AIRPORT_COORDS: Record<string, { lat: number; lng: number }> = {
-  LIS:{lat:38.78,lng:-9.14},GVA:{lat:46.24,lng:6.11},ZRH:{lat:47.46,lng:8.55},
-  ATL:{lat:33.64,lng:-84.43},MIA:{lat:25.80,lng:-80.29},JFK:{lat:40.64,lng:-73.78},
-  LAX:{lat:33.94,lng:-118.41},LHR:{lat:51.47,lng:-0.45},CDG:{lat:49.01,lng:2.55},
-  DXB:{lat:25.25,lng:55.37},HKG:{lat:22.31,lng:113.92},SYD:{lat:-33.94,lng:151.18},
-  SIN:{lat:1.36,lng:103.99},NRT:{lat:35.77,lng:140.39},FRA:{lat:50.04,lng:8.56},
-  AMS:{lat:52.31,lng:4.76},MAD:{lat:40.49,lng:-3.57},BCN:{lat:41.30,lng:2.08},
-  FCO:{lat:41.80,lng:12.24},MUC:{lat:48.35,lng:11.78},ORD:{lat:41.97,lng:-87.91},
-  SFO:{lat:37.62,lng:-122.38},BOS:{lat:42.37,lng:-71.01},DOH:{lat:25.27,lng:51.61},
-  IST:{lat:40.98,lng:28.82},VIE:{lat:48.11,lng:16.57},CPH:{lat:55.62,lng:12.66},
-};
+type ImportState = "idle" | "requesting" | "loading" | "ready" | "importing" | "done";
 
-function haversineKm(a: {lat:number;lng:number}, b: {lat:number;lng:number}): number {
-  const R = 6371;
-  const dLat = (b.lat - a.lat) * Math.PI / 180;
-  const dLng = (b.lng - a.lng) * Math.PI / 180;
-  const x = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
-}
-
-function estimateDistance(dep: string, arr: string): number {
-  const a = AIRPORT_COORDS[dep], b = AIRPORT_COORDS[arr];
-  if (!a || !b) return 500;
-  return Math.round(haversineKm(a, b) * 0.621371);
-}
-
-function estimateDuration(dep: string, arr: string): number {
-  const miles = estimateDistance(dep, arr);
-  return Math.round((miles / 500) * 60 + 30);
-}
-
-function estimateCO2(miles: number): number {
-  return Math.round(miles * 0.255 * 0.453592);
-}
-
-type ImportState = "idle" | "requesting" | "loading" | "ready" | "done";
+// Per-pass enrichment state shown during import
+type EnrichState = "pending" | "fetching" | "done" | "failed";
 
 function PassCard({
   pass,
@@ -128,7 +96,6 @@ function PassCard({
               {selected && <Ionicons name="checkmark" size={14} color={Colors.white} />}
             </View>
           )}
-          {/* Upcoming indicator */}
           {isUpcoming && !alreadyAdded && (
             <View style={styles.upcomingBadge}>
               <Text style={styles.upcomingText}>Upcoming</Text>
@@ -147,9 +114,11 @@ export default function WalletImportScreen() {
   const [passes, setPasses] = useState<WalletBoardingPass[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isMock, setIsMock] = useState(false);
-  const [importing, setImporting] = useState(false);
 
-  // Check which passes are already in the logbook
+  // Per-pass enrichment progress
+  const [enrichProgress, setEnrichProgress] = useState<Record<string, EnrichState>>({});
+  const [enrichLabel, setEnrichLabel] = useState("");
+
   const alreadyAddedKeys = new Set(
     flights.map((f) => `${f.flightCode}-${f.date}`)
   );
@@ -183,11 +152,13 @@ export default function WalletImportScreen() {
     setState("loading");
     const { passes: fetched, isMock: mock } = await fetchBoardingPasses();
     setIsMock(mock);
-    setPasses(fetched);
 
-    // Pre-select all non-already-added passes
+    // Sort: most recent first
+    const sorted = [...fetched].sort((a, b) => b.date.localeCompare(a.date));
+    setPasses(sorted);
+
     const preSelected = new Set<string>();
-    fetched.forEach((p) => {
+    sorted.forEach((p) => {
       const key = `${p.flightCode}-${p.date}`;
       if (!alreadyAddedKeys.has(key)) preSelected.add(p.serialNumber);
     });
@@ -223,36 +194,57 @@ export default function WalletImportScreen() {
   async function handleImport() {
     if (selected.size === 0) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setImporting(true);
+    setState("importing");
 
     const toImport = passes.filter((p) => selected.has(p.serialNumber));
+    const progress: Record<string, EnrichState> = {};
+    toImport.forEach((p) => { progress[p.serialNumber] = "pending"; });
+    setEnrichProgress({ ...progress });
 
-    for (const pass of toImport) {
-      const miles = estimateDistance(pass.departureAirport, pass.arrivalAirport);
-      const duration = estimateDuration(pass.departureAirport, pass.arrivalAirport);
-      const co2 = estimateCO2(miles);
+    for (let i = 0; i < toImport.length; i++) {
+      const pass = toImport[i];
+      setEnrichLabel(`Fetching ${pass.flightCode} (${i + 1}/${toImport.length})...`);
+
+      progress[pass.serialNumber] = "fetching";
+      setEnrichProgress({ ...progress });
+
+      let flightData: any = null;
+      try {
+        const res = await apiRequest(
+          "GET",
+          `/api/flights/lookup?code=${pass.flightCode}&date=${pass.date}`
+        );
+        flightData = await res.json();
+      } catch {
+        // API failed — fall back to pass data
+      }
+
+      const fd = flightData;
       await addFlight({
         flightCode: pass.flightCode,
         date: pass.date,
-        airline: pass.airline,
-        airlineCode: pass.airlineCode,
-        departureAirport: pass.departureAirport,
-        arrivalAirport: pass.arrivalAirport,
-        departureCity: pass.departureCity,
-        arrivalCity: pass.arrivalCity,
-        departureTime: pass.departureTime,
-        arrivalTime: pass.arrivalTime,
-        durationMinutes: duration,
-        distanceMiles: miles,
-        co2Kg: co2,
-        status: "on_time",
-        delayMinutes: 0,
-        aircraft: pass.aircraft,
-        verified: true,
+        airline: fd?.airline ?? pass.airline,
+        airlineCode: fd?.airlineCode ?? pass.airlineCode,
+        departureAirport: fd?.departureAirport ?? pass.departureAirport,
+        arrivalAirport: fd?.arrivalAirport ?? pass.arrivalAirport,
+        departureCity: fd?.departureCity ?? pass.departureCity,
+        arrivalCity: fd?.arrivalCity ?? pass.arrivalCity,
+        departureTime: fd?.departureTime ?? pass.departureTime,
+        arrivalTime: fd?.arrivalTime ?? pass.arrivalTime,
+        durationMinutes: fd?.durationMinutes ?? 120,
+        distanceMiles: fd?.distanceMiles ?? 0,
+        co2Kg: fd?.co2Kg ?? 0,
+        status: fd?.status ?? "on_time",
+        delayMinutes: fd?.delayMinutes ?? 0,
+        aircraft: fd?.aircraft ?? pass.aircraft,
+        verified: !(fd?.isMock ?? true),
       });
+
+      progress[pass.serialNumber] = "done";
+      setEnrichProgress({ ...progress });
     }
 
-    setImporting(false);
+    setEnrichLabel("");
     setState("done");
   }
 
@@ -281,7 +273,7 @@ export default function WalletImportScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
       >
-        {/* Idle state — connect prompt */}
+        {/* Idle */}
         {state === "idle" && (
           <Animated.View entering={FadeIn.duration(300)} style={styles.connectWrap}>
             <View style={styles.walletIconWrap}>
@@ -289,14 +281,15 @@ export default function WalletImportScreen() {
             </View>
             <Text style={styles.connectTitle}>Import from Apple Wallet</Text>
             <Text style={styles.connectBody}>
-              Connect your iPhone Wallet to pull in boarding passes and quickly add flights to your logbook.
+              Connect your iPhone Wallet to pull in boarding passes \u2014 including expired ones \u2014 and quickly add past and upcoming flights to your logbook.
               No account needed \u2014 everything stays on your device.
             </Text>
 
             <View style={styles.featureList}>
               {[
                 { icon: "shield-checkmark-outline", text: "Private \u2014 data never leaves your phone" },
-                { icon: "flash-outline", text: "Instantly import multiple flights at once" },
+                { icon: "time-outline", text: "Includes expired passes \u2014 log your full history" },
+                { icon: "flash-outline", text: "Real flight data fetched automatically via API" },
                 { icon: "checkmark-circle-outline", text: "Review each pass before adding" },
               ].map((item) => (
                 <View key={item.icon} style={styles.featureRow}>
@@ -325,13 +318,38 @@ export default function WalletImportScreen() {
           </Animated.View>
         )}
 
-        {/* Requesting / loading states */}
+        {/* Requesting / loading */}
         {(state === "requesting" || state === "loading") && (
           <Animated.View entering={FadeIn.duration(200)} style={styles.loadingWrap}>
             <ActivityIndicator size="large" color={Colors.accent} />
             <Text style={styles.loadingText}>
               {state === "requesting" ? "Requesting access..." : "Reading boarding passes..."}
             </Text>
+          </Animated.View>
+        )}
+
+        {/* Importing — per-pass progress */}
+        {state === "importing" && (
+          <Animated.View entering={FadeIn.duration(200)} style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color={Colors.accent} />
+            <Text style={styles.loadingText}>{enrichLabel || "Importing flights..."}</Text>
+            <View style={styles.enrichList}>
+              {passes
+                .filter((p) => selected.has(p.serialNumber))
+                .map((p) => {
+                  const s = enrichProgress[p.serialNumber] ?? "pending";
+                  return (
+                    <View key={p.serialNumber} style={styles.enrichRow}>
+                      <Ionicons
+                        name={s === "done" ? "checkmark-circle" : s === "fetching" ? "radio-button-on" : "ellipse-outline"}
+                        size={15}
+                        color={s === "done" ? Colors.green : s === "fetching" ? Colors.accent : Colors.textMuted}
+                      />
+                      <Text style={styles.enrichText}>{p.flightCode} \u00b7 {p.date}</Text>
+                    </View>
+                  );
+                })}
+            </View>
           </Animated.View>
         )}
 
@@ -342,7 +360,7 @@ export default function WalletImportScreen() {
               <View style={styles.mockBanner}>
                 <Ionicons name="flask-outline" size={15} color={Colors.amber} />
                 <Text style={styles.mockBannerText}>
-                  Preview mode \u2014 showing sample boarding passes. On a real device with a custom build, your actual Wallet passes will appear here.
+                  Preview mode \u2014 showing sample boarding passes including expired ones. On a real device with a custom build, your actual Wallet passes will appear here.
                 </Text>
               </View>
             )}
@@ -378,7 +396,7 @@ export default function WalletImportScreen() {
           </Animated.View>
         )}
 
-        {/* Done state */}
+        {/* Done */}
         {state === "done" && (
           <Animated.View entering={FadeInDown.springify()} style={styles.doneWrap}>
             <View style={styles.doneIconWrap}>
@@ -410,20 +428,13 @@ export default function WalletImportScreen() {
           </View>
           <Pressable
             onPress={handleImport}
-            disabled={importing}
             style={({ pressed }) => [
               styles.importBtn,
-              { opacity: pressed || importing ? 0.8 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
+              { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
             ]}
           >
-            {importing ? (
-              <ActivityIndicator size="small" color={Colors.white} />
-            ) : (
-              <>
-                <Ionicons name="add-circle-outline" size={18} color={Colors.white} style={{ marginRight: 6 }} />
-                <Text style={styles.importBtnText}>Add to Logbook</Text>
-              </>
-            )}
+            <Ionicons name="add-circle-outline" size={18} color={Colors.white} style={{ marginRight: 6 }} />
+            <Text style={styles.importBtnText}>Add to Logbook</Text>
           </Pressable>
         </Animated.View>
       )}
@@ -442,7 +453,6 @@ const styles = StyleSheet.create({
 
   scroll: { paddingHorizontal: 20, paddingTop: 8 },
 
-  // Connect / idle
   connectWrap: { alignItems: "center", paddingTop: 40 },
   walletIconWrap: { width: 90, height: 90, borderRadius: 26, backgroundColor: Colors.accentDim, alignItems: "center", justifyContent: "center", marginBottom: 24 },
   connectTitle: { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold", textAlign: "center", marginBottom: 12 },
@@ -456,15 +466,16 @@ const styles = StyleSheet.create({
   connectBtn: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.accent, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30 },
   connectBtnText: { fontSize: 16, color: Colors.white, fontFamily: "DMSans_700Bold" },
 
-  // Loading
-  loadingWrap: { alignItems: "center", paddingTop: 100, gap: 16 },
+  loadingWrap: { alignItems: "center", paddingTop: 80, gap: 16 },
   loadingText: { fontSize: 15, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
 
-  // Mock banner
+  enrichList: { width: "100%", gap: 8, marginTop: 8 },
+  enrichRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  enrichText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
+
   mockBanner: { flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: Colors.amber + "18", borderRadius: 12, padding: 12, marginBottom: 16 },
   mockBannerText: { flex: 1, fontSize: 12, color: Colors.amber, fontFamily: "DMSans_400Regular", lineHeight: 18 },
 
-  // Passes list
   passesHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 },
   passesTitle: { fontSize: 17, color: Colors.text, fontFamily: "DMSans_700Bold" },
   passesSub: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 },
@@ -493,7 +504,6 @@ const styles = StyleSheet.create({
   upcomingBadge: { backgroundColor: Colors.accentDim, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   upcomingText: { fontSize: 10, color: Colors.accent, fontFamily: "DMSans_700Bold" },
 
-  // Import bar
   importBar: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: Colors.card, borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: 12, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   importBarLeft: { gap: 1 },
   importBarCount: { fontSize: 17, color: Colors.text, fontFamily: "DMSans_700Bold" },
@@ -501,7 +511,6 @@ const styles = StyleSheet.create({
   importBtn: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.accent, paddingHorizontal: 20, paddingVertical: 14, borderRadius: 14 },
   importBtnText: { fontSize: 15, color: Colors.white, fontFamily: "DMSans_700Bold" },
 
-  // Done
   doneWrap: { alignItems: "center", paddingTop: 60 },
   doneIconWrap: { marginBottom: 20 },
   doneTitle: { fontSize: 24, color: Colors.text, fontFamily: "DMSans_700Bold", marginBottom: 10 },
