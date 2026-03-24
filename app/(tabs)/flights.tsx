@@ -6,7 +6,8 @@ import {
   SectionList,
   Pressable,
   Platform,
-  ScrollView,
+  Modal,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -47,9 +48,9 @@ function groupFlights(
   } else if (timeFilter === "past") {
     filtered = flights.filter((f) => f.date < TODAY).sort((a, b) => b.date.localeCompare(a.date));
   } else if (timeFilter === "all") {
-    filtered = [...flights];
+    filtered = [...flights].sort((a, b) => b.date.localeCompare(a.date));
   } else {
-    filtered = flights.filter((f) => f.date.startsWith(String(timeFilter)));
+    filtered = flights.filter((f) => f.date.startsWith(String(timeFilter))).sort((a, b) => b.date.localeCompare(a.date));
   }
 
   if (groupBy === "all") {
@@ -85,6 +86,73 @@ function groupFlights(
     });
 }
 
+// ─── Dropdown pill (identical pattern to home screen) ──────────────────────────
+interface DropdownOption { key: TimeFilter; label: string; }
+
+function PeriodDropdown({
+  value,
+  options,
+  onChange,
+}: {
+  value: TimeFilter;
+  options: DropdownOption[];
+  onChange: (v: TimeFilter) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = options.find((o) => o.key === value);
+  const label = current?.label ?? "Filter";
+
+  return (
+    <>
+      <Pressable
+        onPress={() => { Haptics.selectionAsync(); setOpen(true); }}
+        style={({ pressed }) => [styles.dropdownTrigger, { opacity: pressed ? 0.8 : 1 }]}
+      >
+        <Ionicons name="calendar-outline" size={14} color={Colors.accent} />
+        <Text style={styles.dropdownLabel}>{label}</Text>
+        <Ionicons name="chevron-down" size={14} color={Colors.accent} />
+      </Pressable>
+
+      <Modal transparent animationType="fade" visible={open} onRequestClose={() => setOpen(false)}>
+        <TouchableWithoutFeedback onPress={() => setOpen(false)}>
+          <View style={styles.dropdownOverlay}>
+            <TouchableWithoutFeedback>
+              <Animated.View entering={FadeIn.duration(120)} style={styles.dropdownSheet}>
+                <Text style={styles.dropdownSheetTitle}>Filter by period</Text>
+                {options.map((opt, i) => {
+                  const isActive = opt.key === value;
+                  return (
+                    <Pressable
+                      key={String(opt.key)}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        onChange(opt.key);
+                        setOpen(false);
+                      }}
+                      style={({ pressed }) => [
+                        styles.dropdownOption,
+                        i < options.length - 1 && styles.dropdownOptionBorder,
+                        isActive && styles.dropdownOptionActive,
+                        { opacity: pressed ? 0.8 : 1 },
+                      ]}
+                    >
+                      <Text style={[styles.dropdownOptionText, isActive && styles.dropdownOptionTextActive]}>
+                        {opt.label}
+                      </Text>
+                      {isActive && <Ionicons name="checkmark" size={16} color={Colors.accent} />}
+                    </Pressable>
+                  );
+                })}
+              </Animated.View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+    </>
+  );
+}
+
+// ─── Flight card ───────────────────────────────────────────────────────────────
 function FlightItem({ flight, onDelete, index }: { flight: Flight; onDelete: () => void; index: number }) {
   const [confirming, setConfirming] = useState(false);
   const isUpcoming = flight.date >= TODAY;
@@ -107,9 +175,7 @@ function FlightItem({ flight, onDelete, index }: { flight: Flight; onDelete: () 
   return (
     <Pressable onPress={() => { if (confirming) { setConfirming(false); return; } router.push({ pathname: "/flight/[id]", params: { id: flight.id } }); }}>
       <Animated.View entering={FadeInDown.delay(index * 30).springify()} style={styles.card}>
-        {/* Left accent bar */}
         <View style={[styles.accentBar, { backgroundColor: accentColor }]} />
-
         <View style={styles.cardInner}>
           <View style={styles.cardMain}>
             <View style={styles.routeCol}>
@@ -127,7 +193,6 @@ function FlightItem({ flight, onDelete, index }: { flight: Flight; onDelete: () 
                   </View>
                 )}
               </View>
-              {/* Split into JSX children so the middle-dot renders correctly on all platforms */}
               <Text style={styles.meta}>
                 {flight.flightCode}
                 {"  \u00b7  "}
@@ -145,7 +210,6 @@ function FlightItem({ flight, onDelete, index }: { flight: Flight; onDelete: () 
               )}
             </View>
           </View>
-
           {confirming && (
             <Animated.View entering={FadeIn.duration(150)} style={styles.confirmRow}>
               <Pressable onPress={() => setConfirming(false)} style={styles.cancelBtn}>
@@ -163,14 +227,15 @@ function FlightItem({ flight, onDelete, index }: { flight: Flight; onDelete: () 
   );
 }
 
+// ─── Screen ────────────────────────────────────────────────────────────────────
 export default function FlightsScreen() {
   const insets = useSafeAreaInsets();
   const { flights, removeFlight } = useFlights();
   const params = useLocalSearchParams<{ filter?: string }>();
-  const topPadding = Platform.OS === "web" ? 67 : insets.top;
+  const topPadding    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
-  const [groupBy, setGroupBy] = useState<GroupBy>("month");
+  const [groupBy, setGroupBy]       = useState<GroupBy>("month");
   const [timeFilter, setTimeFilter] = useState<TimeFilter>(new Date().getFullYear());
 
   useEffect(() => {
@@ -188,7 +253,14 @@ export default function FlightsScreen() {
   }, [flights]);
 
   const hasUpcoming = useMemo(() => flights.some((f) => f.date >= TODAY), [flights]);
-  const hasPast = useMemo(() => flights.some((f) => f.date < TODAY), [flights]);
+  const hasPast     = useMemo(() => flights.some((f) => f.date < TODAY),  [flights]);
+
+  const dropdownOptions: DropdownOption[] = useMemo(() => [
+    ...(hasUpcoming ? [{ key: "upcoming" as TimeFilter, label: "Upcoming" }] : []),
+    ...(hasPast     ? [{ key: "past"     as TimeFilter, label: "Past" }]     : []),
+    { key: "all" as TimeFilter, label: "All Time" },
+    ...years.map((y) => ({ key: y as TimeFilter, label: String(y) })),
+  ], [hasUpcoming, hasPast, years]);
 
   const sections = useMemo(
     () => groupFlights(flights, groupBy, timeFilter),
@@ -197,24 +269,16 @@ export default function FlightsScreen() {
 
   const totalShown = sections.reduce((s, sec) => s + sec.data.length, 0);
 
-  function handleAdd() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push("/add-flight");
-  }
-
-  // Plain text labels only — no raw unicode escapes in string values
-  const TIME_FILTERS: { key: TimeFilter; label: string; show: boolean }[] = [
-    { key: "upcoming", label: "Upcoming", show: hasUpcoming },
-    { key: "past",     label: "Past",     show: hasPast },
-    { key: "all",      label: "All Time", show: true },
-    ...years.map((y) => ({ key: y as TimeFilter, label: String(y), show: true })),
-  ];
-
   const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
     { key: "month", label: "By Month" },
     { key: "year",  label: "By Year" },
     { key: "all",   label: "All" },
   ];
+
+  function handleAdd() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push("/add-flight");
+  }
 
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
@@ -232,27 +296,16 @@ export default function FlightsScreen() {
               <Text style={styles.count}>{totalShown} flight{totalShown !== 1 ? "s" : ""}</Text>
             </View>
 
-            {/* Time filter chips */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterRow}
-              style={{ marginBottom: 12, marginHorizontal: -20 }}
-            >
-              <View style={{ paddingLeft: 20 }} />
-              {TIME_FILTERS.filter((f) => f.show).map((opt) => (
-                <Pressable
-                  key={String(opt.key)}
-                  onPress={() => { Haptics.selectionAsync(); setTimeFilter(opt.key); }}
-                  style={[styles.filterPill, timeFilter === opt.key && styles.filterPillActive]}
-                >
-                  <Text style={[styles.filterText, timeFilter === opt.key && styles.filterTextActive]}>{opt.label}</Text>
-                </Pressable>
-              ))}
-              <View style={{ paddingRight: 20 }} />
-            </ScrollView>
+            {/* ── Dropdown pill ── */}
+            <View style={styles.controlRow}>
+              <PeriodDropdown
+                value={timeFilter}
+                options={dropdownOptions}
+                onChange={(v) => setTimeFilter(v)}
+              />
+            </View>
 
-            {/* Group by toggle */}
+            {/* ── Group-by toggle ── */}
             <View style={styles.groupRow}>
               {GROUP_OPTIONS.map((opt) => (
                 <Pressable
@@ -300,6 +353,7 @@ export default function FlightsScreen() {
           <FlightItem flight={item} index={index} onDelete={() => removeFlight(item.id)} />
         )}
       />
+
       <Pressable
         onPress={handleAdd}
         style={({ pressed }) => [
@@ -314,64 +368,83 @@ export default function FlightsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-  list: { paddingHorizontal: 20, paddingTop: 4 },
-  header: { paddingTop: 16, paddingBottom: 8 },
-  headerTop: { marginBottom: 16 },
-  title: { fontSize: 30, color: Colors.text, fontFamily: "DMSans_700Bold" },
-  count: { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 },
-  filterRow: { gap: 8, flexDirection: "row", paddingVertical: 2 },
-  filterPill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border },
-  filterPillActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  filterText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
-  filterTextActive: { color: Colors.white },
-  groupRow: { flexDirection: "row", backgroundColor: Colors.card, borderRadius: 12, borderWidth: 1, borderColor: Colors.border, padding: 3, marginBottom: 14 },
-  groupBtn: { flex: 1, paddingVertical: 8, alignItems: "center", borderRadius: 10 },
-  groupBtnActive: { backgroundColor: Colors.accent },
-  groupText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
-  groupTextActive: { color: Colors.white, fontFamily: "DMSans_700Bold" },
-  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 8 },
-  sectionHeaderText: { fontSize: 15, color: Colors.text, fontFamily: "DMSans_700Bold" },
-  sectionCount: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
+  container:  { flex: 1, backgroundColor: Colors.bg },
+  list:       { paddingHorizontal: 20, paddingTop: 4 },
+  header:     { paddingTop: 16, paddingBottom: 8 },
+  headerTop:  { marginBottom: 16 },
+  title:      { fontSize: 30, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  count:      { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 },
 
-  card: {
-    flexDirection: "row",
-    backgroundColor: Colors.card,
-    borderRadius: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    overflow: "hidden",
+  // ── Dropdown pill (mirrors home screen) ──
+  controlRow: { marginBottom: 12 },
+  dropdownTrigger: {
+    flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start",
+    backgroundColor: Colors.card, borderRadius: 20,
+    borderWidth: 1, borderColor: Colors.accent + "55",
+    paddingHorizontal: 14, paddingVertical: 9,
   },
-  accentBar: { width: 3 },
-  cardInner: { flex: 1, paddingHorizontal: 14, paddingVertical: 13 },
-  cardMain: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  dropdownLabel:  { fontSize: 13, color: Colors.accent, fontFamily: "DMSans_700Bold" },
+  dropdownOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.22)", justifyContent: "flex-end" },
+  dropdownSheet: {
+    backgroundColor: Colors.card,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingBottom: 32, paddingTop: 8,
+    shadowColor: "#000", shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08, shadowRadius: 16, elevation: 12,
+  },
+  dropdownSheetTitle: {
+    fontSize: 11, color: Colors.textMuted, fontFamily: "DMSans_500Medium",
+    letterSpacing: 0.8, textTransform: "uppercase",
+    textAlign: "center", paddingVertical: 14,
+  },
+  dropdownOption: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 24, paddingVertical: 16,
+  },
+  dropdownOptionBorder:     { borderBottomWidth: 1, borderBottomColor: Colors.border },
+  dropdownOptionActive:     { backgroundColor: Colors.accentDim },
+  dropdownOptionText:       { fontSize: 16, color: Colors.text, fontFamily: "DMSans_400Regular" },
+  dropdownOptionTextActive: { color: Colors.accent, fontFamily: "DMSans_700Bold" },
 
-  routeCol: { flex: 1, gap: 5 },
-  routeRow: { flexDirection: "row", alignItems: "center" },
-  arrowWrap: { flex: 0, flexDirection: "row", alignItems: "center", marginHorizontal: 8, gap: 3, maxWidth: 48 },
-  arrowLine: { flex: 1, height: 1, backgroundColor: Colors.border },
-  airport: { fontSize: 18, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  // ── Group toggle ──
+  groupRow:       { flexDirection: "row", backgroundColor: Colors.card, borderRadius: 12, borderWidth: 1, borderColor: Colors.border, padding: 3, marginBottom: 14 },
+  groupBtn:       { flex: 1, paddingVertical: 8, alignItems: "center", borderRadius: 10 },
+  groupBtnActive: { backgroundColor: Colors.accent },
+  groupText:      { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
+  groupTextActive:{ color: Colors.white, fontFamily: "DMSans_700Bold" },
+
+  sectionHeader:     { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 8 },
+  sectionHeaderText: { fontSize: 15, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  sectionCount:      { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
+
+  card:        { flexDirection: "row", backgroundColor: Colors.card, borderRadius: 14, marginBottom: 8, borderWidth: 1, borderColor: Colors.border, overflow: "hidden" },
+  accentBar:   { width: 3 },
+  cardInner:   { flex: 1, paddingHorizontal: 14, paddingVertical: 13 },
+  cardMain:    { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  routeCol:    { flex: 1, gap: 5 },
+  routeRow:    { flexDirection: "row", alignItems: "center" },
+  arrowWrap:   { flex: 0, flexDirection: "row", alignItems: "center", marginHorizontal: 8, gap: 3, maxWidth: 48 },
+  arrowLine:   { flex: 1, height: 1, backgroundColor: Colors.border },
+  airport:     { fontSize: 18, color: Colors.text, fontFamily: "DMSans_700Bold" },
   verifiedBadge: { marginLeft: 6, justifyContent: "center" },
-  meta: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
-
-  rightCol: { flexDirection: "row", alignItems: "center", gap: 10, marginLeft: 8 },
-  pill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8 },
-  pillText: { fontSize: 11, fontFamily: "DMSans_700Bold" },
-  trashBtn: { padding: 4 },
-
-  confirmRow: { flexDirection: "row", gap: 8, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.border },
-  cancelBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: Colors.surface ?? Colors.card, alignItems: "center" },
-  cancelText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
-  deleteBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: Colors.red, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5 },
-  deleteText: { fontSize: 13, color: Colors.white, fontFamily: "DMSans_700Bold" },
+  meta:        { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
+  rightCol:    { flexDirection: "row", alignItems: "center", gap: 10, marginLeft: 8 },
+  pill:        { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8 },
+  pillText:    { fontSize: 11, fontFamily: "DMSans_700Bold" },
+  trashBtn:    { padding: 4 },
+  confirmRow:  { flexDirection: "row", gap: 8, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.border },
+  cancelBtn:   { flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: Colors.surface ?? Colors.card, alignItems: "center" },
+  cancelText:  { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
+  deleteBtn:   { flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: Colors.red, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5 },
+  deleteText:  { fontSize: 13, color: Colors.white, fontFamily: "DMSans_700Bold" },
 
   fab: { position: "absolute", right: 20, width: 52, height: 52, borderRadius: 26, backgroundColor: Colors.accent, alignItems: "center", justifyContent: "center", shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 6 },
 
-  empty: { paddingTop: 60, alignItems: "center", paddingHorizontal: 20 },
-  emptyIcon: { width: 72, height: 72, borderRadius: 20, backgroundColor: Colors.card, alignItems: "center", justifyContent: "center", marginBottom: 16, borderWidth: 1, borderColor: Colors.border },
+  empty:      { paddingTop: 60, alignItems: "center", paddingHorizontal: 20 },
+  emptyIcon:  { width: 72, height: 72, borderRadius: 20, backgroundColor: Colors.card, alignItems: "center", justifyContent: "center", marginBottom: 16, borderWidth: 1, borderColor: Colors.border },
   emptyTitle: { fontSize: 20, color: Colors.text, fontFamily: "DMSans_700Bold", marginBottom: 8 },
-  emptySub: { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 20, marginBottom: 24 },
-  emptyBtn: { backgroundColor: Colors.accent, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
+  emptySub:   { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 20, marginBottom: 24 },
+  emptyBtn:   { backgroundColor: Colors.accent, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
   emptyBtnText: { fontSize: 15, color: Colors.white, fontFamily: "DMSans_700Bold" },
 });
