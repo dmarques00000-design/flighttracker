@@ -17,7 +17,7 @@ import * as Haptics from "expo-haptics";
 import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
 import ViewShot from "react-native-view-shot";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { Colors } from "@/constants/colors";
 import { useFlights } from "@/context/flights";
 import { getAirlineInfo } from "@/utils/airlineLogos";
@@ -97,6 +97,48 @@ const logoStyles = StyleSheet.create({
   },
 });
 
+// ─── Not-found fallback ──────────────────────────────────────────────────────────
+function FlightNotFound({ topPad }: { topPad: number }) {
+  return (
+    <View style={[styles.container, { paddingTop: topPad }]}>
+      {/* minimal nav — back button only */}
+      <View style={styles.navBar}>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.navBtn}
+          hitSlop={8}
+        >
+          <Ionicons name="chevron-back" size={22} color={Colors.text} />
+        </Pressable>
+        <View style={{ flex: 1 }} />
+      </View>
+
+      {/* centred empty state */}
+      <Animated.View entering={FadeIn.delay(60)} style={styles.notFoundWrap}>
+        <View style={styles.notFoundIconCircle}>
+          <Ionicons name="airplane-outline" size={40} color={Colors.accent} />
+        </View>
+        <Text style={styles.notFoundTitle}>Flight not found</Text>
+        <Text style={styles.notFoundSub}>
+          This flight may have been deleted or the link is no longer valid.
+        </Text>
+        <Pressable
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            // Go back, or navigate home if there’s nothing to go back to
+            if (router.canGoBack()) router.back();
+            else router.replace("/(tabs)");
+          }}
+          style={({ pressed }) => [styles.notFoundBtn, { opacity: pressed ? 0.85 : 1 }]}
+        >
+          <Ionicons name="arrow-back-outline" size={16} color={Colors.white} />
+          <Text style={styles.notFoundBtnText}>Go Back</Text>
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+}
+
 export default function FlightDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { flights } = useFlights();
@@ -107,6 +149,9 @@ export default function FlightDetailScreen() {
 
   const topPad    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 20;
+
+  // ── Render the polished not-found screen instead of crashing ──
+  if (!flight) return <FlightNotFound topPad={topPad} />;
 
   async function handleShare() {
     if (!flight) return;
@@ -134,22 +179,6 @@ export default function FlightDetailScreen() {
     } finally {
       setSharing(false);
     }
-  }
-
-  if (!flight) {
-    return (
-      <View style={[styles.container, { paddingTop: topPad }]}>
-        <View style={styles.navBar}>
-          <Pressable onPress={() => router.back()} style={styles.navBtn} hitSlop={8}>
-            <Ionicons name="chevron-back" size={22} color={Colors.text} />
-          </Pressable>
-        </View>
-        <View style={styles.notFound}>
-          <Ionicons name="airplane-outline" size={36} color={Colors.textSec} style={{ marginBottom: 12 }} />
-          <Text style={styles.notFoundText}>Flight not found.</Text>
-        </View>
-      </View>
-    );
   }
 
   const TODAY      = new Date().toISOString().substring(0, 10);
@@ -204,7 +233,7 @@ export default function FlightDetailScreen() {
         {/* ─── HERO CARD ─── */}
         <Animated.View entering={FadeInDown.delay(0).springify()} style={styles.heroCard}>
 
-          {/* Row 1: flight code | status pill | verified badge (top-right) */}
+          {/* Row 1: flight code | status pill | verified badge */}
           <View style={styles.heroTopRow}>
             <Text style={styles.heroFlightCode}>{flight.flightCode}</Text>
             <View style={styles.heroTopRight}>
@@ -264,13 +293,12 @@ export default function FlightDetailScreen() {
             </View>
           </View>
 
-          {/* Row 4: Airline logo + name | aircraft (clamped, no overflow) */}
+          {/* Row 4: Airline logo + name | aircraft */}
           <View style={styles.heroBottomRow}>
             <View style={styles.airlineRow}>
               <AirlineLogo logoUrl={airlineInfo.logoUrl} color={airlineInfo.color} size={32} />
               <Text style={styles.airlineName} numberOfLines={1}>{flight.airline}</Text>
             </View>
-            {/* aircraft: flex-shrink so it never overflows */}
             <Text style={styles.aircraftText} numberOfLines={1} ellipsizeMode="tail">
               {flight.aircraft}
             </Text>
@@ -388,9 +416,34 @@ const styles = StyleSheet.create({
   },
   navTitle: { fontSize: 16, color: Colors.text, fontFamily: "DMSans_700Bold" },
 
-  scroll:       { paddingHorizontal: 20, paddingTop: 16 },
-  notFound:     { flex: 1, alignItems: "center", justifyContent: "center" },
-  notFoundText: { fontSize: 16, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
+  scroll:   { paddingHorizontal: 20, paddingTop: 16 },
+
+  // ── Not-found state ──
+  notFoundWrap: {
+    flex: 1, alignItems: "center", justifyContent: "center",
+    paddingHorizontal: 36, paddingBottom: 60,
+  },
+  notFoundIconCircle: {
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: Colors.accentDim,
+    borderWidth: 1, borderColor: Colors.accent + "30",
+    alignItems: "center", justifyContent: "center",
+    marginBottom: 20,
+  },
+  notFoundTitle: {
+    fontSize: 20, color: Colors.text, fontFamily: "DMSans_700Bold",
+    marginBottom: 10, textAlign: "center",
+  },
+  notFoundSub: {
+    fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular",
+    textAlign: "center", lineHeight: 21, marginBottom: 28,
+  },
+  notFoundBtn: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: Colors.accent, paddingHorizontal: 24, paddingVertical: 14,
+    borderRadius: 30,
+  },
+  notFoundBtnText: { fontSize: 15, color: Colors.white, fontFamily: "DMSans_700Bold" },
 
   // ── Hero card ──
   heroCard: {
@@ -398,8 +451,6 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border,
     padding: 20, marginBottom: 14,
   },
-
-  // Top row: flight code left, pills right
   heroTopRow: {
     flexDirection: "row", justifyContent: "space-between",
     alignItems: "center", marginBottom: 20,
@@ -408,7 +459,6 @@ const styles = StyleSheet.create({
     fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_700Bold",
     letterSpacing: 1.2, textTransform: "uppercase",
   },
-  // Right side of top row: status + verified stacked/row
   heroTopRight: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 },
   statusPill: {
     flexDirection: "row", alignItems: "center", gap: 5,
@@ -424,9 +474,8 @@ const styles = StyleSheet.create({
   },
   verifiedText: { fontSize: 10, color: Colors.accent, fontFamily: "DMSans_500Medium" },
 
-  // Route row
   routeRow: { flexDirection: "row", alignItems: "center", marginBottom: 18 },
-  routeEnd: { flex: 1, minWidth: 0 }, // minWidth:0 allows text to shrink
+  routeEnd: { flex: 1, minWidth: 0 },
   routeMid: { flexDirection: "row", alignItems: "center", paddingHorizontal: 6 },
   flightLine: { width: 20, height: 1.5, backgroundColor: Colors.border },
   planeCircle: {
@@ -437,7 +486,6 @@ const styles = StyleSheet.create({
   iata:     { fontSize: 38, color: Colors.text, fontFamily: "DMSans_700Bold", lineHeight: 44 },
   cityName: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 4 },
 
-  // Times row
   timesRow: {
     flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start",
     paddingTop: 16, borderTopWidth: 1, borderTopColor: Colors.border, marginBottom: 16,
@@ -449,7 +497,6 @@ const styles = StyleSheet.create({
   durationText: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginBottom: 2 },
   dateText:     { fontSize: 11, color: Colors.textMuted, fontFamily: "DMSans_400Regular" },
 
-  // Bottom row: airline + aircraft
   heroBottomRow: {
     flexDirection: "row", alignItems: "center",
     justifyContent: "space-between",
@@ -460,7 +507,6 @@ const styles = StyleSheet.create({
   airlineName: { fontSize: 13, color: Colors.text, fontFamily: "DMSans_500Medium", flexShrink: 1 },
   aircraftText:{ fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", flexShrink: 1, textAlign: "right" },
 
-  // ── Stats row ──
   statsRow: {
     backgroundColor: Colors.card, borderRadius: 16, flexDirection: "row",
     marginBottom: 24, borderWidth: 1, borderColor: Colors.border, overflow: "hidden",
@@ -470,7 +516,6 @@ const styles = StyleSheet.create({
   statNum:     { fontSize: 15, color: Colors.text, fontFamily: "DMSans_700Bold" },
   statLbl:     { fontSize: 10, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
 
-  // ── Sections ──
   section: { marginBottom: 16 },
   sectionTitle: {
     fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_500Medium",
@@ -481,7 +526,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, borderWidth: 1, borderColor: Colors.border,
   },
 
-  // ── Share ──
   shareSection: { marginBottom: 8 },
   shareBtn: {
     backgroundColor: Colors.accent, borderRadius: 14, padding: 17,

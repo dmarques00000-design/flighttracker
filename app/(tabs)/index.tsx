@@ -50,68 +50,22 @@ function formatDateShort(dateStr: string): string {
 
 // ─── Fallback CDF (mirrors server/routes.ts — used when server is unreachable) ──
 const FALLBACK_CDF: [number, number][] = [
-  [  0, 0.0000 ],
-  [  1, 0.3800 ],
-  [  2, 0.5700 ],
-  [  3, 0.6500 ],
-  [  4, 0.7080 ],
-  [  5, 0.7500 ],
-  [  6, 0.7840 ],
-  [  7, 0.8100 ],
-  [  8, 0.8300 ],
-  [  9, 0.8460 ],
-  [ 10, 0.8600 ],
-  [ 11, 0.8710 ],
-  [ 12, 0.8810 ],
-  [ 13, 0.8895 ],
-  [ 14, 0.8970 ],
-  [ 15, 0.9040 ],
-  [ 16, 0.9100 ],
-  [ 17, 0.9155 ],
-  [ 18, 0.9205 ],
-  [ 19, 0.9250 ],
-  [ 20, 0.9292 ],
-  [ 21, 0.9330 ],
-  [ 22, 0.9365 ],
-  [ 23, 0.9398 ],
-  [ 24, 0.9428 ],
-  [ 25, 0.9455 ],
-  [ 26, 0.9480 ],
-  [ 27, 0.9503 ],
-  [ 28, 0.9524 ],
-  [ 29, 0.9544 ],
-  [ 30, 0.9562 ],
-  [ 31, 0.9579 ],
-  [ 32, 0.9595 ],
-  [ 33, 0.9610 ],
-  [ 34, 0.9624 ],
-  [ 35, 0.9637 ],
-  [ 36, 0.9649 ],
-  [ 37, 0.9660 ],
-  [ 38, 0.9671 ],
-  [ 39, 0.9681 ],
-  [ 40, 0.9690 ],
-  [ 41, 0.9699 ],
-  [ 42, 0.9707 ],
-  [ 43, 0.9715 ],
-  [ 44, 0.9722 ],
-  [ 45, 0.9729 ],
-  [ 46, 0.9736 ],
-  [ 47, 0.9742 ],
-  [ 48, 0.9748 ],
-  [ 49, 0.9754 ],
-  [ 50, 0.9760 ],
-  [ 55, 0.9785 ],
-  [ 60, 0.9808 ],
-  [ 65, 0.9825 ],
-  [ 70, 0.9840 ],
-  [ 75, 0.9855 ],
-  [ 80, 0.9867 ],
-  [ 90, 0.9885 ],
-  [100, 0.9900 ],
-  [125, 0.9930 ],
-  [150, 0.9955 ],
-  [200, 1.0000 ],
+  [  0, 0.0000 ], [  1, 0.3800 ], [  2, 0.5700 ], [  3, 0.6500 ],
+  [  4, 0.7080 ], [  5, 0.7500 ], [  6, 0.7840 ], [  7, 0.8100 ],
+  [  8, 0.8300 ], [  9, 0.8460 ], [ 10, 0.8600 ], [ 11, 0.8710 ],
+  [ 12, 0.8810 ], [ 13, 0.8895 ], [ 14, 0.8970 ], [ 15, 0.9040 ],
+  [ 16, 0.9100 ], [ 17, 0.9155 ], [ 18, 0.9205 ], [ 19, 0.9250 ],
+  [ 20, 0.9292 ], [ 21, 0.9330 ], [ 22, 0.9365 ], [ 23, 0.9398 ],
+  [ 24, 0.9428 ], [ 25, 0.9455 ], [ 26, 0.9480 ], [ 27, 0.9503 ],
+  [ 28, 0.9524 ], [ 29, 0.9544 ], [ 30, 0.9562 ], [ 31, 0.9579 ],
+  [ 32, 0.9595 ], [ 33, 0.9610 ], [ 34, 0.9624 ], [ 35, 0.9637 ],
+  [ 36, 0.9649 ], [ 37, 0.9660 ], [ 38, 0.9671 ], [ 39, 0.9681 ],
+  [ 40, 0.9690 ], [ 41, 0.9699 ], [ 42, 0.9707 ], [ 43, 0.9715 ],
+  [ 44, 0.9722 ], [ 45, 0.9729 ], [ 46, 0.9736 ], [ 47, 0.9742 ],
+  [ 48, 0.9748 ], [ 49, 0.9754 ], [ 50, 0.9760 ],
+  [ 55, 0.9785 ], [ 60, 0.9808 ], [ 65, 0.9825 ], [ 70, 0.9840 ],
+  [ 75, 0.9855 ], [ 80, 0.9867 ], [ 90, 0.9885 ], [100, 0.9900 ],
+  [125, 0.9930 ], [150, 0.9955 ], [200, 1.0000 ],
 ];
 
 function computeFallbackPercentile(count: number): number {
@@ -128,40 +82,27 @@ function computeFallbackPercentile(count: number): number {
 }
 
 // ─── usePercentile hook ───────────────────────────────────────────────────────
-interface PercentileResult {
-  topPercent: number;  // e.g. 35.0, 29.2, 14.6 — always a distinct value per count
-}
+interface PercentileResult { topPercent: number; }
 
 function usePercentile(count: number): PercentileResult | null {
   const [result, setResult] = useState<PercentileResult | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (count <= 0) {
-      setResult(null);
-      return;
-    }
-
+    if (count <= 0) { setResult(null); return; }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/percentile?count=${count}`, {
-          signal: AbortSignal.timeout(4000),
-        });
+        const res = await fetch(`/api/percentile?count=${count}`, { signal: AbortSignal.timeout(4000) });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as { topPercent: number };
         setResult({ topPercent: data.topPercent });
       } catch {
-        // Offline fallback — use local CDF silently
         const percentile = computeFallbackPercentile(count);
-        const topPercent = Math.max(0.1, Math.round((100 - percentile) * 10) / 10);
-        setResult({ topPercent });
+        setResult({ topPercent: Math.max(0.1, Math.round((100 - percentile) * 10) / 10) });
       }
     }, 400);
-
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [count]);
 
   return result;
@@ -211,9 +152,7 @@ function FlightRow({ flight, isUpcoming }: { flight: Flight; isUpcoming: boolean
         </View>
         <View style={styles.flightMetaRow}>
           <Text style={styles.flightMeta}>
-            {flight.flightCode}
-            {"  \u00b7  "}
-            {formatDateShort(flight.date)}
+            {flight.flightCode}{"  \u00b7  "}{formatDateShort(flight.date)}
           </Text>
           {isUpcoming && days !== null ? (
             <View style={[styles.countdownPill, { backgroundColor: days === 0 ? Colors.accent : days <= 7 ? Colors.amber + "22" : Colors.accentDim }]}>
@@ -299,6 +238,71 @@ function LoginPromptBanner({ onSignUp, onDismiss }: { onSignUp: () => void; onDi
   );
 }
 
+// ─── Period dropdown (replaces the horizontal scroll of year pills) ────────────
+function PeriodDropdown({
+  period, years, onChange,
+}: {
+  period: "all" | number;
+  years: number[];
+  onChange: (p: "all" | number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const label = period === "all" ? "All Time" : String(period);
+  const options: ("all" | number)[] = ["all", ...years];
+
+  return (
+    <>
+      {/* Trigger button */}
+      <Pressable
+        onPress={() => { Haptics.selectionAsync(); setOpen(true); }}
+        style={({ pressed }) => [styles.dropdownTrigger, { opacity: pressed ? 0.8 : 1 }]}
+      >
+        <Ionicons name="calendar-outline" size={14} color={Colors.accent} />
+        <Text style={styles.dropdownLabel}>{label}</Text>
+        <Ionicons name="chevron-down" size={14} color={Colors.accent} />
+      </Pressable>
+
+      {/* Picker modal */}
+      <Modal transparent animationType="fade" visible={open} onRequestClose={() => setOpen(false)}>
+        <TouchableWithoutFeedback onPress={() => setOpen(false)}>
+          <View style={styles.dropdownOverlay}>
+            <TouchableWithoutFeedback>
+              <Animated.View entering={FadeIn.duration(120)} style={styles.dropdownSheet}>
+                <Text style={styles.dropdownSheetTitle}>Filter by period</Text>
+                {options.map((opt, i) => {
+                  const isActive = opt === period;
+                  const optLabel = opt === "all" ? "All Time" : String(opt);
+                  return (
+                    <Pressable
+                      key={String(opt)}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        onChange(opt);
+                        setOpen(false);
+                      }}
+                      style={({ pressed }) => [
+                        styles.dropdownOption,
+                        i < options.length - 1 && styles.dropdownOptionBorder,
+                        isActive && styles.dropdownOptionActive,
+                        { opacity: pressed ? 0.8 : 1 },
+                      ]}
+                    >
+                      <Text style={[styles.dropdownOptionText, isActive && styles.dropdownOptionTextActive]}>
+                        {optLabel}
+                      </Text>
+                      {isActive && <Ionicons name="checkmark" size={16} color={Colors.accent} />}
+                    </Pressable>
+                  );
+                })}
+              </Animated.View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+    </>
+  );
+}
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { flights } = useFlights();
@@ -341,11 +345,6 @@ export default function HomeScreen() {
   function handleAdd() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push("/add-flight");
-  }
-
-  function handlePeriodChange(p: "all" | number) {
-    Haptics.selectionAsync();
-    setPeriod(p);
   }
 
   function handleAvatarPress() {
@@ -403,23 +402,19 @@ export default function HomeScreen() {
 
         {hasFlights ? (
           <>
+            {/* ── Period dropdown ── */}
             <Animated.View entering={FadeInDown.delay(40).springify()} style={styles.periodRow}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.periodContent}>
-                <Pressable onPress={() => handlePeriodChange("all")} style={[styles.periodPill, period === "all" && styles.periodPillActive]}>
-                  <Text style={[styles.periodText, period === "all" && styles.periodTextActive]}>All Time</Text>
-                </Pressable>
-                {years.map((y) => (
-                  <Pressable key={y} onPress={() => handlePeriodChange(y)} style={[styles.periodPill, period === y && styles.periodPillActive]}>
-                    <Text style={[styles.periodText, period === y && styles.periodTextActive]}>{y}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
+              <PeriodDropdown
+                period={period}
+                years={years}
+                onChange={(p) => { Haptics.selectionAsync(); setPeriod(p); }}
+              />
             </Animated.View>
 
             <Animated.View entering={FadeInDown.delay(80).springify()} style={styles.heroCard}>
               <View style={styles.heroTopRow}>
                 <View>
-                  <Text style={styles.heroLabel}>{period === "alll" ? "All time flights" : `Flights in ${period}`}</Text>
+                  <Text style={styles.heroLabel}>{period === "all" ? "All time flights" : `Flights in ${period}`}</Text>
                   <Text style={styles.heroNum}>{stats.count}</Text>
                 </View>
                 <View style={styles.heroIconWrap}>
@@ -431,7 +426,6 @@ export default function HomeScreen() {
                 <Text style={styles.heroStat}>{formatNumber(stats.miles)} mi</Text>
                 <View style={styles.heroDot} />
                 <Text style={styles.heroStat}>{stats.co2.toFixed(0)}{" kg CO"}{"\u2082"}</Text>
-                {/* ── Real per-count percentile badge ── */}
                 {percentileData && percentileData.topPercent <= 30 && (
                   <View style={styles.rankPill}>
                     <Text style={styles.rankPillText}>Top {percentileData.topPercent}%</Text>
@@ -445,7 +439,6 @@ export default function HomeScreen() {
               )}
             </Animated.View>
 
-            {/* ─── Route Map ─── */}
             <Animated.View entering={FadeInDown.delay(120).springify()} style={styles.mapContainer}>
               <Text style={styles.sectionTitle}>Your Flight Network</Text>
               <GlobeView flights={flights} />
@@ -582,12 +575,37 @@ const styles = StyleSheet.create({
   menuItemLabel:  { fontSize: 14, color: Colors.text, fontFamily: "DMSans_700Bold" },
   menuItemSub:    { fontSize: 11, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 1 },
 
-  periodRow:        { marginBottom: 16, marginHorizontal: -20 },
-  periodContent:    { paddingHorizontal: 20, gap: 8, flexDirection: "row" },
-  periodPill:       { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border },
-  periodPillActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  periodText:       { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
-  periodTextActive: { color: Colors.white },
+  // ── Period dropdown ──
+  periodRow: { marginBottom: 16 },
+  dropdownTrigger: {
+    flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start",
+    backgroundColor: Colors.card, borderRadius: 20,
+    borderWidth: 1, borderColor: Colors.accent + "55",
+    paddingHorizontal: 14, paddingVertical: 9,
+  },
+  dropdownLabel: { fontSize: 13, color: Colors.accent, fontFamily: "DMSans_700Bold" },
+  dropdownOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.22)", justifyContent: "flex-end" },
+  dropdownSheet: {
+    backgroundColor: Colors.card,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingBottom: 32, paddingTop: 8,
+    shadowColor: "#000", shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08, shadowRadius: 16, elevation: 12,
+  },
+  dropdownSheetTitle: {
+    fontSize: 11, color: Colors.textMuted, fontFamily: "DMSans_500Medium",
+    letterSpacing: 0.8, textTransform: "uppercase",
+    textAlign: "center", paddingVertical: 14,
+  },
+  dropdownOption: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 24, paddingVertical: 16,
+  },
+  dropdownOptionBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
+  dropdownOptionActive: { backgroundColor: Colors.accentDim },
+  dropdownOptionText: { fontSize: 16, color: Colors.text, fontFamily: "DMSans_400Regular" },
+  dropdownOptionTextActive: { color: Colors.accent, fontFamily: "DMSans_700Bold" },
 
   heroCard:      { backgroundColor: Colors.card, borderRadius: 20, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: Colors.border },
   heroTopRow:    { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
