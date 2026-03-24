@@ -1,27 +1,22 @@
 /**
  * GlobeView — deck.gl ArcLayer map with Apple Maps-style light basemap.
  *
- * Requirements:
- *   npx expo install react-native-webview
- *   npx expo install @react-native-community/netinfo
- *
- * Basemap: Carto Voyager (light, coloured roads, cyan water — closest free
- *          equivalent to Apple Maps). Arc & dot colours tuned for light bg.
- *
  * Offline fallback: when there is no network connection the CDN-hosted
- * maplibre-gl / deck.gl / Carto tile-style cannot load.  Instead we render
+ * maplibre-gl / deck.gl / Carto tile-style cannot load. Instead we render
  * a lightweight SVG canvas that plots airport dots and approximate
  * great-circle arcs using only the local AIRPORTS registry.
+ *
+ * Connectivity detection uses a native fetch-ping (no extra packages needed).
  */
-import React, { useRef, useMemo, useEffect, useState } from "react";
+import React, { useRef, useMemo, useEffect, useState, useCallback } from "react";
 import {
   View,
   StyleSheet,
   Dimensions,
   Platform,
   Text,
-  Svg,
-  // SVG primitives come from react-native-svg, imported below
+  AppState,
+  AppStateStatus,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { Flight } from "@/context/flights";
@@ -29,12 +24,52 @@ import { Flight } from "@/context/flights";
 // react-native-svg is bundled with Expo – no extra install needed.
 import Svg2, { Circle, Line, Polyline, G, Text as SvgText } from "react-native-svg";
 
-// @react-native-community/netinfo ships with Expo SDK 50+
-import NetInfo from "@react-native-community/netinfo";
-
 const { width: SCREEN_W } = Dimensions.get("window");
 const MAP_W = Math.min(SCREEN_W - 40, 600);
 const MAP_H = Math.round(MAP_W * 0.62);
+
+// ─── Connectivity hook (no external packages) ─────────────────────────────────
+// Pings a tiny always-online URL; falls back to "connected" on any error so
+// the WebView is shown optimistically and the SVG fallback only appears when
+// we are definitively offline.
+const PING_URL = "https://connectivitycheck.gstatic.com/generate_204";
+const PING_TIMEOUT = 4000;
+
+async function checkOnline(): Promise<boolean> {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), PING_TIMEOUT);
+    const res = await fetch(PING_URL, {
+      method: "HEAD",
+      cache: "no-store",
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    return res.status < 400;
+  } catch {
+    return false;
+  }
+}
+
+function useIsConnected(): boolean {
+  const [connected, setConnected] = useState(true); // optimistic default
+
+  const refresh = useCallback(async () => {
+    const online = await checkOnline();
+    setConnected(online);
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    // Re-check whenever the app comes back to the foreground
+    const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
+      if (state === "active") refresh();
+    });
+    return () => sub.remove();
+  }, [refresh]);
+
+  return connected;
+}
 
 // ─── Airport registry (lng, lat) ──────────────────────────────────────────────
 const AIRPORTS: Record<string, [number, number]> = {
@@ -72,7 +107,6 @@ const AIRPORTS: Record<string, [number, number]> = {
 };
 
 // ─── Offline SVG fallback ─────────────────────────────────────────────────────
-// Simple equirectangular projection: lon → x, lat → y
 const PADDING = 20;
 const LON_MIN = -180, LON_MAX = 180;
 const LAT_MIN = -75,  LAT_MAX = 85;
@@ -83,10 +117,6 @@ function project(lon: number, lat: number): [number, number] {
   return [x, y];
 }
 
-/**
- * Approximate a great-circle arc with N intermediate screen points so the
- * polyline curves naturally across the flat projection.
- */
 function greatCirclePoints(
   from: [number, number],
   to: [number, number],
@@ -98,7 +128,6 @@ function greatCirclePoints(
 
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
-    // Linear slerp in spherical coords (simplified — good enough for visuals)
     const lat = lat1 + (lat2 - lat1) * t;
     const lon = lon1 + (lon2 - lon1) * t;
     const [x, y] = project(
@@ -141,15 +170,11 @@ function OfflineFallback({ flights }: OfflineFallbackProps) {
 
   return (
     <View style={styles.fallbackContainer}>
-      {/* Offline banner */}
       <View style={styles.offlineBanner}>
         <Text style={styles.offlineBannerText}>✈︎  Offline — showing cached routes</Text>
       </View>
 
-      {/* SVG canvas */}
       <Svg2 width={MAP_W} height={MAP_H} style={styles.svg}>
-        {/* World outline rectangles as a minimal basemap hint */}
-        {/* Faint grid lines */}
         {[-60, -30, 0, 30, 60].map((lat) => {
           const [, y] = project(0, lat);
           return (
@@ -181,7 +206,6 @@ function OfflineFallback({ flights }: OfflineFallbackProps) {
           );
         })}
 
-        {/* Arc glow */}
         {arcs.map((arc, i) => (
           <Polyline
             key={`glow-${i}`}
@@ -194,7 +218,6 @@ function OfflineFallback({ flights }: OfflineFallbackProps) {
           />
         ))}
 
-        {/* Arc core */}
         {arcs.map((arc, i) => (
           <Polyline
             key={`arc-${i}`}
@@ -208,7 +231,6 @@ function OfflineFallback({ flights }: OfflineFallbackProps) {
           />
         ))}
 
-        {/* Airport dots — outer ring */}
         {airports.map((ap) => {
           const [x, y] = project(ap.coords[0], ap.coords[1]);
           return (
@@ -222,7 +244,6 @@ function OfflineFallback({ flights }: OfflineFallbackProps) {
           );
         })}
 
-        {/* Airport dots — solid fill with white border */}
         {airports.map((ap) => {
           const [x, y] = project(ap.coords[0], ap.coords[1]);
           return (
@@ -238,7 +259,6 @@ function OfflineFallback({ flights }: OfflineFallbackProps) {
           );
         })}
 
-        {/* IATA labels for small sets (≤ 12 airports) */}
         {airports.length <= 12 &&
           airports.map((ap) => {
             const [x, y] = project(ap.coords[0], ap.coords[1]);
@@ -257,7 +277,6 @@ function OfflineFallback({ flights }: OfflineFallbackProps) {
             );
           })}
 
-        {/* Empty state */}
         {airports.length === 0 && (
           <SvgText
             x={MAP_W / 2}
@@ -275,7 +294,7 @@ function OfflineFallback({ flights }: OfflineFallbackProps) {
   );
 }
 
-// ─── buildHTML (unchanged — used when online) ─────────────────────────────────
+// ─── buildHTML ────────────────────────────────────────────────────────────────
 function buildHTML(flights: Flight[]): string {
   const seenRoutes = new Set<string>();
   const arcs: { from: [number,number]; to: [number,number] }[] = [];
@@ -314,9 +333,7 @@ function buildHTML(flights: Flight[]): string {
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{width:100%;height:100%;background:#EEF2F5;overflow:hidden}
   #map{width:100%;height:100%}
-  /* Hide Maplibre logo & attribution for cleaner Apple-like look */
   .maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right{display:none!important}
-  /* Empty state */
   #empty{
     display:${hasData ? "none" : "flex"};
     position:absolute;inset:0;
@@ -345,19 +362,16 @@ function buildHTML(flights: Flight[]): string {
 <script>
 (function(){
 
-// ── Colour palette tuned for light Apple Maps-style bg ──────────────────────
-// Arc: rich blue on light bg — use the app accent but fully saturated
-const ARC_SRC  = [40, 120, 240, 210];   // deep blue tail
-const ARC_TIP  = [90, 160, 255, 210];   // lighter blue head
-const ARC_GLOW = [79, 142, 240,  28];   // translucent halo
-const DOT_FILL = [30, 100, 220, 255];   // solid dot
-const DOT_RING = [79, 142, 240,  55];   // outer pulse
-const DOT_CORE = [255, 255, 255, 245];  // white pinpoint
+const ARC_SRC  = [40, 120, 240, 210];
+const ARC_TIP  = [90, 160, 255, 210];
+const ARC_GLOW = [79, 142, 240,  28];
+const DOT_FILL = [30, 100, 220, 255];
+const DOT_RING = [79, 142, 240,  55];
+const DOT_CORE = [255, 255, 255, 245];
 
 const ARCS     = ${JSON.stringify(arcs)};
 const AIRPORTS = ${JSON.stringify(airports)};
 
-// ── Apple Maps-inspired Maplibre style (Carto Voyager with tweaks) ───────────
 const STYLE_URL = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
 
 const map = new maplibregl.Map({
@@ -544,23 +558,7 @@ interface Props { flights: Flight[]; }
 export function GlobeView({ flights }: Props) {
   const webRef = useRef<any>(null);
   const html = useMemo(() => buildHTML(flights), [flights]);
-
-  // ── Connectivity state ────────────────────────────────────────────────────
-  const [isConnected, setIsConnected] = useState<boolean>(true);
-
-  useEffect(() => {
-    // Get initial state
-    NetInfo.fetch().then((state) => {
-      setIsConnected(state.isConnected ?? true);
-    });
-
-    // Subscribe to future changes
-    const unsubscribe = NetInfo.addEventListener((state) => {
-      setIsConnected(state.isConnected ?? true);
-    });
-
-    return unsubscribe;
-  }, []);
+  const isConnected = useIsConnected();
 
   return (
     <View style={[styles.container, { width: MAP_W, height: MAP_H }]}>
