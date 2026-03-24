@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -48,16 +48,92 @@ function formatDateShort(dateStr: string): string {
   });
 }
 
-function computeRank(flightCount: number): number {
-  if (flightCount === 0) return 0;
-  if (flightCount <= 1) return 15;
-  if (flightCount <= 3) return 35;
-  if (flightCount <= 6) return 55;
-  if (flightCount <= 10) return 70;
-  if (flightCount <= 15) return 82;
-  if (flightCount <= 25) return 91;
-  if (flightCount <= 40) return 96;
-  return 99;
+// ─── Empirical CDF (mirrors server/routes.ts — used as offline fallback) ─────
+//
+// This is the same piecewise-linear model used on the server.  It runs
+// client-side only when the server is unreachable (e.g. no internet).
+// The server remains the single source of truth; this is purely a fallback.
+const FALLBACK_CDF: [number, number][] = [
+  [0,   0.00],
+  [1,   0.38],
+  [2,   0.57],
+  [3,   0.67],
+  [4,   0.74],
+  [6,   0.82],
+  [8,   0.87],
+  [10,  0.90],
+  [12,  0.92],
+  [15,  0.94],
+  [20,  0.96],
+  [25,  0.97],
+  [30,  0.975],
+  [40,  0.982],
+  [50,  0.988],
+  [75,  0.993],
+  [100, 0.997],
+  [150, 0.999],
+  [200, 1.000],
+];
+
+function computeFallbackPercentile(count: number): number {
+  if (count <= 0) return 0;
+  for (let i = 1; i < FALLBACK_CDF.length; i++) {
+    const [x0, y0] = FALLBACK_CDF[i - 1];
+    const [x1, y1] = FALLBACK_CDF[i];
+    if (count <= x1) {
+      const t = (count - x0) / (x1 - x0);
+      return Math.round((y0 + t * (y1 - y0)) * 100);
+    }
+  }
+  return 100;
+}
+
+// ─── usePercentile hook ───────────────────────────────────────────────────────
+//
+// Fetches the real percentile from the server for a given flight count.
+// Falls back to the local CDF model if the server is unreachable.
+// Debounces requests so rapid count changes (period filter switches) don't
+// spam the server — waits 400 ms after the last count change before fetching.
+interface PercentileResult {
+  topPercent: number;
+  label: string;
+  isLive: boolean;   // false = offline fallback was used
+}
+
+function usePercentile(count: number): PercentileResult | null {
+  const [result, setResult] = useState<PercentileResult | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (count <= 0) {
+      setResult(null);
+      return;
+    }
+
+    // Debounce: wait 400 ms before firing the request
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/percentile?count=${count}`, {
+          signal: AbortSignal.timeout(4000),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as { topPercent: number; label: string };
+        setResult({ topPercent: data.topPercent, label: data.label, isLive: true });
+      } catch {
+        // Server unreachable — use local CDF fallback silently
+        const percentile = computeFallbackPercentile(count);
+        const topPercent = Math.max(1, 100 - percentile);
+        setResult({ topPercent, label: "", isLive: false });
+      }
+    }, 400);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [count]);
+
+  return result;
 }
 
 function useFilteredStats(flights: Flight[], period: "all" | number) {
@@ -68,8 +144,7 @@ function useFilteredStats(flights: Flight[], period: "all" | number) {
     const co2       = filtered.reduce((s, f) => s + f.co2Kg, 0);
     const flightMin = filtered.reduce((s, f) => s + f.durationMinutes, 0);
     const delayMin  = filtered.reduce((s, f) => s + f.delayMinutes, 0);
-    const rank = computeRank(count);
-    return { count, miles, co2, flightMin, delayMin, rank };
+    return { count, miles, co2, flightMin, delayMin };
   }, [flights, period]);
 }
 
@@ -220,7 +295,11 @@ export default function HomeScreen() {
     [flights]
   );
 
-  const stats      = useFilteredStats(flights, period);
+  const stats = useFilteredStats(flights, period);
+
+  // ── Real percentile from server (falls back to local CDF model offline) ──
+  const percentileData = usePercentile(stats.count);
+
   const hasFlights = flights.length > 0;
 
   function handleMenuSelect(id: string) {
@@ -324,9 +403,13 @@ export default function HomeScreen() {
                 <Text style={styles.heroStat}>{formatNumber(stats.miles)} mi</Text>
                 <View style={styles.heroDot} />
                 <Text style={styles.heroStat}>{stats.co2.toFixed(0)}{" kg CO"}{"\u2082"}</Text>
-                {stats.rank > 0 && (
+                {/* ── Real percentile badge ── */}
+                {percentileData && percentileData.topPercent <= 30 && (
                   <View style={styles.rankPill}>
-                    <Text style={styles.rankPillText}>Top {100 - stats.rank}%</Text>
+                    <Text style={styles.rankPillText}>
+                      Top {percentileData.topPercent}%
+                      {percentileData.isLive && percentileData.label ? `  ·  ${percentileData.label}` : ""}
+                    </Text>
                   </View>
                 )}
               </View>
