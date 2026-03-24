@@ -136,6 +136,11 @@ function ClassicTabLayout() {
           ),
         }}
       />
+      {/* Hidden route — registered so expo-router resolves /passport */}
+      <Tabs.Screen
+        name="passport"
+        options={{ href: null }}
+      />
     </Tabs>
   );
 }

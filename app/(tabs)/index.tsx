@@ -24,9 +24,6 @@ import { LogbookLogo } from "@/components/LogbookLogo";
 import { getCO2FunFact } from "@/utils/co2FunFact";
 
 // ─── useToday ────────────────────────────────────────────────────────────────
-// Returns the current date as "YYYY-MM-DD", always accurate.
-// Refreshes automatically at midnight (exact timer) AND whenever the app
-// returns to the foreground (covers devices that slept through midnight).
 function getDateString(): string {
   return new Date().toISOString().substring(0, 10);
 }
@@ -34,7 +31,7 @@ function getDateString(): string {
 function msUntilMidnight(): number {
   const now = new Date();
   const midnight = new Date(now);
-  midnight.setHours(24, 0, 0, 0); // next midnight, local time
+  midnight.setHours(24, 0, 0, 0);
   return midnight.getTime() - now.getTime();
 }
 
@@ -46,18 +43,15 @@ function useToday(): string {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       setToday(getDateString());
-      scheduleNextTick(); // re-arm for the following midnight
+      scheduleNextTick();
     }, msUntilMidnight());
   }
 
   useEffect(() => {
     scheduleNextTick();
-
-    // Also refresh when the app comes back to the foreground
     const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
       if (state === "active") setToday(getDateString());
     });
-
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
       sub.remove();
@@ -95,7 +89,7 @@ function formatDateShort(dateStr: string): string {
   });
 }
 
-// ─── Fallback CDF (mirrors server/routes.ts — used when server is unreachable) ──
+// ─── Fallback CDF ─────────────────────────────────────────────────────────────
 const FALLBACK_CDF: [number, number][] = [
   [  0, 0.0000 ], [  1, 0.3800 ], [  2, 0.5700 ], [  3, 0.6500 ],
   [  4, 0.7080 ], [  5, 0.7500 ], [  6, 0.7840 ], [  7, 0.8100 ],
@@ -221,6 +215,7 @@ function FlightRow({ flight, isUpcoming, today }: { flight: Flight; isUpcoming: 
 }
 
 const MENU_ITEMS = [
+  { id: "passport",      icon: "earth-outline",        label: "Travel Passport",    sub: "Countries & airports visited" },
   { id: "wallet",        icon: "wallet-outline",       label: "Link Apple Wallet",  sub: "Import boarding passes" },
   { id: "monthly-recap", icon: "calendar-outline",      label: "Monthly Recap",       sub: "Share your month in the air" },
   { id: "share",         icon: "share-social-outline", label: "Share Year Recap",   sub: "Post to social media" },
@@ -355,7 +350,6 @@ export default function HomeScreen() {
   const [period, setPeriod] = useState<"all" | number>(new Date().getFullYear());
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // Always-accurate date — refreshes at midnight and on foreground resume
   const today = useToday();
 
   const topPadding    = Platform.OS === "web" ? 67 : insets.top;
@@ -369,7 +363,6 @@ export default function HomeScreen() {
     return Array.from(set).sort((a, b) => b - a);
   }, [flights]);
 
-  // Both lists depend on `today` so they recompute correctly after midnight
   const upcomingFlights = useMemo(
     () => flights.filter((f) => f.date >= today).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3),
     [flights, today]
@@ -385,7 +378,8 @@ export default function HomeScreen() {
 
   function handleMenuSelect(id: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (id === "wallet")             router.push("/wallet-import");
+    if (id === "passport")           router.push("/passport");
+    else if (id === "wallet")        router.push("/wallet-import");
     else if (id === "monthly-recap") router.push("/monthly-recap");
     else if (id === "share")         router.push("/share");
     else if (id === "add")           router.push("/add-flight");
