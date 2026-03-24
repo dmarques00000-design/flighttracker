@@ -8,6 +8,8 @@ import {
   Platform,
   Modal,
   TouchableWithoutFeedback,
+  AppState,
+  AppStateStatus,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,8 +23,51 @@ import GlobeView from "@/components/GlobeView";
 import { LogbookLogo } from "@/components/LogbookLogo";
 import { getCO2FunFact } from "@/utils/co2FunFact";
 
-const TODAY = new Date().toISOString().substring(0, 10);
+// ─── useToday ────────────────────────────────────────────────────────────────
+// Returns the current date as "YYYY-MM-DD", always accurate.
+// Refreshes automatically at midnight (exact timer) AND whenever the app
+// returns to the foreground (covers devices that slept through midnight).
+function getDateString(): string {
+  return new Date().toISOString().substring(0, 10);
+}
 
+function msUntilMidnight(): number {
+  const now = new Date();
+  const midnight = new Date(now);
+  midnight.setHours(24, 0, 0, 0); // next midnight, local time
+  return midnight.getTime() - now.getTime();
+}
+
+function useToday(): string {
+  const [today, setToday] = useState(getDateString);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function scheduleNextTick() {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      setToday(getDateString());
+      scheduleNextTick(); // re-arm for the following midnight
+    }, msUntilMidnight());
+  }
+
+  useEffect(() => {
+    scheduleNextTick();
+
+    // Also refresh when the app comes back to the foreground
+    const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
+      if (state === "active") setToday(getDateString());
+    });
+
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      sub.remove();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return today;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 function formatHours(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
@@ -37,8 +82,10 @@ function formatNumber(n: number): string {
   return String(n);
 }
 
-function daysUntil(dateStr: string): number {
-  const diff = new Date(dateStr + "T00:00:00").getTime() - new Date(TODAY + "T00:00:00").getTime();
+function daysUntil(dateStr: string, today: string): number {
+  const diff =
+    new Date(dateStr + "T00:00:00").getTime() -
+    new Date(today + "T00:00:00").getTime();
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 
@@ -132,8 +179,8 @@ function StatCard({ label, value, icon, accent }: { label: string; value: string
   );
 }
 
-function FlightRow({ flight, isUpcoming }: { flight: Flight; isUpcoming: boolean }) {
-  const days = isUpcoming ? daysUntil(flight.date) : null;
+function FlightRow({ flight, isUpcoming, today }: { flight: Flight; isUpcoming: boolean; today: string }) {
+  const days = isUpcoming ? daysUntil(flight.date, today) : null;
   return (
     <Pressable
       onPress={() => router.push({ pathname: "/flight/[id]", params: { id: flight.id } })}
@@ -238,7 +285,7 @@ function LoginPromptBanner({ onSignUp, onDismiss }: { onSignUp: () => void; onDi
   );
 }
 
-// ─── Period dropdown (replaces the horizontal scroll of year pills) ────────────
+// ─── Period dropdown ──────────────────────────────────────────────────────────
 function PeriodDropdown({
   period, years, onChange,
 }: {
@@ -252,7 +299,6 @@ function PeriodDropdown({
 
   return (
     <>
-      {/* Trigger button */}
       <Pressable
         onPress={() => { Haptics.selectionAsync(); setOpen(true); }}
         style={({ pressed }) => [styles.dropdownTrigger, { opacity: pressed ? 0.8 : 1 }]}
@@ -262,7 +308,6 @@ function PeriodDropdown({
         <Ionicons name="chevron-down" size={14} color={Colors.accent} />
       </Pressable>
 
-      {/* Picker modal */}
       <Modal transparent animationType="fade" visible={open} onRequestClose={() => setOpen(false)}>
         <TouchableWithoutFeedback onPress={() => setOpen(false)}>
           <View style={styles.dropdownOverlay}>
@@ -310,6 +355,9 @@ export default function HomeScreen() {
   const [period, setPeriod] = useState<"all" | number>(new Date().getFullYear());
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Always-accurate date — refreshes at midnight and on foreground resume
+  const today = useToday();
+
   const topPadding    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
@@ -321,13 +369,14 @@ export default function HomeScreen() {
     return Array.from(set).sort((a, b) => b - a);
   }, [flights]);
 
+  // Both lists depend on `today` so they recompute correctly after midnight
   const upcomingFlights = useMemo(
-    () => flights.filter((f) => f.date >= TODAY).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3),
-    [flights]
+    () => flights.filter((f) => f.date >= today).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3),
+    [flights, today]
   );
   const pastFlights = useMemo(
-    () => flights.filter((f) => f.date < TODAY).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3),
-    [flights]
+    () => flights.filter((f) => f.date < today).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3),
+    [flights, today]
   );
 
   const stats = useFilteredStats(flights, period);
@@ -465,7 +514,7 @@ export default function HomeScreen() {
                     <Text style={styles.seeAll}>See all</Text>
                   </Pressable>
                 </View>
-                {upcomingFlights.map((f) => <FlightRow key={f.id} flight={f} isUpcoming={true} />)}
+                {upcomingFlights.map((f) => <FlightRow key={f.id} flight={f} isUpcoming={true} today={today} />)}
               </Animated.View>
             )}
 
@@ -480,7 +529,7 @@ export default function HomeScreen() {
                     <Text style={styles.seeAll}>See all</Text>
                   </Pressable>
                 </View>
-                {pastFlights.map((f) => <FlightRow key={f.id} flight={f} isUpcoming={false} />)}
+                {pastFlights.map((f) => <FlightRow key={f.id} flight={f} isUpcoming={false} today={today} />)}
               </Animated.View>
             )}
           </>
