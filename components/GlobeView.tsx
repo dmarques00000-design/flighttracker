@@ -3,14 +3,34 @@
  *
  * Requirements:
  *   npx expo install react-native-webview
+ *   npx expo install @react-native-community/netinfo
  *
  * Basemap: Carto Voyager (light, coloured roads, cyan water — closest free
  *          equivalent to Apple Maps). Arc & dot colours tuned for light bg.
+ *
+ * Offline fallback: when there is no network connection the CDN-hosted
+ * maplibre-gl / deck.gl / Carto tile-style cannot load.  Instead we render
+ * a lightweight SVG canvas that plots airport dots and approximate
+ * great-circle arcs using only the local AIRPORTS registry.
  */
-import React, { useRef, useMemo } from "react";
-import { View, StyleSheet, Dimensions, Platform } from "react-native";
+import React, { useRef, useMemo, useEffect, useState } from "react";
+import {
+  View,
+  StyleSheet,
+  Dimensions,
+  Platform,
+  Text,
+  Svg,
+  // SVG primitives come from react-native-svg, imported below
+} from "react-native";
 import { WebView } from "react-native-webview";
 import { Flight } from "@/context/flights";
+
+// react-native-svg is bundled with Expo – no extra install needed.
+import Svg2, { Circle, Line, Polyline, G, Text as SvgText } from "react-native-svg";
+
+// @react-native-community/netinfo ships with Expo SDK 50+
+import NetInfo from "@react-native-community/netinfo";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 const MAP_W = Math.min(SCREEN_W - 40, 600);
@@ -51,6 +71,211 @@ const AIRPORTS: Record<string, [number, number]> = {
   NAP:[14.29,40.88],MXP:[8.72,45.63],RAK:[-8.04,31.61],
 };
 
+// ─── Offline SVG fallback ─────────────────────────────────────────────────────
+// Simple equirectangular projection: lon → x, lat → y
+const PADDING = 20;
+const LON_MIN = -180, LON_MAX = 180;
+const LAT_MIN = -75,  LAT_MAX = 85;
+
+function project(lon: number, lat: number): [number, number] {
+  const x = PADDING + ((lon - LON_MIN) / (LON_MAX - LON_MIN)) * (MAP_W - PADDING * 2);
+  const y = PADDING + ((LAT_MAX - lat) / (LAT_MAX - LAT_MIN)) * (MAP_H - PADDING * 2);
+  return [x, y];
+}
+
+/**
+ * Approximate a great-circle arc with N intermediate screen points so the
+ * polyline curves naturally across the flat projection.
+ */
+function greatCirclePoints(
+  from: [number, number],
+  to: [number, number],
+  steps = 30
+): string {
+  const [lon1, lat1] = from.map((d) => (d * Math.PI) / 180);
+  const [lon2, lat2] = to.map((d) => (d * Math.PI) / 180);
+  const points: string[] = [];
+
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    // Linear slerp in spherical coords (simplified — good enough for visuals)
+    const lat = lat1 + (lat2 - lat1) * t;
+    const lon = lon1 + (lon2 - lon1) * t;
+    const [x, y] = project(
+      (lon * 180) / Math.PI,
+      (lat * 180) / Math.PI
+    );
+    points.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+  }
+  return points.join(" ");
+}
+
+interface OfflineFallbackProps {
+  flights: Flight[];
+}
+
+function OfflineFallback({ flights }: OfflineFallbackProps) {
+  const { arcs, airports } = useMemo(() => {
+    const seenRoutes = new Set<string>();
+    const arcList: { from: [number, number]; to: [number, number] }[] = [];
+    const airportSet = new Set<string>();
+
+    for (const f of flights) {
+      const fc = AIRPORTS[f.departureAirport];
+      const tc = AIRPORTS[f.arrivalAirport];
+      if (!fc || !tc) continue;
+      airportSet.add(f.departureAirport);
+      airportSet.add(f.arrivalAirport);
+      const key = [f.departureAirport, f.arrivalAirport].sort().join("-");
+      if (seenRoutes.has(key)) continue;
+      seenRoutes.add(key);
+      arcList.push({ from: fc, to: tc });
+    }
+
+    const airportList = Array.from(airportSet)
+      .filter((k) => AIRPORTS[k])
+      .map((k) => ({ iata: k, coords: AIRPORTS[k] }));
+
+    return { arcs: arcList, airports: airportList };
+  }, [flights]);
+
+  return (
+    <View style={styles.fallbackContainer}>
+      {/* Offline banner */}
+      <View style={styles.offlineBanner}>
+        <Text style={styles.offlineBannerText}>✈︎  Offline — showing cached routes</Text>
+      </View>
+
+      {/* SVG canvas */}
+      <Svg2 width={MAP_W} height={MAP_H} style={styles.svg}>
+        {/* World outline rectangles as a minimal basemap hint */}
+        {/* Faint grid lines */}
+        {[-60, -30, 0, 30, 60].map((lat) => {
+          const [, y] = project(0, lat);
+          return (
+            <Line
+              key={`lat-${lat}`}
+              x1={PADDING}
+              y1={y}
+              x2={MAP_W - PADDING}
+              y2={y}
+              stroke="#C8D4E0"
+              strokeWidth={0.5}
+              strokeDasharray="4 4"
+            />
+          );
+        })}
+        {[-120, -60, 0, 60, 120].map((lon) => {
+          const [x] = project(lon, 0);
+          return (
+            <Line
+              key={`lon-${lon}`}
+              x1={x}
+              y1={PADDING}
+              x2={x}
+              y2={MAP_H - PADDING}
+              stroke="#C8D4E0"
+              strokeWidth={0.5}
+              strokeDasharray="4 4"
+            />
+          );
+        })}
+
+        {/* Arc glow */}
+        {arcs.map((arc, i) => (
+          <Polyline
+            key={`glow-${i}`}
+            points={greatCirclePoints(arc.from, arc.to)}
+            fill="none"
+            stroke="rgba(79,142,240,0.18)"
+            strokeWidth={8}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ))}
+
+        {/* Arc core */}
+        {arcs.map((arc, i) => (
+          <Polyline
+            key={`arc-${i}`}
+            points={greatCirclePoints(arc.from, arc.to)}
+            fill="none"
+            stroke="#4F8EF0"
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity={0.9}
+          />
+        ))}
+
+        {/* Airport dots — outer ring */}
+        {airports.map((ap) => {
+          const [x, y] = project(ap.coords[0], ap.coords[1]);
+          return (
+            <Circle
+              key={`ring-${ap.iata}`}
+              cx={x}
+              cy={y}
+              r={6}
+              fill="rgba(79,142,240,0.22)"
+            />
+          );
+        })}
+
+        {/* Airport dots — solid fill with white border */}
+        {airports.map((ap) => {
+          const [x, y] = project(ap.coords[0], ap.coords[1]);
+          return (
+            <Circle
+              key={`dot-${ap.iata}`}
+              cx={x}
+              cy={y}
+              r={3.5}
+              fill="#1E64DC"
+              stroke="white"
+              strokeWidth={1.2}
+            />
+          );
+        })}
+
+        {/* IATA labels for small sets (≤ 12 airports) */}
+        {airports.length <= 12 &&
+          airports.map((ap) => {
+            const [x, y] = project(ap.coords[0], ap.coords[1]);
+            return (
+              <SvgText
+                key={`label-${ap.iata}`}
+                x={x + 5}
+                y={y - 5}
+                fontSize={7}
+                fill="#3C5078"
+                fontWeight="600"
+                fontFamily="-apple-system, sans-serif"
+              >
+                {ap.iata}
+              </SvgText>
+            );
+          })}
+
+        {/* Empty state */}
+        {airports.length === 0 && (
+          <SvgText
+            x={MAP_W / 2}
+            y={MAP_H / 2}
+            textAnchor="middle"
+            fontSize={13}
+            fill="rgba(60,80,120,0.45)"
+            fontFamily="-apple-system, sans-serif"
+          >
+            Add flights to see your network
+          </SvgText>
+        )}
+      </Svg2>
+    </View>
+  );
+}
+
+// ─── buildHTML (unchanged — used when online) ─────────────────────────────────
 function buildHTML(flights: Flight[]): string {
   const seenRoutes = new Set<string>();
   const arcs: { from: [number,number]; to: [number,number] }[] = [];
@@ -133,8 +358,6 @@ const ARCS     = ${JSON.stringify(arcs)};
 const AIRPORTS = ${JSON.stringify(airports)};
 
 // ── Apple Maps-inspired Maplibre style (Carto Voyager with tweaks) ───────────
-// Voyager is the closest free style: coloured roads, cyan/teal water,
-// cream land, thin grey labels — all hallmarks of Apple Maps.
 const STYLE_URL = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
 
 const map = new maplibregl.Map({
@@ -142,17 +365,15 @@ const map = new maplibregl.Map({
   style: STYLE_URL,
   center: [${initLon.toFixed(2)}, ${initLat.toFixed(2)}],
   zoom: ${hasData ? 1.9 : 1.3},
-  pitch: 0,          // flat on load — Apple Maps is flat by default
+  pitch: 0,
   bearing: 0,
   antialias: true,
   attributionControl: false,
   logoPosition: "bottom-right",
 });
 
-// ── After style loads, apply Apple Maps colour overrides ────────────────────
 map.on("load", () => {
 
-  // ── Water: Apple Maps signature teal (#ACE1F0 → #7EC8E3)
   ["water","water-shadow","waterway","waterway-shadow"].forEach(id => {
     if (map.getLayer(id)) {
       try { map.setPaintProperty(id, "fill-color", "#B8E4F4"); } catch(_){}
@@ -160,7 +381,6 @@ map.on("load", () => {
     }
   });
 
-  // ── Land: Apple Maps warm cream
   ["background","landcover","land"].forEach(id => {
     if (map.getLayer(id)) {
       try { map.setPaintProperty(id, "background-color", "#F5F0E8"); } catch(_){}
@@ -168,35 +388,31 @@ map.on("load", () => {
     }
   });
 
-  // ── Parks / green areas: Apple Maps muted sage green
   ["landuse-park","landuse_park","park","green_areas","landuse-residential"].forEach(id => {
     if (map.getLayer(id)) {
       try { map.setPaintProperty(id, "fill-color", "#D4E8CE"); } catch(_){}
     }
   });
 
-  // ── Roads: Apple Maps light grey palette
   map.getStyle().layers.forEach(layer => {
     if (!layer.id) return;
     const lid = layer.id.toLowerCase();
     if (lid.includes("road") || lid.includes("highway") || lid.includes("street") || lid.includes("tunnel") || lid.includes("bridge")) {
       if (layer.type === "line") {
         const color = lid.includes("motorway") || lid.includes("highway")
-          ? "#E2C97E"   // Apple Maps tan/gold for highways
-          : "#FFFFFF";  // white for streets
+          ? "#E2C97E"
+          : "#FFFFFF";
         try { map.setPaintProperty(layer.id, "line-color", color); } catch(_){}
       }
       if (layer.type === "fill") {
         try { map.setPaintProperty(layer.id, "fill-color", "#FFFFFF"); } catch(_){}
       }
     }
-    // Casing / outline roads
     if (lid.includes("casing") || lid.includes("outline")) {
       if (layer.type === "line") {
         try { map.setPaintProperty(layer.id, "line-color", "#D8D0C8"); } catch(_){}
       }
     }
-    // Building footprints: Apple Maps very soft grey
     if (lid.includes("building")) {
       if (layer.type === "fill") {
         try { map.setPaintProperty(layer.id, "fill-color",   "#E8E0D8"); } catch(_){}
@@ -205,7 +421,6 @@ map.on("load", () => {
     }
   });
 
-  // ── Slight pitch-in after load for depth (subtle, like iOS 17 Maps)
   setTimeout(() => {
     map.easeTo({ pitch: 28, bearing: -8, duration: 1600,
       easing: t => t<0.5 ? 2*t*t : -1+(4-2*t)*t });
@@ -214,14 +429,12 @@ map.on("load", () => {
   startRotate();
 });
 
-// ── deck.gl overlay ──────────────────────────────────────────────────────────
 const { MapboxOverlay, ArcLayer, ScatterplotLayer } = deck;
 
 function buildLayers() {
   const layers = [];
 
   if (ARCS.length > 0) {
-    // Wide soft glow — like a shadow of the arc
     layers.push(new ArcLayer({
       id: "arcs-glow",
       data: ARCS,
@@ -236,7 +449,6 @@ function buildLayers() {
       pickable: false,
     }));
 
-    // Crisp core arc — blue gradient source → tip
     layers.push(new ArcLayer({
       id: "arcs-core",
       data: ARCS,
@@ -255,7 +467,6 @@ function buildLayers() {
   }
 
   if (AIRPORTS.length > 0) {
-    // Outer pulse ring
     layers.push(new ScatterplotLayer({
       id: "dots-ring",
       data: AIRPORTS,
@@ -267,7 +478,6 @@ function buildLayers() {
       pickable: false,
     }));
 
-    // Solid dot with white border
     layers.push(new ScatterplotLayer({
       id: "dots-fill",
       data: AIRPORTS,
@@ -283,7 +493,6 @@ function buildLayers() {
       highlightColor: [255, 180, 40, 255],
     }));
 
-    // Tiny white centre core
     layers.push(new ScatterplotLayer({
       id: "dots-core",
       data: AIRPORTS,
@@ -305,8 +514,6 @@ const overlay = new MapboxOverlay({
 });
 map.addControl(overlay);
 
-// ── Slow auto-rotate (very gentle — Apple Maps never auto-rotates, ────────────
-//    but a barely-perceptible drift looks premium) ────────────────────────────
 let userInteracting = false;
 let rotateTimer = null;
 
@@ -338,26 +545,47 @@ export function GlobeView({ flights }: Props) {
   const webRef = useRef<any>(null);
   const html = useMemo(() => buildHTML(flights), [flights]);
 
+  // ── Connectivity state ────────────────────────────────────────────────────
+  const [isConnected, setIsConnected] = useState<boolean>(true);
+
+  useEffect(() => {
+    // Get initial state
+    NetInfo.fetch().then((state) => {
+      setIsConnected(state.isConnected ?? true);
+    });
+
+    // Subscribe to future changes
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      setIsConnected(state.isConnected ?? true);
+    });
+
+    return unsubscribe;
+  }, []);
+
   return (
     <View style={[styles.container, { width: MAP_W, height: MAP_H }]}>
-      <WebView
-        ref={webRef}
-        source={{ html }}
-        style={styles.webview}
-        scrollEnabled={false}
-        bounces={false}
-        overScrollMode="never"
-        originWhitelist={["*"]}
-        allowsInlineMediaPlayback
-        javaScriptEnabled
-        domStorageEnabled
-        mixedContentMode="always"
-        allowFileAccess
-        allowUniversalAccessFromFileURLs
-        backgroundColor="#EEF2F5"
-        {...(Platform.OS === "ios" ? { decelerationRate: "fast" } : {})}
-        onError={(e) => console.warn("GlobeView error:", e.nativeEvent)}
-      />
+      {isConnected ? (
+        <WebView
+          ref={webRef}
+          source={{ html }}
+          style={styles.webview}
+          scrollEnabled={false}
+          bounces={false}
+          overScrollMode="never"
+          originWhitelist={["*"]}
+          allowsInlineMediaPlayback
+          javaScriptEnabled
+          domStorageEnabled
+          mixedContentMode="always"
+          allowFileAccess
+          allowUniversalAccessFromFileURLs
+          backgroundColor="#EEF2F5"
+          {...(Platform.OS === "ios" ? { decelerationRate: "fast" } : {})}
+          onError={(e) => console.warn("GlobeView error:", e.nativeEvent)}
+        />
+      ) : (
+        <OfflineFallback flights={flights} />
+      )}
     </View>
   );
 }
@@ -365,6 +593,34 @@ export function GlobeView({ flights }: Props) {
 const styles = StyleSheet.create({
   container: { borderRadius: 16, overflow: "hidden", backgroundColor: "#EEF2F5" },
   webview:   { flex: 1, backgroundColor: "transparent" },
+  fallbackContainer: {
+    flex: 1,
+    backgroundColor: "#EEF2F5",
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  offlineBanner: {
+    position: "absolute",
+    top: 8,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    alignItems: "center",
+  },
+  offlineBannerText: {
+    fontSize: 11,
+    color: "rgba(60,80,120,0.65)",
+    fontWeight: "500",
+    backgroundColor: "rgba(255,255,255,0.82)",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+    overflow: "hidden",
+    letterSpacing: 0.2,
+  },
+  svg: {
+    backgroundColor: "#EEF2F5",
+  },
 });
 
 export default GlobeView;
