@@ -1,19 +1,13 @@
 /**
- * GlobeView — deck.gl ArcLayer globe rendered inside a WebView.
+ * GlobeView — deck.gl ArcLayer map with Apple Maps-style light basemap.
  *
  * Requirements:
  *   npx expo install react-native-webview
  *
- * Features:
- *  - Dark Carto "Dark Matter" basemap (free, no API key)
- *  - deck.gl ArcLayer with animated, glowing great-circle arcs
- *  - ScatterplotLayer airport dots with pulse ring
- *  - Orthographic-style globe tilt on load
- *  - Smooth auto-rotate that pauses on user interaction
- *  - Fully matches app accent colour (#4F8EF0)
- *  - Data passed via postMessage — no server round-trip
+ * Basemap: Carto Voyager (light, coloured roads, cyan water — closest free
+ *          equivalent to Apple Maps). Arc & dot colours tuned for light bg.
  */
-import React, { useRef, useMemo, useCallback } from "react";
+import React, { useRef, useMemo } from "react";
 import { View, StyleSheet, Dimensions, Platform } from "react-native";
 import { WebView } from "react-native-webview";
 import { Flight } from "@/context/flights";
@@ -22,7 +16,7 @@ const { width: SCREEN_W } = Dimensions.get("window");
 const MAP_W = Math.min(SCREEN_W - 40, 600);
 const MAP_H = Math.round(MAP_W * 0.62);
 
-// ─── Airport registry ──────────────────────────────────────────────────────────
+// ─── Airport registry (lng, lat) ──────────────────────────────────────────────
 const AIRPORTS: Record<string, [number, number]> = {
   LIS:[-9.14,38.78],GVA:[6.11,46.24],ZRH:[8.55,47.46],
   ATL:[-84.43,33.64],MIA:[-80.29,25.80],JFK:[-73.78,40.64],
@@ -57,9 +51,7 @@ const AIRPORTS: Record<string, [number, number]> = {
   NAP:[14.29,40.88],MXP:[8.72,45.63],RAK:[-8.04,31.61],
 };
 
-// Build the HTML bundle injected into WebView
 function buildHTML(flights: Flight[]): string {
-  // Collect unique routes and airports
   const seenRoutes = new Set<string>();
   const arcs: { from: [number,number]; to: [number,number] }[] = [];
   const airportSet = new Set<string>();
@@ -80,11 +72,7 @@ function buildHTML(flights: Flight[]): string {
     .filter(k => AIRPORTS[k])
     .map(k => ({ iata: k, coords: AIRPORTS[k] }));
 
-  const arcsJSON      = JSON.stringify(arcs);
-  const airportsJSON  = JSON.stringify(airports);
-  const hasData       = arcs.length > 0;
-
-  // Centre the initial view on the centroid of all airports, or world centre
+  const hasData = arcs.length > 0;
   let initLon = 10, initLat = 30;
   if (airports.length > 0) {
     initLon = airports.reduce((s, a) => s + a.coords[0], 0) / airports.length;
@@ -94,186 +82,249 @@ function buildHTML(flights: Flight[]): string {
   return `<!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"/>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  html, body { width:100%; height:100%; background:#060D1A; overflow:hidden; }
-  #map { width:100%; height:100%; }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:100%;height:100%;background:#EEF2F5;overflow:hidden}
+  #map{width:100%;height:100%}
+  /* Hide Maplibre logo & attribution for cleaner Apple-like look */
+  .maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right{display:none!important}
   /* Empty state */
-  #empty {
+  #empty{
     display:${hasData ? "none" : "flex"};
-    position:absolute; inset:0;
-    flex-direction:column; align-items:center; justify-content:center;
-    color:rgba(255,255,255,0.3); font-family:sans-serif; gap:8px;
+    position:absolute;inset:0;
+    flex-direction:column;align-items:center;justify-content:center;
+    color:rgba(60,80,120,0.45);font-family:-apple-system,sans-serif;gap:10px;
     pointer-events:none;
   }
-  #empty svg { opacity:0.25; }
-  #empty p { font-size:13px; letter-spacing:0.5px; }
+  #empty p{font-size:13px;letter-spacing:0.3px;font-weight:500}
 </style>
 </head>
 <body>
 <div id="map"></div>
 <div id="empty">
-  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5">
+  <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
     <circle cx="12" cy="12" r="10"/>
     <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
   </svg>
   <p>Add flights to see your network</p>
 </div>
 
-<!-- deck.gl + Maplibre stack (all from CDN) -->
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://unpkg.com/@deck.gl/core@9.1.6/dist.min.js"></script>
 <script src="https://unpkg.com/@deck.gl/layers@9.1.6/dist.min.js"></script>
 <script src="https://unpkg.com/@deck.gl/mapbox@9.1.6/dist.min.js"></script>
 
 <script>
-(function() {
-  const ACCENT      = [79, 142, 240];   // #4F8EF0
-  const ACCENT_WARM = [120, 180, 255];  // lighter tip
-  const GREEN       = [16, 185, 129];   // #10B981
-  const ARCS        = ${arcsJSON};
-  const AIRPORTS    = ${airportsJSON};
+(function(){
 
-  // ── Maplibre base map ────────────────────────────────────────────────────
-  const map = new maplibregl.Map({
-    container: "map",
-    style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-    center: [${initLon.toFixed(2)}, ${initLat.toFixed(2)}],
-    zoom: ${hasData ? 1.8 : 1.2},
-    pitch: 30,
-    bearing: -10,
-    antialias: true,
-    attributionControl: false,
+// ── Colour palette tuned for light Apple Maps-style bg ──────────────────────
+// Arc: rich blue on light bg — use the app accent but fully saturated
+const ARC_SRC  = [40, 120, 240, 210];   // deep blue tail
+const ARC_TIP  = [90, 160, 255, 210];   // lighter blue head
+const ARC_GLOW = [79, 142, 240,  28];   // translucent halo
+const DOT_FILL = [30, 100, 220, 255];   // solid dot
+const DOT_RING = [79, 142, 240,  55];   // outer pulse
+const DOT_CORE = [255, 255, 255, 245];  // white pinpoint
+
+const ARCS     = ${JSON.stringify(arcs)};
+const AIRPORTS = ${JSON.stringify(airports)};
+
+// ── Apple Maps-inspired Maplibre style (Carto Voyager with tweaks) ───────────
+// Voyager is the closest free style: coloured roads, cyan/teal water,
+// cream land, thin grey labels — all hallmarks of Apple Maps.
+const STYLE_URL = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
+
+const map = new maplibregl.Map({
+  container: "map",
+  style: STYLE_URL,
+  center: [${initLon.toFixed(2)}, ${initLat.toFixed(2)}],
+  zoom: ${hasData ? 1.9 : 1.3},
+  pitch: 0,          // flat on load — Apple Maps is flat by default
+  bearing: 0,
+  antialias: true,
+  attributionControl: false,
+  logoPosition: "bottom-right",
+});
+
+// ── After style loads, apply Apple Maps colour overrides ────────────────────
+map.on("load", () => {
+
+  // ── Water: Apple Maps signature teal (#ACE1F0 → #7EC8E3)
+  ["water","water-shadow","waterway","waterway-shadow"].forEach(id => {
+    if (map.getLayer(id)) {
+      try { map.setPaintProperty(id, "fill-color", "#B8E4F4"); } catch(_){}
+      try { map.setPaintProperty(id, "line-color", "#91D4EE"); } catch(_){}
+    }
   });
 
-  // ── deck.gl overlay ──────────────────────────────────────────────────────
-  const { MapboxOverlay } = deck;
-  const { ArcLayer, ScatterplotLayer, TextLayer } = deck;
-
-  // Animate arc dash offset for a "flying" effect
-  let tick = 0;
-  let userInteracting = false;
-  let rotateInterval = null;
-
-  function buildLayers(t) {
-    const layers = [];
-
-    if (ARCS.length > 0) {
-      // ── Glow / shadow arc (wide, low opacity) ──
-      layers.push(new ArcLayer({
-        id: "arcs-glow",
-        data: ARCS,
-        getSourcePosition: d => d.from,
-        getTargetPosition: d => d.to,
-        getSourceColor: [...ACCENT, 30],
-        getTargetColor: [...ACCENT_WARM, 30],
-        getWidth: 10,
-        getHeight: 0.5,
-        greatCircle: true,
-        widthUnits: "pixels",
-        widthScale: 1,
-        pickable: false,
-      }));
-
-      // ── Core arc ──
-      layers.push(new ArcLayer({
-        id: "arcs-core",
-        data: ARCS,
-        getSourcePosition: d => d.from,
-        getTargetPosition: d => d.to,
-        getSourceColor: d => [...ACCENT, 220],
-        getTargetColor: d => [...ACCENT_WARM, 220],
-        getWidth: 1.8,
-        getHeight: 0.5,
-        greatCircle: true,
-        widthUnits: "pixels",
-        widthScale: 1,
-        pickable: true,
-        autoHighlight: true,
-        highlightColor: [255, 220, 100, 255],
-      }));
+  // ── Land: Apple Maps warm cream
+  ["background","landcover","land"].forEach(id => {
+    if (map.getLayer(id)) {
+      try { map.setPaintProperty(id, "background-color", "#F5F0E8"); } catch(_){}
+      try { map.setPaintProperty(id, "fill-color",       "#F5F0E8"); } catch(_){}
     }
-
-    if (AIRPORTS.length > 0) {
-      // ── Outer pulse ring ──
-      layers.push(new ScatterplotLayer({
-        id: "dots-ring",
-        data: AIRPORTS,
-        getPosition: d => d.coords,
-        getRadius: 18000,
-        getFillColor: [...ACCENT, 40],
-        stroked: false,
-        radiusUnits: "meters",
-        pickable: false,
-      }));
-
-      // ── Inner dot ──
-      layers.push(new ScatterplotLayer({
-        id: "dots-core",
-        data: AIRPORTS,
-        getPosition: d => d.coords,
-        getRadius: 7000,
-        getFillColor: [...ACCENT, 255],
-        stroked: true,
-        lineWidthMinPixels: 1.2,
-        getLineColor: [255, 255, 255, 180],
-        radiusUnits: "meters",
-        pickable: true,
-        autoHighlight: true,
-        highlightColor: [255, 220, 100, 255],
-      }));
-
-      // ── White centre pinpoint ──
-      layers.push(new ScatterplotLayer({
-        id: "dots-white",
-        data: AIRPORTS,
-        getPosition: d => d.coords,
-        getRadius: 2500,
-        getFillColor: [255, 255, 255, 240],
-        stroked: false,
-        radiusUnits: "meters",
-        pickable: false,
-      }));
-    }
-
-    return layers;
-  }
-
-  const deckOverlay = new MapboxOverlay({
-    interleaved: false,
-    layers: buildLayers(0),
   });
 
-  map.addControl(deckOverlay);
+  // ── Parks / green areas: Apple Maps muted sage green
+  ["landuse-park","landuse_park","park","green_areas","landuse-residential"].forEach(id => {
+    if (map.getLayer(id)) {
+      try { map.setPaintProperty(id, "fill-color", "#D4E8CE"); } catch(_){}
+    }
+  });
 
-  // ── Slow auto-rotate ─────────────────────────────────────────────────────
-  function startRotate() {
-    if (rotateInterval) return;
-    rotateInterval = setInterval(() => {
-      if (!userInteracting) {
-        map.setBearing((map.getBearing() + 0.08) % 360);
+  // ── Roads: Apple Maps light grey palette
+  map.getStyle().layers.forEach(layer => {
+    if (!layer.id) return;
+    const lid = layer.id.toLowerCase();
+    if (lid.includes("road") || lid.includes("highway") || lid.includes("street") || lid.includes("tunnel") || lid.includes("bridge")) {
+      if (layer.type === "line") {
+        const color = lid.includes("motorway") || lid.includes("highway")
+          ? "#E2C97E"   // Apple Maps tan/gold for highways
+          : "#FFFFFF";  // white for streets
+        try { map.setPaintProperty(layer.id, "line-color", color); } catch(_){}
       }
-    }, 50);
+      if (layer.type === "fill") {
+        try { map.setPaintProperty(layer.id, "fill-color", "#FFFFFF"); } catch(_){}
+      }
+    }
+    // Casing / outline roads
+    if (lid.includes("casing") || lid.includes("outline")) {
+      if (layer.type === "line") {
+        try { map.setPaintProperty(layer.id, "line-color", "#D8D0C8"); } catch(_){}
+      }
+    }
+    // Building footprints: Apple Maps very soft grey
+    if (lid.includes("building")) {
+      if (layer.type === "fill") {
+        try { map.setPaintProperty(layer.id, "fill-color",   "#E8E0D8"); } catch(_){}
+        try { map.setPaintProperty(layer.id, "fill-opacity", 0.7);       } catch(_){}
+      }
+    }
+  });
+
+  // ── Slight pitch-in after load for depth (subtle, like iOS 17 Maps)
+  setTimeout(() => {
+    map.easeTo({ pitch: 28, bearing: -8, duration: 1600,
+      easing: t => t<0.5 ? 2*t*t : -1+(4-2*t)*t });
+  }, 400);
+
+  startRotate();
+});
+
+// ── deck.gl overlay ──────────────────────────────────────────────────────────
+const { MapboxOverlay, ArcLayer, ScatterplotLayer } = deck;
+
+function buildLayers() {
+  const layers = [];
+
+  if (ARCS.length > 0) {
+    // Wide soft glow — like a shadow of the arc
+    layers.push(new ArcLayer({
+      id: "arcs-glow",
+      data: ARCS,
+      getSourcePosition: d => d.from,
+      getTargetPosition: d => d.to,
+      getSourceColor: ARC_GLOW,
+      getTargetColor: ARC_GLOW,
+      getWidth: 14,
+      getHeight: 0.45,
+      greatCircle: true,
+      widthUnits: "pixels",
+      pickable: false,
+    }));
+
+    // Crisp core arc — blue gradient source → tip
+    layers.push(new ArcLayer({
+      id: "arcs-core",
+      data: ARCS,
+      getSourcePosition: d => d.from,
+      getTargetPosition: d => d.to,
+      getSourceColor: ARC_SRC,
+      getTargetColor: ARC_TIP,
+      getWidth: 2,
+      getHeight: 0.45,
+      greatCircle: true,
+      widthUnits: "pixels",
+      pickable: true,
+      autoHighlight: true,
+      highlightColor: [255, 180, 40, 255],
+    }));
   }
 
-  map.on("load", () => {
-    startRotate();
-    // Subtle animated pitch-in on load
-    map.easeTo({ pitch: 40, bearing: -15, duration: 1800, easing: t => t < 0.5 ? 2*t*t : -1+(4-2*t)*t });
-  });
+  if (AIRPORTS.length > 0) {
+    // Outer pulse ring
+    layers.push(new ScatterplotLayer({
+      id: "dots-ring",
+      data: AIRPORTS,
+      getPosition: d => d.coords,
+      getRadius: 22000,
+      getFillColor: DOT_RING,
+      stroked: false,
+      radiusUnits: "meters",
+      pickable: false,
+    }));
 
-  // Pause rotate while user drags
-  map.on("mousedown",  () => { userInteracting = true; });
-  map.on("touchstart", () => { userInteracting = true; });
-  map.on("mouseup",    () => { userInteracting = false; });
-  map.on("touchend",   () => {
-    setTimeout(() => { userInteracting = false; }, 800);
-  });
+    // Solid dot with white border
+    layers.push(new ScatterplotLayer({
+      id: "dots-fill",
+      data: AIRPORTS,
+      getPosition: d => d.coords,
+      getRadius: 8000,
+      getFillColor: DOT_FILL,
+      stroked: true,
+      lineWidthMinPixels: 1.5,
+      getLineColor: [255, 255, 255, 220],
+      radiusUnits: "meters",
+      pickable: true,
+      autoHighlight: true,
+      highlightColor: [255, 180, 40, 255],
+    }));
 
-  // ── Resize guard ────────────────────────────────────────────────────────
-  window.addEventListener("resize", () => map.resize());
+    // Tiny white centre core
+    layers.push(new ScatterplotLayer({
+      id: "dots-core",
+      data: AIRPORTS,
+      getPosition: d => d.coords,
+      getRadius: 2800,
+      getFillColor: DOT_CORE,
+      stroked: false,
+      radiusUnits: "meters",
+      pickable: false,
+    }));
+  }
+
+  return layers;
+}
+
+const overlay = new MapboxOverlay({
+  interleaved: false,
+  layers: buildLayers(),
+});
+map.addControl(overlay);
+
+// ── Slow auto-rotate (very gentle — Apple Maps never auto-rotates, ────────────
+//    but a barely-perceptible drift looks premium) ────────────────────────────
+let userInteracting = false;
+let rotateTimer = null;
+
+function startRotate() {
+  if (rotateTimer) return;
+  rotateTimer = setInterval(() => {
+    if (!userInteracting) {
+      map.setBearing((map.getBearing() + 0.05) % 360);
+    }
+  }, 50);
+}
+
+map.on("mousedown",  () => { userInteracting = true; });
+map.on("touchstart", () => { userInteracting = true; });
+map.on("mouseup",    () => { userInteracting = false; });
+map.on("touchend",   () => { setTimeout(() => { userInteracting = false; }, 900); });
+
+window.addEventListener("resize", () => map.resize());
 
 })();
 </script>
@@ -285,7 +336,6 @@ interface Props { flights: Flight[]; }
 
 export function GlobeView({ flights }: Props) {
   const webRef = useRef<any>(null);
-
   const html = useMemo(() => buildHTML(flights), [flights]);
 
   return (
@@ -301,22 +351,19 @@ export function GlobeView({ flights }: Props) {
         allowsInlineMediaPlayback
         javaScriptEnabled
         domStorageEnabled
-        // Allow loading CDN scripts
         mixedContentMode="always"
         allowFileAccess
         allowUniversalAccessFromFileURLs
-        // Transparent background so the map bg colour shows
-        backgroundColor="#060D1A"
-        // iOS: remove default white flash
+        backgroundColor="#EEF2F5"
         {...(Platform.OS === "ios" ? { decelerationRate: "fast" } : {})}
-        onError={(e) => console.warn("GlobeView WebView error:", e.nativeEvent)}
+        onError={(e) => console.warn("GlobeView error:", e.nativeEvent)}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { borderRadius: 16, overflow: "hidden", backgroundColor: "#060D1A" },
+  container: { borderRadius: 16, overflow: "hidden", backgroundColor: "#EEF2F5" },
   webview:   { flex: 1, backgroundColor: "transparent" },
 });
 
