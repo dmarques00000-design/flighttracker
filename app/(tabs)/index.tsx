@@ -48,31 +48,70 @@ function formatDateShort(dateStr: string): string {
   });
 }
 
-// ─── Empirical CDF (mirrors server/routes.ts — used as offline fallback) ─────
-//
-// This is the same piecewise-linear model used on the server.  It runs
-// client-side only when the server is unreachable (e.g. no internet).
-// The server remains the single source of truth; this is purely a fallback.
+// ─── Fallback CDF (mirrors server/routes.ts — used when server is unreachable) ──
 const FALLBACK_CDF: [number, number][] = [
-  [0,   0.00],
-  [1,   0.38],
-  [2,   0.57],
-  [3,   0.67],
-  [4,   0.74],
-  [6,   0.82],
-  [8,   0.87],
-  [10,  0.90],
-  [12,  0.92],
-  [15,  0.94],
-  [20,  0.96],
-  [25,  0.97],
-  [30,  0.975],
-  [40,  0.982],
-  [50,  0.988],
-  [75,  0.993],
-  [100, 0.997],
-  [150, 0.999],
-  [200, 1.000],
+  [  0, 0.0000 ],
+  [  1, 0.3800 ],
+  [  2, 0.5700 ],
+  [  3, 0.6500 ],
+  [  4, 0.7080 ],
+  [  5, 0.7500 ],
+  [  6, 0.7840 ],
+  [  7, 0.8100 ],
+  [  8, 0.8300 ],
+  [  9, 0.8460 ],
+  [ 10, 0.8600 ],
+  [ 11, 0.8710 ],
+  [ 12, 0.8810 ],
+  [ 13, 0.8895 ],
+  [ 14, 0.8970 ],
+  [ 15, 0.9040 ],
+  [ 16, 0.9100 ],
+  [ 17, 0.9155 ],
+  [ 18, 0.9205 ],
+  [ 19, 0.9250 ],
+  [ 20, 0.9292 ],
+  [ 21, 0.9330 ],
+  [ 22, 0.9365 ],
+  [ 23, 0.9398 ],
+  [ 24, 0.9428 ],
+  [ 25, 0.9455 ],
+  [ 26, 0.9480 ],
+  [ 27, 0.9503 ],
+  [ 28, 0.9524 ],
+  [ 29, 0.9544 ],
+  [ 30, 0.9562 ],
+  [ 31, 0.9579 ],
+  [ 32, 0.9595 ],
+  [ 33, 0.9610 ],
+  [ 34, 0.9624 ],
+  [ 35, 0.9637 ],
+  [ 36, 0.9649 ],
+  [ 37, 0.9660 ],
+  [ 38, 0.9671 ],
+  [ 39, 0.9681 ],
+  [ 40, 0.9690 ],
+  [ 41, 0.9699 ],
+  [ 42, 0.9707 ],
+  [ 43, 0.9715 ],
+  [ 44, 0.9722 ],
+  [ 45, 0.9729 ],
+  [ 46, 0.9736 ],
+  [ 47, 0.9742 ],
+  [ 48, 0.9748 ],
+  [ 49, 0.9754 ],
+  [ 50, 0.9760 ],
+  [ 55, 0.9785 ],
+  [ 60, 0.9808 ],
+  [ 65, 0.9825 ],
+  [ 70, 0.9840 ],
+  [ 75, 0.9855 ],
+  [ 80, 0.9867 ],
+  [ 90, 0.9885 ],
+  [100, 0.9900 ],
+  [125, 0.9930 ],
+  [150, 0.9955 ],
+  [200, 1.0000 ],
 ];
 
 function computeFallbackPercentile(count: number): number {
@@ -82,22 +121,15 @@ function computeFallbackPercentile(count: number): number {
     const [x1, y1] = FALLBACK_CDF[i];
     if (count <= x1) {
       const t = (count - x0) / (x1 - x0);
-      return Math.round((y0 + t * (y1 - y0)) * 100);
+      return Math.round((y0 + t * (y1 - y0)) * 1000) / 10;
     }
   }
   return 100;
 }
 
 // ─── usePercentile hook ───────────────────────────────────────────────────────
-//
-// Fetches the real percentile from the server for a given flight count.
-// Falls back to the local CDF model if the server is unreachable.
-// Debounces requests so rapid count changes (period filter switches) don't
-// spam the server — waits 400 ms after the last count change before fetching.
 interface PercentileResult {
-  topPercent: number;
-  label: string;
-  isLive: boolean;   // false = offline fallback was used
+  topPercent: number;  // e.g. 35.0, 29.2, 14.6 — always a distinct value per count
 }
 
 function usePercentile(count: number): PercentileResult | null {
@@ -110,7 +142,6 @@ function usePercentile(count: number): PercentileResult | null {
       return;
     }
 
-    // Debounce: wait 400 ms before firing the request
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
@@ -118,13 +149,13 @@ function usePercentile(count: number): PercentileResult | null {
           signal: AbortSignal.timeout(4000),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as { topPercent: number; label: string };
-        setResult({ topPercent: data.topPercent, label: data.label, isLive: true });
+        const data = (await res.json()) as { topPercent: number };
+        setResult({ topPercent: data.topPercent });
       } catch {
-        // Server unreachable — use local CDF fallback silently
+        // Offline fallback — use local CDF silently
         const percentile = computeFallbackPercentile(count);
-        const topPercent = Math.max(1, 100 - percentile);
-        setResult({ topPercent, label: "", isLive: false });
+        const topPercent = Math.max(0.1, Math.round((100 - percentile) * 10) / 10);
+        setResult({ topPercent });
       }
     }, 400);
 
@@ -296,10 +327,7 @@ export default function HomeScreen() {
   );
 
   const stats = useFilteredStats(flights, period);
-
-  // ── Real percentile from server (falls back to local CDF model offline) ──
   const percentileData = usePercentile(stats.count);
-
   const hasFlights = flights.length > 0;
 
   function handleMenuSelect(id: string) {
@@ -391,7 +419,7 @@ export default function HomeScreen() {
             <Animated.View entering={FadeInDown.delay(80).springify()} style={styles.heroCard}>
               <View style={styles.heroTopRow}>
                 <View>
-                  <Text style={styles.heroLabel}>{period === "all" ? "All time flights" : `Flights in ${period}`}</Text>
+                  <Text style={styles.heroLabel}>{period === "alll" ? "All time flights" : `Flights in ${period}`}</Text>
                   <Text style={styles.heroNum}>{stats.count}</Text>
                 </View>
                 <View style={styles.heroIconWrap}>
@@ -403,13 +431,10 @@ export default function HomeScreen() {
                 <Text style={styles.heroStat}>{formatNumber(stats.miles)} mi</Text>
                 <View style={styles.heroDot} />
                 <Text style={styles.heroStat}>{stats.co2.toFixed(0)}{" kg CO"}{"\u2082"}</Text>
-                {/* ── Real percentile badge ── */}
+                {/* ── Real per-count percentile badge ── */}
                 {percentileData && percentileData.topPercent <= 30 && (
                   <View style={styles.rankPill}>
-                    <Text style={styles.rankPillText}>
-                      Top {percentileData.topPercent}%
-                      {percentileData.isLive && percentileData.label ? `  ·  ${percentileData.label}` : ""}
-                    </Text>
+                    <Text style={styles.rankPillText}>Top {percentileData.topPercent}%</Text>
                   </View>
                 )}
               </View>
@@ -420,7 +445,7 @@ export default function HomeScreen() {
               )}
             </Animated.View>
 
-            {/* ─── Route Map (replaces globe) ─── */}
+            {/* ─── Route Map ─── */}
             <Animated.View entering={FadeInDown.delay(120).springify()} style={styles.mapContainer}>
               <Text style={styles.sectionTitle}>Your Flight Network</Text>
               <GlobeView flights={flights} />
@@ -577,7 +602,6 @@ const styles = StyleSheet.create({
   rankPill:      { backgroundColor: Colors.accentDim, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 },
   rankPillText:  { fontSize: 12, color: Colors.accent, fontFamily: "DMSans_700Bold" },
 
-  // Route map section
   mapContainer:  { marginTop: 4, marginBottom: 24 },
 
   sectionTitle:    { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 },
