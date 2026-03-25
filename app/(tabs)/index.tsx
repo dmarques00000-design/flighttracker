@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, Pressable,
+  View, Text, ScrollView, Pressable,
   Platform, Modal, TouchableWithoutFeedback,
   AppState, AppStateStatus,
 } from "react-native";
@@ -15,6 +15,9 @@ import { useUser } from "@/context/user";
 import GlobeView from "@/components/GlobeView";
 import { LogbookLogo } from "@/components/LogbookLogo";
 import { getCO2FunFact } from "@/utils/co2FunFact";
+import { getRateLimiter, formatRetryAfter } from "@/lib/rate-limiter";
+
+const percentileLimiter = getRateLimiter("percentile", { maxCalls: 10, windowMs: 60_000 });
 
 function getDateString(): string { return new Date().toISOString().substring(0, 10); }
 function msUntilMidnight(): number {
@@ -73,7 +76,18 @@ function usePercentile(count: number): { topPercent: number } | null {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/percentile?count=${count}`, { signal: AbortSignal.timeout(4000) });
+        // Check rate limit before firing
+        const limit = await percentileLimiter.check();
+        if (!limit.allowed) {
+          // Silently fall back to the local CDF — no user-visible error for background calls
+          const p = computeFallbackPercentile(count);
+          setResult({ topPercent: Math.max(0.1, Math.round((100 - p) * 10) / 10) });
+          return;
+        }
+        await percentileLimiter.consume();
+        // Validate count is a safe positive integer before sending
+        const safeCount = Math.max(0, Math.floor(count));
+        const res = await fetch(`/api/percentile?count=${safeCount}`, { signal: AbortSignal.timeout(4000) });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         setResult((await res.json()) as { topPercent: number });
       } catch {
