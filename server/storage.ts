@@ -1,6 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Aviationstack API — https://aviationstack.com
-// Set AVIATIONSTACK_API_KEY in your .env file.
+// AeroDataBox API (via RapidAPI) — https://rapidapi.com/aedbx-aedbx/api/aerodatabox
+//
+// Endpoint used:
+//   GET /flights/number/{flightNumber}/{dateLocal}
+//   e.g. /flights/number/LX19/2026-03-25
+//
+// Required env var:
+//   AERODATABOX_API_KEY  — your RapidAPI key
+//
 // Falls back to deterministic mock data if the key is missing or the API fails.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -84,7 +91,7 @@ const AIRLINES: Record<string, string> = {
   TUI: "TUI Airways",
 };
 
-const AIRPORTS: Record<string, { city: string; lat: number; lon: number }> = {
+export const AIRPORTS: Record<string, { city: string; lat: number; lon: number }> = {
   JFK: { city: "New York", lat: 40.6413, lon: -73.7781 },
   LGA: { city: "New York", lat: 40.7769, lon: -73.874 },
   EWR: { city: "Newark", lat: 40.6895, lon: -74.1745 },
@@ -257,6 +264,8 @@ const AIRCRAFT_POOL = [
   "Embraer E175", "Bombardier CRJ-900", "Boeing 757-200",
 ];
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -296,267 +305,6 @@ function toHHMM(isoOrTime: string | null | undefined): string {
   if (!isoOrTime) return "00:00";
   if (isoOrTime.includes("T")) return isoOrTime.substring(11, 16);
   return isoOrTime.substring(0, 5);
-}
-
-function durationFromISO(dep: string | null | undefined, arr: string | null | undefined): number | null {
-  if (!dep || !arr) return null;
-  try {
-    const diff = new Date(arr).getTime() - new Date(dep).getTime();
-    if (isNaN(diff) || diff <= 0) return null;
-    return Math.round(diff / 60000);
-  } catch {
-    return null;
-  }
-}
-
-function generateMockFlight(
-  code: string,
-  date: string,
-  hintDep?: string,
-  hintArr?: string,
-) {
-  const seed = deterministicSeed(code + date);
-  const airlineCode = extractAirlineCode(code.toUpperCase());
-  const airlineName = AIRLINES[airlineCode] || "Unknown Airlines";
-
-  let depIata: string;
-  let arrIata: string;
-
-  if (hintDep && hintArr) {
-    depIata = hintDep.toUpperCase();
-    arrIata = hintArr.toUpperCase();
-  } else if (AIRLINE_HUB_ROUTES[airlineCode]) {
-    const routes = AIRLINE_HUB_ROUTES[airlineCode];
-    const routeIndex = seed % routes.length;
-    depIata = routes[routeIndex][0];
-    arrIata = routes[routeIndex][1];
-  } else {
-    const routeIndex = seed % ROUTE_POOL.length;
-    depIata = ROUTE_POOL[routeIndex][0];
-    arrIata = ROUTE_POOL[routeIndex][1];
-  }
-
-  const dep = AIRPORTS[depIata] || AIRPORTS["JFK"];
-  const arr = AIRPORTS[arrIata] || AIRPORTS["LAX"];
-
-  const distKm = haversineKm(dep.lat, dep.lon, arr.lat, arr.lon);
-  const distMiles = Math.round(kmToMiles(distKm));
-  const blockTime = (distKm / 870) * 60 + 30;
-  const durationMinutes = Math.round(blockTime);
-  const co2Kg = Math.round(distKm * 0.115);
-
-  const delayRoll = seededRandom(seed, 5);
-  const isDelayed = delayRoll < 0.2;
-  const delayMinutes = isDelayed ? Math.round(seededRandom(seed, 6) * 120 + 10) : 0;
-
-  const depHour = 6 + Math.floor(seededRandom(seed, 7) * 14);
-  const depMin = Math.floor(seededRandom(seed, 8) * 4) * 15;
-  const depStr = `${String(depHour).padStart(2, "0")}:${String(depMin).padStart(2, "0")}`;
-
-  const totalMin = depHour * 60 + depMin + durationMinutes + delayMinutes;
-  const arrHour = Math.floor(totalMin / 60) % 24;
-  const arrMin = totalMin % 60;
-  const arrStr = `${String(arrHour).padStart(2, "0")}:${String(arrMin).padStart(2, "0")}`;
-
-  const aircraft = AIRCRAFT_POOL[seed % AIRCRAFT_POOL.length];
-
-  return {
-    flightCode: code,
-    date,
-    airline: airlineName,
-    airlineCode,
-    departureAirport: depIata,
-    arrivalAirport: arrIata,
-    departureCity: dep.city,
-    arrivalCity: arr.city,
-    departureTime: depStr,
-    arrivalTime: arrStr,
-    durationMinutes,
-    distanceMiles: distMiles,
-    co2Kg,
-    status: (isDelayed ? "delayed" : "on_time") as "on_time" | "delayed",
-    delayMinutes,
-    aircraft,
-    isMock: true,
-    tailNumber: undefined,
-    departureTerminal: undefined,
-    arrivalTerminal: undefined,
-    departureGate: undefined,
-    arrivalGate: undefined,
-  };
-}
-
-interface AviationstackFlight {
-  flight_date: string;
-  flight_status: "scheduled" | "active" | "landed" | "cancelled" | "incident" | "diverted" | string;
-  departure: {
-    airport: string;
-    iata: string;
-    icao: string;
-    terminal: string | null;
-    gate: string | null;
-    scheduled: string;
-    estimated: string | null;
-    actual: string | null;
-    delay: number | null;
-  };
-  arrival: {
-    airport: string;
-    iata: string;
-    icao: string;
-    terminal: string | null;
-    gate: string | null;
-    scheduled: string;
-    estimated: string | null;
-    actual: string | null;
-    delay: number | null;
-  };
-  airline: {
-    name: string;
-    iata: string;
-    icao: string;
-  };
-  flight: {
-    number: string;
-    iata: string;
-    icao: string;
-  };
-  aircraft: {
-    registration: string | null;
-    iata: string | null;
-    icao: string | null;
-    icao24: string | null;
-  } | null;
-}
-
-interface AviationstackResponse {
-  pagination?: { total: number; count: number; offset: number; limit: number };
-  data?: AviationstackFlight[];
-  error?: { code: string; message: string };
-}
-
-async function lookupFromAviationstack(
-  code: string,
-  date: string,
-  dep?: string,
-  arr?: string,
-) {
-  const apiKey = process.env.AVIATIONSTACK_API_KEY;
-  if (!apiKey) {
-    console.log("[Aviationstack] No API key found, skipping");
-    return null;
-  }
-
-  const params = new URLSearchParams({
-    access_key: apiKey,
-    flight_iata: code.toUpperCase(),
-    limit: "10",
-  });
-
-  const url = `http://api.aviationstack.com/v1/flights?${params.toString()}`;
-  console.log(`[Aviationstack] Fetching ${code} (date filter: ${date})`);
-
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      console.error(`[Aviationstack] HTTP ${res.status} \u2014 ${body.slice(0, 200)}`);
-      return null;
-    }
-
-    const json = (await res.json()) as AviationstackResponse;
-
-    if (json.error) {
-      console.error(`[Aviationstack] API error: ${json.error.code} \u2014 ${json.error.message}`);
-      return null;
-    }
-
-    const flights = json.data;
-    console.log(`[Aviationstack] Got ${flights?.length ?? 0} result(s)`);
-    if (!flights || flights.length === 0) return null;
-
-    const statusScore = (s: string) =>
-      s === "active" ? 0 : s === "landed" ? 1 : s === "scheduled" ? 2 : 3;
-
-    const ranked = [...flights].sort((a, b) => {
-      const dateMatchA = a.flight_date === date ? 0 : 1;
-      const dateMatchB = b.flight_date === date ? 0 : 1;
-      return dateMatchA - dateMatchB || statusScore(a.flight_status) - statusScore(b.flight_status);
-    });
-
-    const f = ranked[0];
-    console.log(`[Aviationstack] Using flight: ${f.flight.iata} on ${f.flight_date} status=${f.flight_status}`);
-
-    const depIata = f.departure.iata?.toUpperCase() || "";
-    const arrIata = f.arrival.iata?.toUpperCase() || "";
-    const depAirportData = AIRPORTS[depIata];
-    const arrAirportData = AIRPORTS[arrIata];
-
-    let distMiles = 0;
-    let co2Kg = 0;
-    if (depAirportData && arrAirportData) {
-      const distKm = haversineKm(
-        depAirportData.lat, depAirportData.lon,
-        arrAirportData.lat, arrAirportData.lon,
-      );
-      distMiles = Math.round(kmToMiles(distKm));
-      co2Kg = Math.round(distKm * 0.115);
-    }
-
-    const depTime = toHHMM(f.departure.actual ?? f.departure.estimated ?? f.departure.scheduled);
-    const arrTime = toHHMM(f.arrival.actual ?? f.arrival.estimated ?? f.arrival.scheduled);
-
-    const depISO = f.departure.actual ?? f.departure.estimated ?? f.departure.scheduled;
-    const arrISO = f.arrival.actual ?? f.arrival.estimated ?? f.arrival.scheduled;
-    const durationMinutes =
-      durationFromISO(depISO, arrISO) ??
-      (depAirportData && arrAirportData
-        ? Math.round((haversineKm(
-            depAirportData.lat, depAirportData.lon,
-            arrAirportData.lat, arrAirportData.lon,
-          ) / 870) * 60 + 30)
-        : 120);
-
-    const delayMinutes = f.departure.delay ?? f.arrival.delay ?? 0;
-    const rawStatus = f.flight_status;
-    const status: "on_time" | "delayed" =
-      rawStatus === "cancelled" || rawStatus === "incident" || rawStatus === "diverted"
-        ? "delayed"
-        : delayMinutes > 15 ? "delayed" : "on_time";
-
-    const airlineCode = f.airline.iata?.toUpperCase() || extractAirlineCode(code);
-    const airlineName = AIRLINES[airlineCode] || f.airline.name || "Unknown Airlines";
-    const aircraftLabel = f.aircraft?.icao ? icaoToReadable(f.aircraft.icao) : "Commercial Aircraft";
-
-    return {
-      flightCode: f.flight.iata || code,
-      date: f.flight_date || date,
-      airline: airlineName,
-      airlineCode,
-      departureAirport: depIata,
-      arrivalAirport: arrIata,
-      departureCity: depAirportData?.city || f.departure.airport || depIata,
-      arrivalCity: arrAirportData?.city || f.arrival.airport || arrIata,
-      departureTime: depTime,
-      arrivalTime: arrTime,
-      durationMinutes,
-      distanceMiles: distMiles,
-      co2Kg,
-      status,
-      delayMinutes,
-      aircraft: aircraftLabel,
-      isMock: false,
-      // Enriched fields
-      tailNumber: f.aircraft?.registration ?? undefined,
-      departureTerminal: f.departure.terminal ?? undefined,
-      arrivalTerminal: f.arrival.terminal ?? undefined,
-      departureGate: f.departure.gate ?? undefined,
-      arrivalGate: f.arrival.gate ?? undefined,
-    };
-  } catch (err) {
-    console.error("[Aviationstack] fetch error:", err);
-    return null;
-  }
 }
 
 function icaoToReadable(icao: string): string {
@@ -599,88 +347,293 @@ function icaoToReadable(icao: string): string {
   return map[icao.toUpperCase()] || icao;
 }
 
-async function lookupFromAirlabs(code: string, date: string) {
-  const apiKey = process.env.AIRLABS_API_KEY;
-  if (!apiKey) return null;
+function calcDistAndCo2(
+  depIata: string,
+  arrIata: string,
+): { distMiles: number; co2Kg: number } {
+  const dep = AIRPORTS[depIata];
+  const arr = AIRPORTS[arrIata];
+  if (!dep || !arr) return { distMiles: 0, co2Kg: 0 };
+  const distKm = haversineKm(dep.lat, dep.lon, arr.lat, arr.lon);
+  return {
+    distMiles: Math.round(kmToMiles(distKm)),
+    co2Kg: Math.round(distKm * 0.115),
+  };
+}
+
+// ─── Mock fallback ────────────────────────────────────────────────────────────
+
+function generateMockFlight(
+  code: string,
+  date: string,
+  hintDep?: string,
+  hintArr?: string,
+) {
+  const seed = deterministicSeed(code + date);
+  const airlineCode = extractAirlineCode(code.toUpperCase());
+  const airlineName = AIRLINES[airlineCode] || "Unknown Airlines";
+
+  let depIata: string;
+  let arrIata: string;
+
+  if (hintDep && hintArr) {
+    depIata = hintDep.toUpperCase();
+    arrIata = hintArr.toUpperCase();
+  } else if (AIRLINE_HUB_ROUTES[airlineCode]) {
+    const routes = AIRLINE_HUB_ROUTES[airlineCode];
+    const routeIndex = seed % routes.length;
+    depIata = routes[routeIndex][0];
+    arrIata = routes[routeIndex][1];
+  } else {
+    const routeIndex = seed % ROUTE_POOL.length;
+    depIata = ROUTE_POOL[routeIndex][0];
+    arrIata = ROUTE_POOL[routeIndex][1];
+  }
+
+  const dep = AIRPORTS[depIata] || AIRPORTS["JFK"];
+  const arr = AIRPORTS[arrIata] || AIRPORTS["LAX"];
+
+  const distKm = haversineKm(dep.lat, dep.lon, arr.lat, arr.lon);
+  const distMiles = Math.round(kmToMiles(distKm));
+  const durationMinutes = Math.round((distKm / 870) * 60 + 30);
+  const co2Kg = Math.round(distKm * 0.115);
+
+  const delayRoll = seededRandom(seed, 5);
+  const isDelayed = delayRoll < 0.2;
+  const delayMinutes = isDelayed ? Math.round(seededRandom(seed, 6) * 120 + 10) : 0;
+
+  const depHour = 6 + Math.floor(seededRandom(seed, 7) * 14);
+  const depMin = Math.floor(seededRandom(seed, 8) * 4) * 15;
+  const depStr = `${String(depHour).padStart(2, "0")}:${String(depMin).padStart(2, "0")}`;
+
+  const totalMin = depHour * 60 + depMin + durationMinutes + delayMinutes;
+  const arrHour = Math.floor(totalMin / 60) % 24;
+  const arrMin = totalMin % 60;
+  const arrStr = `${String(arrHour).padStart(2, "0")}:${String(arrMin).padStart(2, "0")}`;
+
+  const aircraft = AIRCRAFT_POOL[seed % AIRCRAFT_POOL.length];
+
+  return {
+    flightCode: code,
+    date,
+    airline: airlineName,
+    airlineCode,
+    departureAirport: depIata,
+    arrivalAirport: arrIata,
+    departureCity: dep.city,
+    arrivalCity: arr.city,
+    departureTime: depStr,
+    arrivalTime: arrStr,
+    durationMinutes,
+    distanceMiles: distMiles,
+    co2Kg,
+    status: (isDelayed ? "delayed" : "on_time") as "on_time" | "delayed",
+    delayMinutes,
+    aircraft,
+    isMock: true,
+    tailNumber: undefined as string | undefined,
+    departureTerminal: undefined as string | undefined,
+    arrivalTerminal: undefined as string | undefined,
+    departureGate: undefined as string | undefined,
+    arrivalGate: undefined as string | undefined,
+  };
+}
+
+// ─── AeroDataBox (RapidAPI) ───────────────────────────────────────────────────
+//
+// Endpoint: GET /flights/number/{flightNumber}/{dateLocal}
+// Docs: https://rapidapi.com/aedbx-aedbx/api/aerodatabox
+//
+// The response is an ARRAY of flight objects (codeshares may produce > 1).
+// We pick the first item that matches our date.
+
+interface AeroDataBoxAirport {
+  iata?: string;
+  name?: string;
+  municipalityName?: string;
+  shortName?: string;
+  countryCode?: string;
+  terminal?: string | null;
+  gate?: string | null;
+  scheduledTime?: { local?: string; utc?: string };
+  actualTime?: { local?: string; utc?: string };
+  runwayTime?: { local?: string; utc?: string };
+  delay?: number | null;
+  quality?: string[];
+}
+
+interface AeroDataBoxAircraft {
+  reg?: string | null;
+  modeS?: string | null;
+  model?: string | null;
+  image?: { url?: string; webUrl?: string; author?: string; title?: string; license?: string; htmlAttributions?: string[] } | null;
+}
+
+interface AeroDataBoxFlight {
+  greatCircleDistance?: { km?: number; mile?: number; nm?: number };
+  departure?: AeroDataBoxAirport;
+  arrival?: AeroDataBoxAirport;
+  lastUpdatedUtc?: string;
+  number?: string;
+  callSign?: string | null;
+  status?: string;
+  codeshareStatus?: string;
+  isCargo?: boolean;
+  airline?: { name?: string; iata?: string; icao?: string };
+  aircraft?: AeroDataBoxAircraft | null;
+  duration?: { scheduledMs?: number; actualMs?: number } | null;
+}
+
+async function lookupFromAeroDataBox(
+  code: string,
+  date: string,
+  hintDep?: string,
+  hintArr?: string,
+): Promise<ReturnType<typeof generateMockFlight> | null> {
+  const apiKey = process.env.AERODATABOX_API_KEY;
+  if (!apiKey) {
+    console.log("[AeroDataBox] No API key found — skipping");
+    return null;
+  }
+
+  // Strip spaces from flight number (e.g. "LX 19" → "LX19")
+  const flightNumber = code.replace(/\s+/g, "").toUpperCase();
+
+  const url = `https://aerodatabox.p.rapidapi.com/flights/number/${flightNumber}/${date}`;
+  console.log(`[AeroDataBox] GET ${url}`);
 
   try {
-    const iataUrl = `https://airlabs.co/api/v9/flight?flight_iata=${code}&api_key=${apiKey}`;
-    let res = await fetch(iataUrl, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) {
-      const icaoUrl = `https://airlabs.co/api/v9/flight?flight_icao=${code}&api_key=${apiKey}`;
-      res = await fetch(icaoUrl, { signal: AbortSignal.timeout(8000) });
-      if (!res.ok) return null;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        "x-rapidapi-host": "aerodatabox.p.rapidapi.com",
+        "x-rapidapi-key": apiKey,
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (res.status === 404) {
+      console.log(`[AeroDataBox] 404 — flight not found for ${flightNumber} on ${date}`);
+      return null;
     }
-    const json = (await res.json()) as {
-      response?: {
-        airline_iata?: string;
-        dep_iata?: string;
-        arr_iata?: string;
-        dep_time?: string;
-        arr_time?: string;
-        dep_delayed?: number | null;
-        arr_delayed?: number | null;
-        duration?: number | null;
-        status?: string;
-        aircraft_icao?: string;
-        reg_number?: string;
-        dep_terminal?: string;
-        arr_terminal?: string;
-        dep_gate?: string;
-        arr_gate?: string;
-      };
-      error?: { message?: string };
-    };
 
-    const f = json?.response;
-    if (!f) return null;
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`[AeroDataBox] HTTP ${res.status} — ${body.slice(0, 200)}`);
+      return null;
+    }
 
-    const depIata = f.dep_iata || "";
-    const arrIata = f.arr_iata || "";
-    const dep = AIRPORTS[depIata];
-    const arr = AIRPORTS[arrIata];
-    if (!dep || !arr) return null;
+    const data = (await res.json()) as AeroDataBoxFlight[];
+    console.log(`[AeroDataBox] Got ${data?.length ?? 0} result(s)`);
 
-    const airlineCode = f.airline_iata || extractAirlineCode(code);
-    const distKm = haversineKm(dep.lat, dep.lon, arr.lat, arr.lon);
-    const distMiles = Math.round(kmToMiles(distKm));
-    const co2Kg = Math.round(distKm * 0.115);
-    const depTime = f.dep_time ? f.dep_time.substring(0, 5) : "00:00";
-    const arrTime = f.arr_time ? f.arr_time.substring(0, 5) : "00:00";
-    const durationMinutes = f.duration ?? Math.round((distKm / 870) * 60 + 30);
-    const delayMinutes = f.dep_delayed ?? f.arr_delayed ?? 0;
-    const rawStatus = f.status || "scheduled";
+    if (!Array.isArray(data) || data.length === 0) return null;
+
+    // Prefer the operated (non-codeshare) leg; fall back to first result
+    const flight =
+      data.find((f) => f.codeshareStatus === "IsOperatedAs" || f.codeshareStatus === "IsOperating") ??
+      data[0];
+
+    const depIata = (flight.departure?.iata ?? hintDep ?? "").toUpperCase();
+    const arrIata = (flight.arrival?.iata ?? hintArr ?? "").toUpperCase();
+
+    // Prefer actual times, fall back to scheduled
+    const depTimeRaw =
+      flight.departure?.actualTime?.local ??
+      flight.departure?.runwayTime?.local ??
+      flight.departure?.scheduledTime?.local;
+    const arrTimeRaw =
+      flight.arrival?.actualTime?.local ??
+      flight.arrival?.runwayTime?.local ??
+      flight.arrival?.scheduledTime?.local;
+
+    const departureTime = toHHMM(depTimeRaw);
+    const arrivalTime = toHHMM(arrTimeRaw);
+
+    // Duration: use actual ms if available, else scheduled ms, else haversine estimate
+    let durationMinutes: number;
+    if (flight.duration?.actualMs) {
+      durationMinutes = Math.round(flight.duration.actualMs / 60000);
+    } else if (flight.duration?.scheduledMs) {
+      durationMinutes = Math.round(flight.duration.scheduledMs / 60000);
+    } else {
+      const dep = AIRPORTS[depIata];
+      const arr = AIRPORTS[arrIata];
+      durationMinutes =
+        dep && arr
+          ? Math.round((haversineKm(dep.lat, dep.lon, arr.lat, arr.lon) / 870) * 60 + 30)
+          : 120;
+    }
+
+    // Distance: use AeroDataBox great-circle if provided, else haversine from our table
+    let distMiles: number;
+    let co2Kg: number;
+    if (flight.greatCircleDistance?.mile) {
+      distMiles = Math.round(flight.greatCircleDistance.mile);
+      const distKm = flight.greatCircleDistance.km ?? distMiles / 0.621371;
+      co2Kg = Math.round(distKm * 0.115);
+    } else {
+      const calc = calcDistAndCo2(depIata, arrIata);
+      distMiles = calc.distMiles;
+      co2Kg = calc.co2Kg;
+    }
+
+    const delayMinutes = flight.departure?.delay ?? flight.arrival?.delay ?? 0;
+    const rawStatus = (flight.status ?? "").toLowerCase();
     const status: "on_time" | "delayed" =
-      rawStatus === "delayed" || (delayMinutes !== null && delayMinutes > 15) ? "delayed" : "on_time";
+      rawStatus === "cancelled" || rawStatus === "diverted" || rawStatus === "incident"
+        ? "delayed"
+        : (delayMinutes ?? 0) > 15
+        ? "delayed"
+        : "on_time";
+
+    const airlineCode =
+      flight.airline?.iata?.toUpperCase() ?? extractAirlineCode(code);
+    const airlineName =
+      AIRLINES[airlineCode] ?? flight.airline?.name ?? "Unknown Airlines";
+
+    const depData = AIRPORTS[depIata];
+    const arrData = AIRPORTS[arrIata];
+
+    const aircraftModel =
+      flight.aircraft?.model
+        ? (flight.aircraft.model.includes(" ") ? flight.aircraft.model : icaoToReadable(flight.aircraft.model))
+        : "Commercial Aircraft";
+
+    console.log(
+      `[AeroDataBox] Resolved: ${depIata}→${arrIata} | ${departureTime}-${arrivalTime} | ${distMiles}mi | status=${status} | isMock=false`,
+    );
 
     return {
-      flightCode: code,
+      flightCode: flight.number ?? code,
       date,
-      airline: AIRLINES[airlineCode] || "Unknown Airlines",
+      airline: airlineName,
       airlineCode,
       departureAirport: depIata,
       arrivalAirport: arrIata,
-      departureCity: dep.city,
-      arrivalCity: arr.city,
-      departureTime: depTime,
-      arrivalTime: arrTime,
+      departureCity: depData?.city ?? flight.departure?.municipalityName ?? depIata,
+      arrivalCity: arrData?.city ?? flight.arrival?.municipalityName ?? arrIata,
+      departureTime,
+      arrivalTime,
       durationMinutes,
       distanceMiles: distMiles,
       co2Kg,
       status,
-      delayMinutes,
-      aircraft: f.aircraft_icao ? icaoToReadable(f.aircraft_icao) : "Commercial Aircraft",
+      delayMinutes: delayMinutes ?? 0,
+      aircraft: aircraftModel,
       isMock: false,
-      tailNumber: f.reg_number ?? undefined,
-      departureTerminal: f.dep_terminal ?? undefined,
-      arrivalTerminal: f.arr_terminal ?? undefined,
-      departureGate: f.dep_gate ?? undefined,
-      arrivalGate: f.arr_gate ?? undefined,
+      tailNumber: flight.aircraft?.reg ?? undefined,
+      departureTerminal: flight.departure?.terminal ?? undefined,
+      arrivalTerminal: flight.arrival?.terminal ?? undefined,
+      departureGate: flight.departure?.gate ?? undefined,
+      arrivalGate: flight.arrival?.gate ?? undefined,
     };
-  } catch {
+  } catch (err) {
+    console.error("[AeroDataBox] fetch error:", err);
     return null;
   }
 }
+
+// ─── Public entrypoint ────────────────────────────────────────────────────────
 
 export async function lookupFlight(
   code: string,
@@ -688,11 +641,9 @@ export async function lookupFlight(
   dep?: string,
   arr?: string,
 ) {
-  const aviationstackResult = await lookupFromAviationstack(code, date, dep, arr);
-  if (aviationstackResult) return aviationstackResult;
+  const aeroResult = await lookupFromAeroDataBox(code, date, dep, arr);
+  if (aeroResult) return aeroResult;
 
-  const airlabsResult = await lookupFromAirlabs(code, date);
-  if (airlabsResult) return airlabsResult;
-
+  console.log(`[lookupFlight] AeroDataBox returned nothing — falling back to mock for ${code} ${date}`);
   return generateMockFlight(code, date, dep, arr);
 }
