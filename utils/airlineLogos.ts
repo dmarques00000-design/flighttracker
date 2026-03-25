@@ -1,7 +1,7 @@
 /**
- * Returns the URL for an airline's logo from the AirHex CDN,
- * which hosts high-quality airline logos by IATA code.
- * Falls back to a placeholder colour per airline for consistent tinting.
+ * Returns the URL for an airline's logo from the pics.avs.io CDN,
+ * which hosts airline logos by IATA code with broad LCC coverage.
+ * Falls back to a brand accent colour for the airplane-icon fallback.
  */
 export interface AirlineInfo {
   logoUrl: string;
@@ -36,13 +36,14 @@ const BRAND_COLORS: Record<string, string> = {
 const DEFAULT_COLOR = "#4F8EF0";
 
 /**
- * AirHex provides airline logos by IATA code at:
- * https://content.airhex.com/content/logos/airlines_<CODE>_200_200_r.png
+ * pics.avs.io provides airline logos by IATA code at:
+ * https://pics.avs.io/200/200/<CODE>.png
+ * Broader coverage than AirHex, including low-cost carriers (U2, FR, W6, etc.)
  */
 export function getAirlineInfo(airlineCode: string): AirlineInfo {
   const code = airlineCode?.toUpperCase() ?? "";
   return {
-    logoUrl: `https://content.airhex.com/content/logos/airlines_${code}_200_200_r.png`,
+    logoUrl: `https://pics.avs.io/200/200/${code}.png`,
     color: BRAND_COLORS[code] ?? DEFAULT_COLOR,
   };
 }
