@@ -361,6 +361,55 @@ function calcDistAndCo2(
   };
 }
 
+/**
+ * Resolve an IATA code from an AeroDataBox airport object.
+ * AeroDataBox may return the code in `iata` (3-letter), or sometimes only in
+ * `icao` (4-letter, e.g. "EGLL"), or nested under a `airport` sub-key in
+ * some response variants.  We try every known location and return the best
+ * 3-letter candidate, or an empty string if nothing usable is found.
+ */
+function resolveIata(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  airportObj: any,
+  hint?: string,
+): string {
+  if (!airportObj) return hint?.toUpperCase() ?? "";
+
+  // Direct iata field
+  const directIata = airportObj.iata ?? airportObj.IATA ?? "";
+  if (directIata && directIata.length === 3) return directIata.toUpperCase();
+
+  // Some responses nest everything under an `airport` sub-object
+  const nested = airportObj.airport ?? airportObj.Airport;
+  if (nested) {
+    const nestedIata = nested.iata ?? nested.IATA ?? "";
+    if (nestedIata && nestedIata.length === 3) return nestedIata.toUpperCase();
+    // ICAO (4-letter) → strip leading country prefix for common cases
+    const icao = nested.icao ?? nested.ICAO ?? "";
+    if (icao && icao.length === 4) {
+      // Last 3 chars of ICAO often match IATA for many major airports
+      const candidate = icao.slice(1).toUpperCase();
+      if (AIRPORTS[candidate]) return candidate;
+    }
+  }
+
+  // shortName is sometimes the IATA code
+  const shortName = airportObj.shortName ?? "";
+  if (shortName && shortName.length === 3 && /^[A-Z]{3}$/.test(shortName.toUpperCase())) {
+    return shortName.toUpperCase();
+  }
+
+  // ICAO on the top-level object
+  const icao = airportObj.icao ?? airportObj.ICAO ?? "";
+  if (icao && icao.length === 4) {
+    const candidate = icao.slice(1).toUpperCase();
+    if (AIRPORTS[candidate]) return candidate;
+  }
+
+  // Fall back to the caller-supplied hint (dep/arr query param)
+  return hint?.toUpperCase() ?? "";
+}
+
 // ─── Mock fallback ────────────────────────────────────────────────────────────
 
 function generateMockFlight(
@@ -449,6 +498,7 @@ function generateMockFlight(
 
 interface AeroDataBoxAirport {
   iata?: string;
+  icao?: string;
   name?: string;
   municipalityName?: string;
   shortName?: string;
@@ -460,6 +510,14 @@ interface AeroDataBoxAirport {
   runwayTime?: { local?: string; utc?: string };
   delay?: number | null;
   quality?: string[];
+  // Some AeroDataBox response variants nest the airport info here
+  airport?: {
+    iata?: string;
+    icao?: string;
+    name?: string;
+    municipalityName?: string;
+    shortName?: string;
+  };
 }
 
 interface AeroDataBoxAircraft {
@@ -528,13 +586,29 @@ async function lookupFromAeroDataBox(
 
     if (!Array.isArray(data) || data.length === 0) return null;
 
+    // Log the raw departure shape on the first result to help debug IATA location
+    console.log("[AeroDataBox] departure shape:", JSON.stringify(data[0]?.departure ?? null));
+    console.log("[AeroDataBox] arrival shape:", JSON.stringify(data[0]?.arrival ?? null));
+
     // Prefer the operated (non-codeshare) leg; fall back to first result
     const flight =
       data.find((f) => f.codeshareStatus === "IsOperatedAs" || f.codeshareStatus === "IsOperating") ??
       data[0];
 
-    const depIata = (flight.departure?.iata ?? hintDep ?? "").toUpperCase();
-    const arrIata = (flight.arrival?.iata ?? hintArr ?? "").toUpperCase();
+    // Use the robust resolver that handles nested airport objects and ICAO fallback
+    const depIata = resolveIata(flight.departure, hintDep);
+    const arrIata = resolveIata(flight.arrival, hintArr);
+
+    console.log(`[AeroDataBox] Resolved IATA: dep=${depIata || "(empty)"} arr=${arrIata || "(empty)"}`);
+
+    // If we still can't resolve both airport codes the result would be badly
+    // incomplete — abort and let the mock fallback produce consistent data.
+    if (!depIata || !arrIata) {
+      console.warn(
+        `[AeroDataBox] Could not resolve IATA codes (dep="${depIata}" arr="${arrIata}") — falling back to mock`,
+      );
+      return null;
+    }
 
     // Prefer actual times, fall back to scheduled
     const depTimeRaw =
@@ -556,11 +630,11 @@ async function lookupFromAeroDataBox(
     } else if (flight.duration?.scheduledMs) {
       durationMinutes = Math.round(flight.duration.scheduledMs / 60000);
     } else {
-      const dep = AIRPORTS[depIata];
-      const arr = AIRPORTS[arrIata];
+      const depCoords = AIRPORTS[depIata];
+      const arrCoords = AIRPORTS[arrIata];
       durationMinutes =
-        dep && arr
-          ? Math.round((haversineKm(dep.lat, dep.lon, arr.lat, arr.lon) / 870) * 60 + 30)
+        depCoords && arrCoords
+          ? Math.round((haversineKm(depCoords.lat, depCoords.lon, arrCoords.lat, arrCoords.lon) / 870) * 60 + 30)
           : 120;
     }
 
@@ -575,6 +649,11 @@ async function lookupFromAeroDataBox(
       const calc = calcDistAndCo2(depIata, arrIata);
       distMiles = calc.distMiles;
       co2Kg = calc.co2Kg;
+    }
+
+    // Guard: if distance is still 0 (airport not in our table) compute a basic estimate
+    if (distMiles === 0) {
+      console.warn(`[AeroDataBox] Airport not in local table (dep=${depIata} arr=${arrIata}) — distance/co2 may be 0`);
     }
 
     const delayMinutes = flight.departure?.delay ?? flight.arrival?.delay ?? 0;
@@ -599,6 +678,20 @@ async function lookupFromAeroDataBox(
         ? (flight.aircraft.model.includes(" ") ? flight.aircraft.model : icaoToReadable(flight.aircraft.model))
         : "Commercial Aircraft";
 
+    // City: prefer our local table, then API municipalityName, then nested airport name, then IATA code
+    const depCity =
+      depData?.city ??
+      flight.departure?.municipalityName ??
+      flight.departure?.airport?.municipalityName ??
+      flight.departure?.airport?.name ??
+      depIata;
+    const arrCity =
+      arrData?.city ??
+      flight.arrival?.municipalityName ??
+      flight.arrival?.airport?.municipalityName ??
+      flight.arrival?.airport?.name ??
+      arrIata;
+
     console.log(
       `[AeroDataBox] Resolved: ${depIata}→${arrIata} | ${departureTime}-${arrivalTime} | ${distMiles}mi | status=${status} | isMock=false`,
     );
@@ -610,8 +703,8 @@ async function lookupFromAeroDataBox(
       airlineCode,
       departureAirport: depIata,
       arrivalAirport: arrIata,
-      departureCity: depData?.city ?? flight.departure?.municipalityName ?? depIata,
-      arrivalCity: arrData?.city ?? flight.arrival?.municipalityName ?? arrIata,
+      departureCity: depCity,
+      arrivalCity: arrCity,
       departureTime,
       arrivalTime,
       durationMinutes,
@@ -622,10 +715,10 @@ async function lookupFromAeroDataBox(
       aircraft: aircraftModel,
       isMock: false,
       tailNumber: flight.aircraft?.reg ?? undefined,
-      departureTerminal: flight.departure?.terminal ?? undefined,
-      arrivalTerminal: flight.arrival?.terminal ?? undefined,
-      departureGate: flight.departure?.gate ?? undefined,
-      arrivalGate: flight.arrival?.gate ?? undefined,
+      departureTerminal: flight.departure?.terminal || undefined,
+      arrivalTerminal: flight.arrival?.terminal || undefined,
+      departureGate: flight.departure?.gate || undefined,
+      arrivalGate: flight.arrival?.gate || undefined,
     };
   } catch (err) {
     console.error("[AeroDataBox] fetch error:", err);
