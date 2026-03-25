@@ -8,20 +8,28 @@ import {
   Pressable,
   Platform,
   Alert,
+  Switch,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
-import { Colors } from "@/constants/colors";
+import { useColors } from "@/constants/colors";
 import { useUser, UserProfile } from "@/context/user";
 import { useFlights } from "@/context/flights";
+import { useTheme, ThemeMode } from "@/context/theme";
 
 const SEAT_OPTIONS: { value: UserProfile["seatPreference"]; label: string; icon: string }[] = [
   { value: "window", label: "Window", icon: "partly-sunny-outline" },
   { value: "middle", label: "Middle", icon: "remove-outline" },
   { value: "aisle", label: "Aisle", icon: "swap-horizontal-outline" },
+];
+
+const THEME_OPTIONS: { value: ThemeMode; label: string; icon: string }[] = [
+  { value: "light", label: "Light", icon: "sunny-outline" },
+  { value: "system", label: "Auto", icon: "phone-portrait-outline" },
+  { value: "dark", label: "Dark", icon: "moon-outline" },
 ];
 
 function getInitials(name: string): string {
@@ -31,21 +39,21 @@ function getInitials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function StatBox({ label, value }: { label: string; value: string | number }) {
+function StatBox({ label, value, C }: { label: string; value: string | number; C: ReturnType<typeof useColors> }) {
   return (
-    <View style={styles.statBox}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View style={styles(C).statBox}>
+      <Text style={styles(C).statValue}>{value}</Text>
+      <Text style={styles(C).statLabel}>{label}</Text>
     </View>
   );
 }
 
-function SectionCard({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
+function SectionCard({ title, icon, children, C }: { title: string; icon: string; children: React.ReactNode; C: ReturnType<typeof useColors> }) {
   return (
-    <View style={styles.sectionCard}>
-      <View style={styles.sectionHeader}>
-        <Ionicons name={icon as any} size={16} color={Colors.accent} />
-        <Text style={styles.sectionTitle}>{title}</Text>
+    <View style={styles(C).sectionCard}>
+      <View style={styles(C).sectionHeader}>
+        <Ionicons name={icon as any} size={16} color={C.accent} />
+        <Text style={styles(C).sectionTitle}>{title}</Text>
       </View>
       {children}
     </View>
@@ -53,32 +61,33 @@ function SectionCard({ title, icon, children }: { title: string; icon: string; c
 }
 
 function Field({
-  label, value, onChangeText, placeholder, keyboardType, editing, icon, secureTextEntry,
+  label, value, onChangeText, placeholder, keyboardType, editing, icon, secureTextEntry, C,
 }: {
   label: string; value: string; onChangeText: (v: string) => void;
   placeholder?: string; keyboardType?: "default" | "email-address";
   editing: boolean; icon?: string; secureTextEntry?: boolean;
+  C: ReturnType<typeof useColors>;
 }) {
   const maskedValue = secureTextEntry && !editing && value ? "\u2022".repeat(Math.min(value.length, 12)) : value;
   return (
-    <View style={styles.field}>
-      <View style={styles.fieldLabelRow}>
-        {icon && <Ionicons name={icon as any} size={13} color={Colors.textSec} style={{ marginRight: 4 }} />}
-        <Text style={styles.fieldLabel}>{label}</Text>
+    <View style={styles(C).field}>
+      <View style={styles(C).fieldLabelRow}>
+        {icon && <Ionicons name={icon as any} size={13} color={C.textSec} style={{ marginRight: 4 }} />}
+        <Text style={styles(C).fieldLabel}>{label}</Text>
       </View>
       {editing ? (
         <TextInput
-          style={styles.fieldInput}
+          style={styles(C).fieldInput}
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder ?? label}
-          placeholderTextColor={Colors.textMuted}
+          placeholderTextColor={C.textMuted}
           keyboardType={keyboardType ?? "default"}
           autoCapitalize="none"
           secureTextEntry={false}
         />
       ) : (
-        <Text style={[styles.fieldValue, !value && styles.fieldValueEmpty]}>
+        <Text style={[styles(C).fieldValue, !value && styles(C).fieldValueEmpty]}>
           {maskedValue || placeholder || `No ${label.toLowerCase()} set`}
         </Text>
       )}
@@ -86,30 +95,25 @@ function Field({
   );
 }
 
-// ─── Not-logged-in empty state ────────────────────────────────────
-function NotLoggedInState() {
+function NotLoggedInState({ C }: { C: ReturnType<typeof useColors> }) {
   return (
-    <Animated.View entering={FadeIn.delay(80)} style={styles.notLoggedIn}>
-      <View style={styles.notLoggedInIcon}>
-        <Ionicons name="person-circle-outline" size={64} color={Colors.accent} />
+    <Animated.View entering={FadeIn.delay(80)} style={styles(C).notLoggedIn}>
+      <View style={styles(C).notLoggedInIcon}>
+        <Ionicons name="person-circle-outline" size={64} color={C.accent} />
       </View>
-      <Text style={styles.notLoggedInTitle}>Your profile is waiting</Text>
-      <Text style={styles.notLoggedInSub}>
+      <Text style={styles(C).notLoggedInTitle}>Your profile is waiting</Text>
+      <Text style={styles(C).notLoggedInSub}>
         Create a free account to back up your flights, sync across devices, and unlock sharing features.
       </Text>
       <Pressable
         onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/auth"); }}
-        style={({ pressed }) => [styles.notLoggedInBtn, { opacity: pressed ? 0.85 : 1 }]}
+        style={({ pressed }) => [styles(C).notLoggedInBtn, { opacity: pressed ? 0.85 : 1 }]}
       >
-        <Ionicons name="person-add-outline" size={16} color={Colors.white} />
-        <Text style={styles.notLoggedInBtnText}>Create Account / Log In</Text>
+        <Ionicons name="person-add-outline" size={16} color={C.white} />
+        <Text style={styles(C).notLoggedInBtnText}>Create Account / Log In</Text>
       </Pressable>
-      <Pressable
-        onPress={() => router.push("/auth")}
-        style={{ marginTop: 14 }}
-        hitSlop={10}
-      >
-        <Text style={styles.notLoggedInLink}>Already have an account? Sign in →</Text>
+      <Pressable onPress={() => router.push("/auth")} style={{ marginTop: 14 }} hitSlop={10}>
+        <Text style={styles(C).notLoggedInLink}>Already have an account? Sign in →</Text>
       </Pressable>
     </Animated.View>
   );
@@ -117,8 +121,10 @@ function NotLoggedInState() {
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
+  const C = useColors();
   const { profile, isLoggedIn, updateProfile, clearProfile, logout } = useUser();
   const { flights } = useFlights();
+  const { mode, setMode } = useTheme();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<UserProfile>(profile);
 
@@ -172,109 +178,140 @@ export default function ProfileScreen() {
   }
 
   const initials = profile.avatarInitials || getInitials(profile.name);
+  const S = styles(C);
 
   return (
-    <View style={[styles.container, { paddingTop: topPadding }]}>
+    <View style={[S.container, { paddingTop: topPadding }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scroll, { paddingBottom: bottomPadding + 110 }]}
+        contentContainerStyle={[S.scroll, { paddingBottom: bottomPadding + 110 }]}
       >
         {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Profile</Text>
+        <View style={S.header}>
+          <Text style={S.title}>Profile</Text>
           {isLoggedIn && !editing && (
-            <Pressable onPress={startEdit} style={styles.editBtn}>
-              <Ionicons name="pencil" size={15} color={Colors.accent} />
-              <Text style={styles.editBtnText}>Edit</Text>
+            <Pressable onPress={startEdit} style={S.editBtn}>
+              <Ionicons name="pencil" size={15} color={C.accent} />
+              <Text style={S.editBtnText}>Edit</Text>
             </Pressable>
           )}
           {editing && (
-            <View style={styles.editActions}>
-              <Pressable onPress={cancelEdit} style={styles.cancelBtn}>
-                <Text style={styles.cancelBtnText}>Cancel</Text>
+            <View style={S.editActions}>
+              <Pressable onPress={cancelEdit} style={S.cancelBtn}>
+                <Text style={S.cancelBtnText}>Cancel</Text>
               </Pressable>
-              <Pressable onPress={saveEdit} style={styles.saveBtn}>
-                <Ionicons name="checkmark" size={16} color={Colors.white} />
-                <Text style={styles.saveBtnText}>Save</Text>
+              <Pressable onPress={saveEdit} style={S.saveBtn}>
+                <Ionicons name="checkmark" size={16} color={C.white} />
+                <Text style={S.saveBtnText}>Save</Text>
               </Pressable>
             </View>
           )}
         </View>
 
-        {/* Not logged in: show CTA */}
-        {!isLoggedIn && <NotLoggedInState />}
+        {/* Not logged in */}
+        {!isLoggedIn && <NotLoggedInState C={C} />}
 
-        {/* Logged in: show full profile */}
+        {/* Logged in */}
         {isLoggedIn && (
           <>
             {/* Avatar + Name */}
-            <Animated.View entering={FadeInDown.delay(0).springify()} style={styles.avatarSection}>
-              <View style={styles.avatarCircle}>
-                <Text style={styles.avatarText}>{initials}</Text>
+            <Animated.View entering={FadeInDown.delay(0).springify()} style={S.avatarSection}>
+              <View style={S.avatarCircle}>
+                <Text style={S.avatarText}>{initials}</Text>
               </View>
-              <View style={styles.avatarInfo}>
+              <View style={S.avatarInfo}>
                 {editing ? (
                   <TextInput
-                    style={styles.nameInput}
+                    style={S.nameInput}
                     value={draft.name}
                     onChangeText={(v) => setDraft((d) => ({ ...d, name: v }))}
                     placeholder="Your full name"
-                    placeholderTextColor={Colors.textMuted}
+                    placeholderTextColor={C.textMuted}
                   />
                 ) : (
-                  <Text style={styles.nameText}>{profile.name || "Unnamed Traveller"}</Text>
+                  <Text style={S.nameText}>{profile.name || "Unnamed Traveller"}</Text>
                 )}
-                <Text style={styles.emailSubtitle}>{profile.email || "No email set"}</Text>
+                <Text style={S.emailSubtitle}>{profile.email || "No email set"}</Text>
               </View>
             </Animated.View>
 
             {/* Stats */}
-            <Animated.View entering={FadeInDown.delay(60).springify()} style={styles.statsRow}>
-              <StatBox label="Flights" value={totalFlights} />
-              <View style={styles.statDivider} />
-              <StatBox label="Upcoming" value={upcomingFlights} />
-              <View style={styles.statDivider} />
-              <StatBox label="Airports" value={uniqueAirports} />
+            <Animated.View entering={FadeInDown.delay(60).springify()} style={S.statsRow}>
+              <StatBox label="Flights" value={totalFlights} C={C} />
+              <View style={S.statDivider} />
+              <StatBox label="Upcoming" value={upcomingFlights} C={C} />
+              <View style={S.statDivider} />
+              <StatBox label="Airports" value={uniqueAirports} C={C} />
+            </Animated.View>
+
+            {/* Appearance */}
+            <Animated.View entering={FadeInDown.delay(80).springify()}>
+              <SectionCard title="Appearance" icon="color-palette-outline" C={C}>
+                <View style={S.field}>
+                  <View style={S.fieldLabelRow}>
+                    <Ionicons name="contrast-outline" size={13} color={C.textSec} style={{ marginRight: 4 }} />
+                    <Text style={S.fieldLabel}>Theme</Text>
+                  </View>
+                  <View style={S.themeRow}>
+                    {THEME_OPTIONS.map((opt) => (
+                      <Pressable
+                        key={opt.value}
+                        onPress={() => { Haptics.selectionAsync(); setMode(opt.value); }}
+                        style={[S.themeBtn, mode === opt.value && S.themeBtnActive]}
+                      >
+                        <Ionicons
+                          name={opt.icon as any}
+                          size={16}
+                          color={mode === opt.value ? C.white : C.textSec}
+                        />
+                        <Text style={[S.themeBtnText, mode === opt.value && S.themeBtnTextActive]}>
+                          {opt.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              </SectionCard>
             </Animated.View>
 
             {/* Personal Info */}
             <Animated.View entering={FadeInDown.delay(90).springify()}>
-              <SectionCard title="Personal Info" icon="person-outline">
-                <Field label="Email" value={editing ? draft.email : profile.email} onChangeText={(v) => setDraft((d) => ({ ...d, email: v }))} placeholder="your@email.com" keyboardType="email-address" editing={editing} icon="mail-outline" />
-                <Field label="Nationality" value={editing ? draft.nationality : profile.nationality} onChangeText={(v) => setDraft((d) => ({ ...d, nationality: v }))} placeholder="e.g. Portuguese" editing={editing} icon="flag-outline" />
-                <Field label="Home Airport" value={editing ? draft.homeCityCode : profile.homeCityCode} onChangeText={(v) => setDraft((d) => ({ ...d, homeCityCode: v.toUpperCase() }))} placeholder="e.g. LIS" editing={editing} icon="home-outline" />
+              <SectionCard title="Personal Info" icon="person-outline" C={C}>
+                <Field label="Email" value={editing ? draft.email : profile.email} onChangeText={(v) => setDraft((d) => ({ ...d, email: v }))} placeholder="your@email.com" keyboardType="email-address" editing={editing} icon="mail-outline" C={C} />
+                <Field label="Nationality" value={editing ? draft.nationality : profile.nationality} onChangeText={(v) => setDraft((d) => ({ ...d, nationality: v }))} placeholder="e.g. Portuguese" editing={editing} icon="flag-outline" C={C} />
+                <Field label="Home Airport" value={editing ? draft.homeCityCode : profile.homeCityCode} onChangeText={(v) => setDraft((d) => ({ ...d, homeCityCode: v.toUpperCase() }))} placeholder="e.g. LIS" editing={editing} icon="home-outline" C={C} />
               </SectionCard>
             </Animated.View>
 
             {/* Travel Documents */}
             <Animated.View entering={FadeInDown.delay(120).springify()}>
-              <SectionCard title="Travel Documents" icon="document-outline">
-                <Field label="Passport Number" value={editing ? draft.passportNumber : profile.passportNumber} onChangeText={(v) => setDraft((d) => ({ ...d, passportNumber: v }))} placeholder="e.g. AB123456" editing={editing} icon="card-outline" secureTextEntry />
-                <Field label="Passport Expiry" value={editing ? draft.passportExpiry : profile.passportExpiry} onChangeText={(v) => setDraft((d) => ({ ...d, passportExpiry: v }))} placeholder="YYYY-MM-DD" editing={editing} icon="calendar-outline" />
+              <SectionCard title="Travel Documents" icon="document-outline" C={C}>
+                <Field label="Passport Number" value={editing ? draft.passportNumber : profile.passportNumber} onChangeText={(v) => setDraft((d) => ({ ...d, passportNumber: v }))} placeholder="e.g. AB123456" editing={editing} icon="card-outline" secureTextEntry C={C} />
+                <Field label="Passport Expiry" value={editing ? draft.passportExpiry : profile.passportExpiry} onChangeText={(v) => setDraft((d) => ({ ...d, passportExpiry: v }))} placeholder="YYYY-MM-DD" editing={editing} icon="calendar-outline" C={C} />
               </SectionCard>
             </Animated.View>
 
             {/* Travel Preferences */}
             <Animated.View entering={FadeInDown.delay(150).springify()}>
-              <SectionCard title="Travel Preferences" icon="options-outline">
-                <Field label="Frequent Flyer No." value={editing ? draft.frequentFlyerNumber : profile.frequentFlyerNumber} onChangeText={(v) => setDraft((d) => ({ ...d, frequentFlyerNumber: v }))} placeholder="e.g. TP-123456" editing={editing} icon="ribbon-outline" />
-                <Field label="Preferred Airline" value={editing ? draft.preferredAirline : profile.preferredAirline} onChangeText={(v) => setDraft((d) => ({ ...d, preferredAirline: v }))} placeholder="e.g. TAP Air Portugal" editing={editing} icon="airplane-outline" />
-                <View style={styles.field}>
-                  <View style={styles.fieldLabelRow}>
-                    <Ionicons name="albums-outline" size={13} color={Colors.textSec} style={{ marginRight: 4 }} />
-                    <Text style={styles.fieldLabel}>Seat Preference</Text>
+              <SectionCard title="Travel Preferences" icon="options-outline" C={C}>
+                <Field label="Frequent Flyer No." value={editing ? draft.frequentFlyerNumber : profile.frequentFlyerNumber} onChangeText={(v) => setDraft((d) => ({ ...d, frequentFlyerNumber: v }))} placeholder="e.g. TP-123456" editing={editing} icon="ribbon-outline" C={C} />
+                <Field label="Preferred Airline" value={editing ? draft.preferredAirline : profile.preferredAirline} onChangeText={(v) => setDraft((d) => ({ ...d, preferredAirline: v }))} placeholder="e.g. TAP Air Portugal" editing={editing} icon="airplane-outline" C={C} />
+                <View style={S.field}>
+                  <View style={S.fieldLabelRow}>
+                    <Ionicons name="albums-outline" size={13} color={C.textSec} style={{ marginRight: 4 }} />
+                    <Text style={S.fieldLabel}>Seat Preference</Text>
                   </View>
                   {editing ? (
-                    <View style={styles.seatRow}>
+                    <View style={S.seatRow}>
                       {SEAT_OPTIONS.map((opt) => (
-                        <Pressable key={opt.value} onPress={() => { Haptics.selectionAsync(); setDraft((d) => ({ ...d, seatPreference: opt.value })); }} style={[styles.seatBtn, draft.seatPreference === opt.value && styles.seatBtnActive]}>
-                          <Ionicons name={opt.icon as any} size={16} color={draft.seatPreference === opt.value ? Colors.white : Colors.textSec} />
-                          <Text style={[styles.seatBtnText, draft.seatPreference === opt.value && styles.seatBtnTextActive]}>{opt.label}</Text>
+                        <Pressable key={opt.value} onPress={() => { Haptics.selectionAsync(); setDraft((d) => ({ ...d, seatPreference: opt.value })); }} style={[S.seatBtn, draft.seatPreference === opt.value && S.seatBtnActive]}>
+                          <Ionicons name={opt.icon as any} size={16} color={draft.seatPreference === opt.value ? C.white : C.textSec} />
+                          <Text style={[S.seatBtnText, draft.seatPreference === opt.value && S.seatBtnTextActive]}>{opt.label}</Text>
                         </Pressable>
                       ))}
                     </View>
                   ) : (
-                    <Text style={[styles.fieldValue, !profile.seatPreference && styles.fieldValueEmpty]}>
+                    <Text style={[S.fieldValue, !profile.seatPreference && S.fieldValueEmpty]}>
                       {profile.seatPreference ? SEAT_OPTIONS.find((o) => o.value === profile.seatPreference)?.label ?? profile.seatPreference : "No preference set"}
                     </Text>
                   )}
@@ -284,14 +321,14 @@ export default function ProfileScreen() {
 
             {/* Account actions */}
             {!editing && (
-              <Animated.View entering={FadeInDown.delay(180).springify()} style={styles.dangerSection}>
-                <Pressable onPress={confirmLogout} style={[styles.dangerBtn, { marginBottom: 10, backgroundColor: Colors.surface, borderColor: Colors.border }]}>
-                  <Ionicons name="log-out-outline" size={16} color={Colors.textSec} />
-                  <Text style={[styles.dangerBtnText, { color: Colors.textSec }]}>Log Out</Text>
+              <Animated.View entering={FadeInDown.delay(180).springify()} style={S.dangerSection}>
+                <Pressable onPress={confirmLogout} style={[S.dangerBtn, { marginBottom: 10, backgroundColor: C.surface, borderColor: C.border }]}>
+                  <Ionicons name="log-out-outline" size={16} color={C.textSec} />
+                  <Text style={[S.dangerBtnText, { color: C.textSec }]}>Log Out</Text>
                 </Pressable>
-                <Pressable onPress={confirmClear} style={styles.dangerBtn}>
-                  <Ionicons name="trash-outline" size={16} color={Colors.red} />
-                  <Text style={styles.dangerBtnText}>Clear Profile Data</Text>
+                <Pressable onPress={confirmClear} style={S.dangerBtn}>
+                  <Ionicons name="trash-outline" size={16} color={C.red} />
+                  <Text style={S.dangerBtnText}>Clear Profile Data</Text>
                 </Pressable>
               </Animated.View>
             )}
@@ -302,67 +339,72 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
+const styles = (C: ReturnType<typeof useColors>) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.bg },
   scroll: { paddingHorizontal: 20, paddingTop: 4 },
 
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, marginBottom: 20 },
-  title: { fontSize: 30, color: Colors.text, fontFamily: "DMSans_700Bold" },
-  editBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.accentDim },
-  editBtnText: { fontSize: 14, color: Colors.accent, fontFamily: "DMSans_600SemiBold" },
+  title: { fontSize: 30, color: C.text, fontFamily: "DMSans_700Bold" },
+  editBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: C.accentDim },
+  editBtnText: { fontSize: 14, color: C.accent, fontFamily: "DMSans_600SemiBold" },
   editActions: { flexDirection: "row", gap: 8 },
-  cancelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border },
-  cancelBtnText: { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
-  saveBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.accent },
-  saveBtnText: { fontSize: 14, color: Colors.white, fontFamily: "DMSans_700Bold" },
+  cancelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: C.surface, borderWidth: 1, borderColor: C.border },
+  cancelBtnText: { fontSize: 14, color: C.textSec, fontFamily: "DMSans_500Medium" },
+  saveBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: C.accent },
+  saveBtnText: { fontSize: 14, color: C.white, fontFamily: "DMSans_700Bold" },
 
-  // Not logged in
   notLoggedIn: { alignItems: "center", paddingTop: 40, paddingHorizontal: 10, paddingBottom: 20 },
   notLoggedInIcon: { marginBottom: 16 },
-  notLoggedInTitle: { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold", marginBottom: 10, textAlign: "center" },
-  notLoggedInSub: { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 21, marginBottom: 28 },
+  notLoggedInTitle: { fontSize: 22, color: C.text, fontFamily: "DMSans_700Bold", marginBottom: 10, textAlign: "center" },
+  notLoggedInSub: { fontSize: 14, color: C.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 21, marginBottom: 28 },
   notLoggedInBtn: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: Colors.accent,
+    backgroundColor: C.accent,
     paddingHorizontal: 24, paddingVertical: 15, borderRadius: 30,
-    shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 },
+    shadowColor: C.accent, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.22, shadowRadius: 10, elevation: 4,
   },
-  notLoggedInBtnText: { fontSize: 15, color: Colors.white, fontFamily: "DMSans_700Bold" },
-  notLoggedInLink: { fontSize: 13, color: Colors.accent, fontFamily: "DMSans_500Medium" },
+  notLoggedInBtnText: { fontSize: 15, color: C.white, fontFamily: "DMSans_700Bold" },
+  notLoggedInLink: { fontSize: 13, color: C.accent, fontFamily: "DMSans_500Medium" },
 
   avatarSection: { flexDirection: "row", alignItems: "center", gap: 16, marginBottom: 20 },
-  avatarCircle: { width: 68, height: 68, borderRadius: 34, backgroundColor: Colors.accent, alignItems: "center", justifyContent: "center", shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 4 },
-  avatarText: { fontSize: 24, color: Colors.white, fontFamily: "DMSans_700Bold" },
+  avatarCircle: { width: 68, height: 68, borderRadius: 34, backgroundColor: C.accent, alignItems: "center", justifyContent: "center", shadowColor: C.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 4 },
+  avatarText: { fontSize: 24, color: C.white, fontFamily: "DMSans_700Bold" },
   avatarInfo: { flex: 1, gap: 4 },
-  nameText: { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold" },
-  nameInput: { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold", borderBottomWidth: 1.5, borderBottomColor: Colors.accent, paddingBottom: 2 },
-  emailSubtitle: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
+  nameText: { fontSize: 22, color: C.text, fontFamily: "DMSans_700Bold" },
+  nameInput: { fontSize: 22, color: C.text, fontFamily: "DMSans_700Bold", borderBottomWidth: 1.5, borderBottomColor: C.accent, paddingBottom: 2 },
+  emailSubtitle: { fontSize: 13, color: C.textSec, fontFamily: "DMSans_400Regular" },
 
-  statsRow: { flexDirection: "row", backgroundColor: Colors.card, borderRadius: 16, borderWidth: 1, borderColor: Colors.border, paddingVertical: 16, marginBottom: 20 },
+  statsRow: { flexDirection: "row", backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, paddingVertical: 16, marginBottom: 20 },
   statBox: { flex: 1, alignItems: "center", gap: 3 },
-  statValue: { fontSize: 22, color: Colors.accent, fontFamily: "DMSans_700Bold" },
-  statLabel: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
-  statDivider: { width: 1, backgroundColor: Colors.border, marginVertical: 4 },
+  statValue: { fontSize: 22, color: C.accent, fontFamily: "DMSans_700Bold" },
+  statLabel: { fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular" },
+  statDivider: { width: 1, backgroundColor: C.border, marginVertical: 4 },
 
-  sectionCard: { backgroundColor: Colors.card, borderRadius: 16, borderWidth: 1, borderColor: Colors.border, padding: 16, marginBottom: 16 },
+  sectionCard: { backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, padding: 16, marginBottom: 16 },
   sectionHeader: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 14 },
-  sectionTitle: { fontSize: 14, color: Colors.text, fontFamily: "DMSans_700Bold", letterSpacing: 0.3 },
+  sectionTitle: { fontSize: 14, color: C.text, fontFamily: "DMSans_700Bold", letterSpacing: 0.3 },
 
   field: { marginBottom: 14 },
   fieldLabelRow: { flexDirection: "row", alignItems: "center", marginBottom: 4 },
-  fieldLabel: { fontSize: 11, color: Colors.textSec, fontFamily: "DMSans_500Medium", textTransform: "uppercase", letterSpacing: 0.6 },
-  fieldValue: { fontSize: 15, color: Colors.text, fontFamily: "DMSans_400Regular" },
-  fieldValueEmpty: { color: Colors.textMuted, fontStyle: "italic" },
-  fieldInput: { fontSize: 15, color: Colors.text, fontFamily: "DMSans_400Regular", borderBottomWidth: 1.5, borderBottomColor: Colors.accent, paddingVertical: 4, paddingHorizontal: 2 },
+  fieldLabel: { fontSize: 11, color: C.textSec, fontFamily: "DMSans_500Medium", textTransform: "uppercase", letterSpacing: 0.6 },
+  fieldValue: { fontSize: 15, color: C.text, fontFamily: "DMSans_400Regular" },
+  fieldValueEmpty: { color: C.textMuted, fontStyle: "italic" },
+  fieldInput: { fontSize: 15, color: C.text, fontFamily: "DMSans_400Regular", borderBottomWidth: 1.5, borderBottomColor: C.accent, paddingVertical: 4, paddingHorizontal: 2 },
+
+  themeRow: { flexDirection: "row", gap: 8 },
+  themeBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10, backgroundColor: C.surface, borderWidth: 1, borderColor: C.border },
+  themeBtnActive: { backgroundColor: C.accent, borderColor: C.accent },
+  themeBtnText: { fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium" },
+  themeBtnTextActive: { color: C.white, fontFamily: "DMSans_700Bold" },
 
   seatRow: { flexDirection: "row", gap: 8 },
-  seatBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 9, borderRadius: 10, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border },
-  seatBtnActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  seatBtnText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
-  seatBtnTextActive: { color: Colors.white, fontFamily: "DMSans_700Bold" },
+  seatBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 9, borderRadius: 10, backgroundColor: C.surface, borderWidth: 1, borderColor: C.border },
+  seatBtnActive: { backgroundColor: C.accent, borderColor: C.accent },
+  seatBtnText: { fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium" },
+  seatBtnTextActive: { color: C.white, fontFamily: "DMSans_700Bold" },
 
   dangerSection: { marginTop: 8, marginBottom: 8 },
-  dangerBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: Colors.redDim, backgroundColor: Colors.redDim },
-  dangerBtnText: { fontSize: 14, color: Colors.red, fontFamily: "DMSans_600SemiBold" },
+  dangerBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: C.redDim, backgroundColor: C.redDim },
+  dangerBtnText: { fontSize: 14, color: C.red, fontFamily: "DMSans_600SemiBold" },
 });
