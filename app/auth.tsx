@@ -1,24 +1,8 @@
 /**
  * auth.tsx — Sign Up / Log In modal
- *
- * Social logins:
- *  - Apple Sign In  : uses expo-apple-authentication (native, iOS only)
- *  - Google Sign In : uses @react-native-google-signin/google-signin
- *                     ⚠️  This is a NATIVE module — it will NOT work in Expo Go.
- *                         It is lazy-loaded and guarded so the app still runs in
- *                         Expo Go (the button shows an info alert instead of crashing).
- *
- * Before building for a real device you must:
- *  1. Apple  : enable "Sign In with Apple" capability in your Apple Developer portal
- *              for bundle ID com.logbookapp — no extra config needed after that.
- *  2. Google : replace REPLACE_WITH_YOUR_WEB_CLIENT_ID below with the OAuth 2.0
- *              Web Client ID from Google Cloud Console (APIs & Services › Credentials).
- *              Also replace the iosUrlScheme in app.json with your reversed iOS Client ID.
- *              Download google-services.json from Firebase/Google Cloud and place it
- *              at the root of the project (next to app.json) for Android.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -30,6 +14,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Image,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -38,17 +23,13 @@ import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { Colors } from "@/constants/colors";
 import { useUser } from "@/context/user";
-
-// ─── Apple ───────────────────────────────────────────────────────────────────
 import * as AppleAuthentication from "expo-apple-authentication";
 
-// ─── Google (lazy — native module not available in Expo Go) ──────────────────
 type GoogleSigninType = typeof import("@react-native-google-signin/google-signin");
 let _googleModule: GoogleSigninType | null = null;
 function getGoogleSignin(): GoogleSigninType | null {
   if (_googleModule) return _googleModule;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     _googleModule = require("@react-native-google-signin/google-signin");
     return _googleModule;
   } catch {
@@ -58,7 +39,6 @@ function getGoogleSignin(): GoogleSigninType | null {
 
 function isExpoGo(): boolean {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const Constants = require("expo-constants").default;
     return Constants.executionEnvironment === "storeClient";
   } catch {
@@ -68,7 +48,6 @@ function isExpoGo(): boolean {
 
 const GOOGLE_WEB_CLIENT_ID = "REPLACE_WITH_YOUR_WEB_CLIENT_ID";
 
-// ─── Test account credentials ─────────────────────────────────────────────────
 const TEST_USER = {
   name: "Diogo Marques",
   email: "diogo.test@logbook.app",
@@ -92,16 +71,9 @@ export default function AuthScreen() {
   useEffect(() => {
     if (!isExpoGo()) {
       const g = getGoogleSignin();
-      if (g) {
-        g.GoogleSignin.configure({
-          webClientId: GOOGLE_WEB_CLIENT_ID,
-          offlineAccess: true,
-        });
-      }
+      if (g) g.GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID, offlineAccess: true });
     }
-    if (Platform.OS === "ios") {
-      AppleAuthentication.isAvailableAsync().then(setAppleAvailable);
-    }
+    if (Platform.OS === "ios") AppleAuthentication.isAvailableAsync().then(setAppleAvailable);
   }, []);
 
   function validateEmail(e: string) {
@@ -109,18 +81,9 @@ export default function AuthScreen() {
   }
 
   async function handleSubmit() {
-    if (!validateEmail(email)) {
-      Alert.alert("Invalid email", "Please enter a valid email address.");
-      return;
-    }
-    if (password.length < 6) {
-      Alert.alert("Weak password", "Password must be at least 6 characters.");
-      return;
-    }
-    if (tab === "signup" && !name.trim()) {
-      Alert.alert("Name required", "Please enter your name.");
-      return;
-    }
+    if (!validateEmail(email)) { Alert.alert("Invalid email", "Please enter a valid email address."); return; }
+    if (password.length < 6)   { Alert.alert("Weak password", "Password must be at least 6 characters."); return; }
+    if (tab === "signup" && !name.trim()) { Alert.alert("Name required", "Please enter your name."); return; }
     setLoading(true);
     await new Promise((r) => setTimeout(r, 600));
     await login(tab === "signup" ? name : email.split("@")[0], email);
@@ -129,7 +92,6 @@ export default function AuthScreen() {
     router.back();
   }
 
-  // ─── One-tap test login ───────────────────────────────────────────────────
   async function handleTestLogin() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLoading(true);
@@ -150,30 +112,18 @@ export default function AuthScreen() {
       });
       const fullName = [credential.fullName?.givenName ?? "", credential.fullName?.familyName ?? ""]
         .filter(Boolean).join(" ").trim();
-      const userEmail = credential.email ?? email ?? "apple-user@privaterelay.appleid.com";
-      const displayName = fullName || userEmail.split("@")[0];
-      await login(displayName, userEmail);
+      const userEmail = credential.email ?? "apple-user@privaterelay.appleid.com";
+      await login(fullName || userEmail.split("@")[0], userEmail);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch (e: any) {
-      if (e.code !== "ERR_REQUEST_CANCELED") {
-        Alert.alert("Apple Sign In failed", e.message ?? "An error occurred.");
-      }
+      if (e.code !== "ERR_REQUEST_CANCELED") Alert.alert("Apple Sign In failed", e.message ?? "An error occurred.");
     }
   }
 
   async function handleGoogleSignIn() {
-    if (isExpoGo()) {
-      Alert.alert(
-        "Not available in Expo Go",
-        "Google Sign In requires a custom development build. Use email sign-in or the Test Account for now."
-      );
-      return;
-    }
-    if (GOOGLE_WEB_CLIENT_ID === "REPLACE_WITH_YOUR_WEB_CLIENT_ID") {
-      Alert.alert("Setup required", "Add your Google Web Client ID to app/auth.tsx to enable Google Sign In.");
-      return;
-    }
+    if (isExpoGo()) { Alert.alert("Not available in Expo Go", "Use email sign-in or the Test Account for now."); return; }
+    if (GOOGLE_WEB_CLIENT_ID === "REPLACE_WITH_YOUR_WEB_CLIENT_ID") { Alert.alert("Setup required", "Add your Google Web Client ID to auth.tsx."); return; }
     const g = getGoogleSignin();
     if (!g) { Alert.alert("Error", "Google Sign In module could not be loaded."); return; }
     const { GoogleSignin, statusCodes } = g;
@@ -186,13 +136,9 @@ export default function AuthScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch (e: any) {
-      if (e.code === statusCodes.SIGN_IN_CANCELLED) return;
-      if (e.code === statusCodes.IN_PROGRESS) return;
-      if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-        Alert.alert("Google Sign In", "Google Play Services are not available.");
-      } else {
-        Alert.alert("Google Sign In failed", e.message ?? "An error occurred.");
-      }
+      if (e.code === statusCodes.SIGN_IN_CANCELLED || e.code === statusCodes.IN_PROGRESS) return;
+      if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) Alert.alert("Google Sign In", "Google Play Services are not available.");
+      else Alert.alert("Google Sign In failed", e.message ?? "An error occurred.");
     }
   }
 
@@ -200,15 +146,9 @@ export default function AuthScreen() {
   function switchTab(t: Tab) { Haptics.selectionAsync(); setTab(t); }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
+    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 32 },
-        ]}
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 32 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -217,11 +157,13 @@ export default function AuthScreen() {
           <Ionicons name="close" size={22} color={Colors.textSec} />
         </Pressable>
 
-        {/* Hero */}
+        {/* Hero — real app icon */}
         <Animated.View entering={FadeInDown.delay(0).springify()} style={styles.heroSection}>
-          <View style={styles.logoCircle}>
-            <Ionicons name="airplane" size={32} color={Colors.white} />
-          </View>
+          <Image
+            source={require("@/assets/images/icon.png")}
+            style={styles.heroIcon}
+            resizeMode="cover"
+          />
           <Text style={styles.headline}>
             {tab === "signup" ? "Create your account" : "Welcome back"}
           </Text>
@@ -232,7 +174,7 @@ export default function AuthScreen() {
           </Text>
         </Animated.View>
 
-        {/* ─── Test Account Banner ────────────────────────────────────── */}
+        {/* Test Account Banner */}
         <Animated.View entering={FadeInDown.delay(30).springify()}>
           <Pressable
             onPress={handleTestLogin}
@@ -250,7 +192,7 @@ export default function AuthScreen() {
           </Pressable>
         </Animated.View>
 
-        {/* ─── Social buttons ─────────────────────────────────────────── */}
+        {/* Social buttons */}
         <Animated.View entering={FadeInDown.delay(50).springify()} style={styles.socialBlock}>
           {Platform.OS === "ios" && appleAvailable ? (
             <AppleAuthentication.AppleAuthenticationButton
@@ -261,21 +203,13 @@ export default function AuthScreen() {
               onPress={handleAppleSignIn}
             />
           ) : (
-            <Pressable
-              style={({ pressed }) => [styles.appleBtn, { opacity: pressed ? 0.85 : 1 }]}
-              onPress={handleAppleSignIn}
-            >
+            <Pressable style={({ pressed }) => [styles.appleBtn, { opacity: pressed ? 0.85 : 1 }]} onPress={handleAppleSignIn}>
               <Ionicons name="logo-apple" size={20} color={Colors.white} />
               <Text style={styles.appleBtnText}>Continue with Apple</Text>
             </Pressable>
           )}
-          <Pressable
-            style={({ pressed }) => [styles.googleBtn, { opacity: pressed ? 0.85 : 1 }]}
-            onPress={handleGoogleSignIn}
-          >
-            <View style={styles.googleIconWrap}>
-              <Text style={styles.googleG}>G</Text>
-            </View>
+          <Pressable style={({ pressed }) => [styles.googleBtn, { opacity: pressed ? 0.85 : 1 }]} onPress={handleGoogleSignIn}>
+            <View style={styles.googleIconWrap}><Text style={styles.googleG}>G</Text></View>
             <Text style={styles.googleBtnText}>Continue with Google</Text>
           </Pressable>
         </Animated.View>
@@ -304,15 +238,8 @@ export default function AuthScreen() {
               <Text style={styles.inputLabel}>Full Name</Text>
               <View style={styles.inputWrap}>
                 <Ionicons name="person-outline" size={16} color={Colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g. Diogo Marques"
-                  placeholderTextColor={Colors.textMuted}
-                  value={name}
-                  onChangeText={setName}
-                  autoCapitalize="words"
-                  returnKeyType="next"
-                />
+                <TextInput style={styles.input} placeholder="e.g. Diogo Marques" placeholderTextColor={Colors.textMuted}
+                  value={name} onChangeText={setName} autoCapitalize="words" returnKeyType="next" />
               </View>
             </View>
           )}
@@ -320,59 +247,25 @@ export default function AuthScreen() {
             <Text style={styles.inputLabel}>Email</Text>
             <View style={styles.inputWrap}>
               <Ionicons name="mail-outline" size={16} color={Colors.textMuted} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="your@email.com"
-                placeholderTextColor={Colors.textMuted}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="next"
-              />
+              <TextInput style={styles.input} placeholder="your@email.com" placeholderTextColor={Colors.textMuted}
+                value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} returnKeyType="next" />
             </View>
           </View>
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Password</Text>
             <View style={styles.inputWrap}>
               <Ionicons name="lock-closed-outline" size={16} color={Colors.textMuted} style={styles.inputIcon} />
-              <TextInput
-                style={[styles.input, { flex: 1 }]}
-                placeholder="At least 6 characters"
-                placeholderTextColor={Colors.textMuted}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                returnKeyType="done"
-                onSubmitEditing={handleSubmit}
-              />
+              <TextInput style={[styles.input, { flex: 1 }]} placeholder="At least 6 characters" placeholderTextColor={Colors.textMuted}
+                value={password} onChangeText={setPassword} secureTextEntry={!showPassword}
+                autoCapitalize="none" returnKeyType="done" onSubmitEditing={handleSubmit} />
               <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={8}>
-                <Ionicons
-                  name={showPassword ? "eye-off-outline" : "eye-outline"}
-                  size={18}
-                  color={Colors.textMuted}
-                  style={{ marginRight: 14 }}
-                />
+                <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={18} color={Colors.textMuted} style={{ marginRight: 14 }} />
               </Pressable>
             </View>
           </View>
-          <Pressable
-            onPress={handleSubmit}
-            disabled={loading}
-            style={({ pressed }) => [
-              styles.submitBtn,
-              { opacity: pressed || loading ? 0.85 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
-            ]}
-          >
-            {loading ? (
-              <ActivityIndicator color={Colors.white} />
-            ) : (
-              <Text style={styles.submitText}>
-                {tab === "signup" ? "Create Account" : "Log In"}
-              </Text>
-            )}
+          <Pressable onPress={handleSubmit} disabled={loading}
+            style={({ pressed }) => [styles.submitBtn, { opacity: pressed || loading ? 0.85 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+            {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.submitText}>{tab === "signup" ? "Create Account" : "Log In"}</Text>}
           </Pressable>
         </Animated.View>
 
@@ -388,44 +281,36 @@ export default function AuthScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.bg },
+  root:   { flex: 1, backgroundColor: Colors.bg },
   scroll: { paddingHorizontal: 24 },
 
   closeBtn: {
-    alignSelf: "flex-end",
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: Colors.surface,
-    borderWidth: 1, borderColor: Colors.border,
-    alignItems: "center", justifyContent: "center",
-    marginBottom: 8,
+    alignSelf: "flex-end", width: 34, height: 34, borderRadius: 17,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    alignItems: "center", justifyContent: "center", marginBottom: 8,
   },
 
-  // ─── Test account ───────────────────────────────────────────────────────────
+  heroSection: { alignItems: "center", marginBottom: 24 },
+  heroIcon: {
+    width: 80, height: 80, borderRadius: 20,
+    marginBottom: 18,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18, shadowRadius: 14, elevation: 6,
+  },
+  headline: { fontSize: 26, color: Colors.text,    fontFamily: "DMSans_700Bold",    textAlign: "center", marginBottom: 8 },
+  subline:  { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 20 },
+
   testBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     backgroundColor: "rgba(245,158,11,0.08)",
     borderRadius: 14, borderWidth: 1.5, borderColor: "rgba(245,158,11,0.30)",
-    paddingHorizontal: 16, paddingVertical: 12,
-    marginBottom: 20,
+    paddingHorizontal: 16, paddingVertical: 12, marginBottom: 20,
   },
-  testBtnLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
-  testBtnTitle: { fontSize: 14, color: "#F59E0B", fontFamily: "DMSans_700Bold" },
-  testBtnSub: { fontSize: 11, color: "#B07800", fontFamily: "DMSans_400Regular", marginTop: 1 },
+  testBtnLeft:  { flexDirection: "row", alignItems: "center", gap: 12 },
+  testBtnTitle: { fontSize: 14, color: "#F59E0B",  fontFamily: "DMSans_700Bold" },
+  testBtnSub:   { fontSize: 11, color: "#B07800",  fontFamily: "DMSans_400Regular", marginTop: 1 },
 
-  heroSection: { alignItems: "center", marginBottom: 24 },
-  logoCircle: {
-    width: 72, height: 72, borderRadius: 36,
-    backgroundColor: Colors.accent,
-    alignItems: "center", justifyContent: "center",
-    marginBottom: 18,
-    shadowColor: Colors.accent,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.28, shadowRadius: 14, elevation: 6,
-  },
-  headline: { fontSize: 26, color: Colors.text, fontFamily: "DMSans_700Bold", textAlign: "center", marginBottom: 8 },
-  subline:  { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 20 },
-
-  socialBlock: { gap: 12, marginBottom: 20 },
+  socialBlock:    { gap: 12, marginBottom: 20 },
   appleNativeBtn: { width: "100%", height: 52 },
   appleBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10,
@@ -440,8 +325,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
   },
   googleIconWrap: { width: 22, height: 22, borderRadius: 11, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
-  googleG: { fontSize: 15, fontFamily: "DMSans_700Bold", color: "#4285F4" },
-  googleBtnText: { fontSize: 15, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  googleG:        { fontSize: 15, fontFamily: "DMSans_700Bold", color: "#4285F4" },
+  googleBtnText:  { fontSize: 15, color: Colors.text, fontFamily: "DMSans_700Bold" },
 
   dividerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
   dividerLine: { flex: 1, height: 1, backgroundColor: Colors.border },
@@ -457,7 +342,7 @@ const styles = StyleSheet.create({
   tabText:       { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
   tabTextActive: { color: Colors.white, fontFamily: "DMSans_700Bold" },
 
-  form: { gap: 0 },
+  form:       { gap: 0 },
   inputGroup: { marginBottom: 16 },
   inputLabel: {
     fontSize: 11, color: Colors.textSec, fontFamily: "DMSans_500Medium",
@@ -465,8 +350,7 @@ const styles = StyleSheet.create({
   },
   inputWrap: {
     flexDirection: "row", alignItems: "center",
-    backgroundColor: Colors.surface,
-    borderRadius: 12, borderWidth: 1.5, borderColor: Colors.border,
+    backgroundColor: Colors.surface, borderRadius: 12, borderWidth: 1.5, borderColor: Colors.border,
   },
   inputIcon: { marginLeft: 14 },
   input: {
