@@ -22,6 +22,8 @@ export interface Flight {
   addedAt: string;
   /** true when the flight was enriched from a real API source */
   verified: boolean;
+  /** true when the flight data was generated/estimated rather than fetched from a real API */
+  isMock?: boolean;
   // Optional fields from API enrichment
   tailNumber?: string;         // e.g. "HB-JHF"
   departureTerminal?: string;  // e.g. "2"
@@ -104,6 +106,7 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
           const migrated = parsed.map((f) => ({
             ...f,
             verified: f.verified ?? false,
+            isMock: f.isMock ?? false,
           }));
           setFlights(migrated);
         } catch {

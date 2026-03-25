@@ -38,6 +38,8 @@ interface FlightLookupResult {
   status: "on_time" | "delayed";
   delayMinutes: number;
   aircraft: string;
+  /** true when the server generated this data rather than fetching from a real API */
+  isMock?: boolean;
 }
 
 function formatHours(minutes: number): string {
@@ -136,6 +138,8 @@ export default function AddFlightScreen() {
         status: preview.status || "on_time",
         delayMinutes: preview.delayMinutes ?? 0,
         aircraft: preview.aircraft,
+        verified: !preview.isMock,
+        isMock: preview.isMock ?? false,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.dismissAll();
@@ -237,16 +241,24 @@ export default function AddFlightScreen() {
                   <Text style={styles.previewCode}>{preview.flightCode}</Text>
                   <Text style={styles.previewAirline}>{preview.airline}</Text>
                 </View>
-                <View style={[
-                  styles.statusBadge,
-                  { backgroundColor: preview.status === "delayed" ? Colors.red + "22" : Colors.green + "22" },
-                ]}>
-                  <Text style={[
-                    styles.statusText,
-                    { color: preview.status === "delayed" ? Colors.red : Colors.green },
+                <View style={styles.previewBadgeRow}>
+                  {preview.isMock && (
+                    <View style={styles.mockBadge}>
+                      <Ionicons name="sparkles-outline" size={11} color={Colors.amber} />
+                      <Text style={styles.mockBadgeText}>Estimated</Text>
+                    </View>
+                  )}
+                  <View style={[
+                    styles.statusBadge,
+                    { backgroundColor: preview.status === "delayed" ? Colors.red + "22" : Colors.green + "22" },
                   ]}>
-                    {preview.status === "delayed" ? `Delayed +${preview.delayMinutes}m` : "On Time"}
-                  </Text>
+                    <Text style={[
+                      styles.statusText,
+                      { color: preview.status === "delayed" ? Colors.red : Colors.green },
+                    ]}>
+                      {preview.status === "delayed" ? `Delayed +${preview.delayMinutes}m` : "On Time"}
+                    </Text>
+                  </View>
                 </View>
               </View>
 
@@ -424,6 +436,25 @@ const styles = StyleSheet.create({
     color: Colors.textSec,
     fontFamily: "DMSans_400Regular",
     marginTop: 2,
+  },
+  previewBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  mockBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: Colors.amberDim,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  mockBadgeText: {
+    fontSize: 11,
+    color: Colors.amber,
+    fontFamily: "DMSans_700Bold",
   },
   statusBadge: {
     paddingHorizontal: 10,

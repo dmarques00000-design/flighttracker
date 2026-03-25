@@ -193,11 +193,19 @@ function FlightItem({ flight, onDelete, index }: { flight: Flight; onDelete: () 
                   </View>
                 )}
               </View>
-              <Text style={styles.meta}>
-                {flight.flightCode}
-                {"  \u00b7  "}
-                {formatDate(flight.date)}
-              </Text>
+              <View style={styles.metaRow}>
+                <Text style={styles.meta}>
+                  {flight.flightCode}
+                  {"  \u00b7  "}
+                  {formatDate(flight.date)}
+                </Text>
+                {flight.isMock && (
+                  <View style={styles.mockBadge}>
+                    <Ionicons name="sparkles-outline" size={9} color={Colors.amber} />
+                    <Text style={styles.mockBadgeText}>Estimated</Text>
+                  </View>
+                )}
+              </View>
             </View>
             <View style={styles.rightCol}>
               <View style={[styles.pill, { backgroundColor: pillBg }]}>
@@ -428,7 +436,14 @@ const styles = StyleSheet.create({
   arrowLine:   { flex: 1, height: 1, backgroundColor: Colors.border },
   airport:     { fontSize: 18, color: Colors.text, fontFamily: "DMSans_700Bold" },
   verifiedBadge: { marginLeft: 6, justifyContent: "center" },
+  metaRow:     { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
   meta:        { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
+  mockBadge:   {
+    flexDirection: "row", alignItems: "center", gap: 3,
+    backgroundColor: Colors.amberDim,
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
+  },
+  mockBadgeText: { fontSize: 10, color: Colors.amber, fontFamily: "DMSans_700Bold" },
   rightCol:    { flexDirection: "row", alignItems: "center", gap: 10, marginLeft: 8 },
   pill:        { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8 },
   pillText:    { fontSize: 11, fontFamily: "DMSans_700Bold" },
