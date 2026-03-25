@@ -43,9 +43,6 @@ import { useUser } from "@/context/user";
 import * as AppleAuthentication from "expo-apple-authentication";
 
 // ─── Google (lazy — native module not available in Expo Go) ──────────────────
-// We require() at runtime inside the handler so Metro bundles the module but the
-// TurboModule registry is only accessed when the user actually taps the button,
-// giving us a chance to show a friendly message instead of a hard crash.
 type GoogleSigninType = typeof import("@react-native-google-signin/google-signin");
 let _googleModule: GoogleSigninType | null = null;
 function getGoogleSignin(): GoogleSigninType | null {
@@ -59,13 +56,8 @@ function getGoogleSignin(): GoogleSigninType | null {
   }
 }
 
-/**
- * Detect Expo Go at runtime — it does NOT include the RNGoogleSignin native module.
- * We use this flag to show a helpful message rather than letting the app crash.
- */
 function isExpoGo(): boolean {
   try {
-    // expo-constants is always available
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const Constants = require("expo-constants").default;
     return Constants.executionEnvironment === "storeClient";
@@ -74,11 +66,14 @@ function isExpoGo(): boolean {
   }
 }
 
-/**
- * REPLACE THIS with your OAuth 2.0 Web Client ID from Google Cloud Console.
- * Project › APIs & Services › Credentials › Web client (auto created by Google Service)
- */
 const GOOGLE_WEB_CLIENT_ID = "REPLACE_WITH_YOUR_WEB_CLIENT_ID";
+
+// ─── Test account credentials ─────────────────────────────────────────────────
+const TEST_USER = {
+  name: "Diogo Marques",
+  email: "diogo.test@logbook.app",
+  password: "test1234",
+};
 
 type Tab = "login" | "signup";
 
@@ -94,7 +89,6 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(false);
 
-  // Configure Google Sign-In (only in a real native build, not Expo Go)
   useEffect(() => {
     if (!isExpoGo()) {
       const g = getGoogleSignin();
@@ -105,18 +99,15 @@ export default function AuthScreen() {
         });
       }
     }
-
     if (Platform.OS === "ios") {
       AppleAuthentication.isAvailableAsync().then(setAppleAvailable);
     }
   }, []);
 
-  // ─── Validation ────────────────────────────────────────────────────────────
   function validateEmail(e: string) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
   }
 
-  // ─── Email / password submit ────────────────────────────────────────────────
   async function handleSubmit() {
     if (!validateEmail(email)) {
       Alert.alert("Invalid email", "Please enter a valid email address.");
@@ -131,7 +122,6 @@ export default function AuthScreen() {
       return;
     }
     setLoading(true);
-    // TODO: replace with your real auth backend call (e.g. Supabase, Firebase Auth)
     await new Promise((r) => setTimeout(r, 600));
     await login(tab === "signup" ? name : email.split("@")[0], email);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -139,7 +129,17 @@ export default function AuthScreen() {
     router.back();
   }
 
-  // ─── Apple Sign In ──────────────────────────────────────────────────────────
+  // ─── One-tap test login ───────────────────────────────────────────────────
+  async function handleTestLogin() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setLoading(true);
+    await new Promise((r) => setTimeout(r, 400));
+    await login(TEST_USER.name, TEST_USER.email);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setLoading(false);
+    router.back();
+  }
+
   async function handleAppleSignIn() {
     try {
       const credential = await AppleAuthentication.signInAsync({
@@ -148,90 +148,56 @@ export default function AuthScreen() {
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
       });
-
-      const fullName = [
-        credential.fullName?.givenName ?? "",
-        credential.fullName?.familyName ?? "",
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .trim();
-
+      const fullName = [credential.fullName?.givenName ?? "", credential.fullName?.familyName ?? ""]
+        .filter(Boolean).join(" ").trim();
       const userEmail = credential.email ?? email ?? "apple-user@privaterelay.appleid.com";
       const displayName = fullName || userEmail.split("@")[0];
-
       await login(displayName, userEmail);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch (e: any) {
-      if (e.code === "ERR_REQUEST_CANCELED") {
-        // User dismissed — do nothing
-      } else {
+      if (e.code !== "ERR_REQUEST_CANCELED") {
         Alert.alert("Apple Sign In failed", e.message ?? "An error occurred.");
       }
     }
   }
 
-  // ─── Google Sign In ─────────────────────────────────────────────────────────
   async function handleGoogleSignIn() {
-    // Show friendly message in Expo Go instead of crashing
     if (isExpoGo()) {
       Alert.alert(
         "Not available in Expo Go",
-        "Google Sign In requires a custom development build. Use email sign-in for now, or run `eas build --profile development` to test Google Sign In on a real device."
+        "Google Sign In requires a custom development build. Use email sign-in or the Test Account for now."
       );
       return;
     }
-
     if (GOOGLE_WEB_CLIENT_ID === "REPLACE_WITH_YOUR_WEB_CLIENT_ID") {
-      Alert.alert(
-        "Setup required",
-        "Add your Google Web Client ID to app/auth.tsx (GOOGLE_WEB_CLIENT_ID) and the reversed iOS Client ID to app.json to enable Google Sign In."
-      );
+      Alert.alert("Setup required", "Add your Google Web Client ID to app/auth.tsx to enable Google Sign In.");
       return;
     }
-
     const g = getGoogleSignin();
-    if (!g) {
-      Alert.alert("Error", "Google Sign In module could not be loaded.");
-      return;
-    }
-
+    if (!g) { Alert.alert("Error", "Google Sign In module could not be loaded."); return; }
     const { GoogleSignin, statusCodes } = g;
-
     try {
       await GoogleSignin.hasPlayServices();
       const userInfo = await GoogleSignin.signIn();
       const googleUser = (userInfo as any).data?.user ?? (userInfo as any).user;
-
       if (!googleUser) throw new Error("No user data returned from Google.");
-
-      const displayName = googleUser.name ?? googleUser.email.split("@")[0];
-      await login(displayName, googleUser.email);
+      await login(googleUser.name ?? googleUser.email.split("@")[0], googleUser.email);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch (e: any) {
-      if (e.code === statusCodes.SIGN_IN_CANCELLED) {
-        // User dismissed — do nothing
-      } else if (e.code === statusCodes.IN_PROGRESS) {
-        // Sign-in already in progress
-      } else if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-        Alert.alert("Google Sign In", "Google Play Services are not available on this device.");
+      if (e.code === statusCodes.SIGN_IN_CANCELLED) return;
+      if (e.code === statusCodes.IN_PROGRESS) return;
+      if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        Alert.alert("Google Sign In", "Google Play Services are not available.");
       } else {
         Alert.alert("Google Sign In failed", e.message ?? "An error occurred.");
       }
     }
   }
 
-  function handleGuest() {
-    Haptics.selectionAsync();
-    router.back();
-  }
-
-  function switchTab(t: Tab) {
-    Haptics.selectionAsync();
-    setTab(t);
-  }
+  function handleGuest() { Haptics.selectionAsync(); router.back(); }
+  function switchTab(t: Tab) { Haptics.selectionAsync(); setTab(t); }
 
   return (
     <KeyboardAvoidingView
@@ -266,9 +232,26 @@ export default function AuthScreen() {
           </Text>
         </Animated.View>
 
+        {/* ─── Test Account Banner ────────────────────────────────────── */}
+        <Animated.View entering={FadeInDown.delay(30).springify()}>
+          <Pressable
+            onPress={handleTestLogin}
+            disabled={loading}
+            style={({ pressed }) => [styles.testBtn, { opacity: pressed ? 0.8 : 1 }]}
+          >
+            <View style={styles.testBtnLeft}>
+              <Ionicons name="flask-outline" size={18} color="#F59E0B" />
+              <View>
+                <Text style={styles.testBtnTitle}>Use Test Account</Text>
+                <Text style={styles.testBtnSub}>{TEST_USER.email}</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="#F59E0B" />
+          </Pressable>
+        </Animated.View>
+
         {/* ─── Social buttons ─────────────────────────────────────────── */}
         <Animated.View entering={FadeInDown.delay(50).springify()} style={styles.socialBlock}>
-          {/* Apple Sign In — native button on iOS, custom on Android */}
           {Platform.OS === "ios" && appleAvailable ? (
             <AppleAuthentication.AppleAuthenticationButton
               buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
@@ -286,8 +269,6 @@ export default function AuthScreen() {
               <Text style={styles.appleBtnText}>Continue with Apple</Text>
             </Pressable>
           )}
-
-          {/* Google Sign In */}
           <Pressable
             style={({ pressed }) => [styles.googleBtn, { opacity: pressed ? 0.85 : 1 }]}
             onPress={handleGoogleSignIn}
@@ -308,16 +289,10 @@ export default function AuthScreen() {
 
         {/* Tab toggle */}
         <Animated.View entering={FadeInDown.delay(110).springify()} style={styles.tabRow}>
-          <Pressable
-            onPress={() => switchTab("signup")}
-            style={[styles.tabBtn, tab === "signup" && styles.tabBtnActive]}
-          >
+          <Pressable onPress={() => switchTab("signup")} style={[styles.tabBtn, tab === "signup" && styles.tabBtnActive]}>
             <Text style={[styles.tabText, tab === "signup" && styles.tabTextActive]}>Sign Up</Text>
           </Pressable>
-          <Pressable
-            onPress={() => switchTab("login")}
-            style={[styles.tabBtn, tab === "login" && styles.tabBtnActive]}
-          >
+          <Pressable onPress={() => switchTab("login")} style={[styles.tabBtn, tab === "login" && styles.tabBtnActive]}>
             <Text style={[styles.tabText, tab === "login" && styles.tabTextActive]}>Log In</Text>
           </Pressable>
         </Animated.View>
@@ -341,7 +316,6 @@ export default function AuthScreen() {
               </View>
             </View>
           )}
-
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Email</Text>
             <View style={styles.inputWrap}>
@@ -359,7 +333,6 @@ export default function AuthScreen() {
               />
             </View>
           </View>
-
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Password</Text>
             <View style={styles.inputWrap}>
@@ -385,7 +358,6 @@ export default function AuthScreen() {
               </Pressable>
             </View>
           </View>
-
           <Pressable
             onPress={handleSubmit}
             disabled={loading}
@@ -428,6 +400,18 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
+  // ─── Test account ───────────────────────────────────────────────────────────
+  testBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    backgroundColor: "rgba(245,158,11,0.08)",
+    borderRadius: 14, borderWidth: 1.5, borderColor: "rgba(245,158,11,0.30)",
+    paddingHorizontal: 16, paddingVertical: 12,
+    marginBottom: 20,
+  },
+  testBtnLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
+  testBtnTitle: { fontSize: 14, color: "#F59E0B", fontFamily: "DMSans_700Bold" },
+  testBtnSub: { fontSize: 11, color: "#B07800", fontFamily: "DMSans_400Regular", marginTop: 1 },
+
   heroSection: { alignItems: "center", marginBottom: 24 },
   logoCircle: {
     width: 72, height: 72, borderRadius: 36,
@@ -442,29 +426,20 @@ const styles = StyleSheet.create({
   subline:  { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 20 },
 
   socialBlock: { gap: 12, marginBottom: 20 },
-
   appleNativeBtn: { width: "100%", height: 52 },
-
   appleBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10,
-    backgroundColor: "#1A1A1A",
-    borderRadius: 14, height: 52,
+    backgroundColor: "#1A1A1A", borderRadius: 14, height: 52,
   },
   appleBtnText: { fontSize: 15, color: Colors.white, fontFamily: "DMSans_700Bold" },
-
   googleBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10,
-    backgroundColor: Colors.white,
-    borderRadius: 14, height: 52,
+    backgroundColor: Colors.white, borderRadius: 14, height: 52,
     borderWidth: 1.5, borderColor: Colors.border,
     shadowColor: Colors.shadow, shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
   },
-  googleIconWrap: {
-    width: 22, height: 22, borderRadius: 11,
-    backgroundColor: "#fff",
-    alignItems: "center", justifyContent: "center",
-  },
+  googleIconWrap: { width: 22, height: 22, borderRadius: 11, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
   googleG: { fontSize: 15, fontFamily: "DMSans_700Bold", color: "#4285F4" },
   googleBtnText: { fontSize: 15, color: Colors.text, fontFamily: "DMSans_700Bold" },
 
@@ -473,8 +448,7 @@ const styles = StyleSheet.create({
   dividerText: { fontSize: 12, color: Colors.textMuted, fontFamily: "DMSans_400Regular" },
 
   tabRow: {
-    flexDirection: "row",
-    backgroundColor: Colors.surface,
+    flexDirection: "row", backgroundColor: Colors.surface,
     borderRadius: 14, borderWidth: 1, borderColor: Colors.border,
     padding: 4, marginBottom: 20,
   },
@@ -501,11 +475,9 @@ const styles = StyleSheet.create({
   },
 
   submitBtn: {
-    backgroundColor: Colors.accent,
-    borderRadius: 14, paddingVertical: 16,
+    backgroundColor: Colors.accent, borderRadius: 14, paddingVertical: 16,
     alignItems: "center", marginTop: 8, marginBottom: 20,
-    shadowColor: Colors.accent,
-    shadowOffset: { width: 0, height: 4 },
+    shadowColor: Colors.accent, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.22, shadowRadius: 10, elevation: 4,
   },
   submitText: { fontSize: 16, color: Colors.white, fontFamily: "DMSans_700Bold" },
