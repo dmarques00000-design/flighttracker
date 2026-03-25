@@ -138,7 +138,9 @@ export default function AddFlightScreen() {
         status: preview.status || "on_time",
         delayMinutes: preview.delayMinutes ?? 0,
         aircraft: preview.aircraft,
-        verified: !preview.isMock,
+        // Manually added flights never receive the verified badge.
+        // verified is reserved exclusively for flights imported via Apple Wallet.
+        verified: false,
         isMock: preview.isMock ?? false,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -150,8 +152,8 @@ export default function AddFlightScreen() {
     }
   }
 
-  const dep = preview?.departureAirport || "—";
-  const arr = preview?.arrivalAirport || "—";
+  const dep = preview?.departureAirport || "\u2014";
+  const arr = preview?.arrivalAirport || "\u2014";
   const depCity = preview?.departureCity || "";
   const arrCity = preview?.arrivalCity || "";
   const depTime = preview?.departureTime || "--:--";
