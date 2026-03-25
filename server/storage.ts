@@ -363,9 +363,82 @@ function icaoToReadable(icao: string): string {
   return map[icao.toUpperCase()] || icao;
 }
 
+// ─── CO₂ calculation ─────────────────────────────────────────────────────────────
+//
+// Simplified ICAO/DEFRA-inspired methodology:
+//
+//  1. Haul-band emission factor (kg CO₂ per km per seat)
+//     Short hops burn disproportionately more per km because climb/descent
+//     phases dominate. Cruise altitude efficiency improves on longer sectors.
+//       ultra-short  < 500 km  → 0.255 kg/km
+//       short-haul   < 1500 km → 0.195 kg/km
+//       medium-haul  < 4000 km → 0.145 kg/km
+//       long-haul    ≥ 4000 km → 0.113 kg/km
+//
+//  2. Aircraft-type efficiency multiplier
+//     Modern wide-body jets and neo/MAX narrow-bodies burn meaningfully less
+//     fuel per seat than legacy or regional aircraft.
+//
+//  3. Radiative Forcing Index (RFI = 2.0)
+//     Non-CO₂ high-altitude effects (contrails, NOₓ, water vapour) roughly
+//     double the effective climate impact. Applied as final multiplier,
+//     consistent with UK DEFRA / ICAO simplified guidance.
+//
+// All lookups are O(1) pure arithmetic — zero performance impact.
+
+function aircraftEfficiencyMultiplier(aircraftModel: string): number {
+  const m = aircraftModel.toLowerCase();
+  // Modern efficient wide-bodies
+  if (m.includes("787") || m.includes("dreamliner")) return 0.80;
+  if (m.includes("a350")) return 0.80;
+  if (m.includes("a330-900") || m.includes("a330neo") || m.includes("a339")) return 0.82;
+  // Legacy wide-bodies (high fuel burn per seat)
+  if (m.includes("747") || m.includes("a380")) return 1.10;
+  // Standard wide-bodies
+  if (m.includes("777") || m.includes("a330") || m.includes("a340") || m.includes("767")) return 1.00;
+  // Modern narrow-bodies (neo / MAX variants)
+  if (m.includes("a320neo") || m.includes("a321neo") || m.includes("a319neo")) return 0.88;
+  if (m.includes("737 max") || m.includes("737max")) return 0.88;
+  // Classic narrow-bodies
+  if (m.includes("a320") || m.includes("a321") || m.includes("a319")) return 1.00;
+  if (m.includes("737") || m.includes("757")) return 1.00;
+  // Regional jets (less efficient per seat at low altitude)
+  if (
+    m.includes("embraer") || m.includes("e170") || m.includes("e175") ||
+    m.includes("e190") || m.includes("e195") || m.includes("crj") ||
+    m.includes("atr") || m.includes("q400") || m.includes("bombardier")
+  ) return 1.20;
+  // Unknown — use neutral multiplier
+  return 1.00;
+}
+
+/**
+ * Calculate CO₂-equivalent kg for a single passenger.
+ *
+ * @param distKm  Great-circle distance in kilometres
+ * @param aircraftModel  Human-readable aircraft name (optional, e.g. "Airbus A320neo")
+ */
+function calcCo2Kg(distKm: number, aircraftModel?: string): number {
+  // 1. Haul-band base emission factor
+  let kgPerKm: number;
+  if (distKm < 500)       kgPerKm = 0.255;
+  else if (distKm < 1500) kgPerKm = 0.195;
+  else if (distKm < 4000) kgPerKm = 0.145;
+  else                    kgPerKm = 0.113;
+
+  // 2. Aircraft efficiency multiplier
+  const aircraftFactor = aircraftModel ? aircraftEfficiencyMultiplier(aircraftModel) : 1.00;
+
+  // 3. Radiative Forcing Index (RFI = 2.0 per DEFRA simplified guidance)
+  const RFI = 2.0;
+
+  return Math.round(distKm * kgPerKm * aircraftFactor * RFI);
+}
+
 function calcDistAndCo2(
   depIata: string,
   arrIata: string,
+  aircraftModel?: string,
 ): { distMiles: number; co2Kg: number } {
   const dep = AIRPORTS[depIata];
   const arr = AIRPORTS[arrIata];
@@ -373,7 +446,7 @@ function calcDistAndCo2(
   const distKm = haversineKm(dep.lat, dep.lon, arr.lat, arr.lon);
   return {
     distMiles: Math.round(kmToMiles(distKm)),
-    co2Kg: Math.round(distKm * 0.115),
+    co2Kg: calcCo2Kg(distKm, aircraftModel),
   };
 }
 
@@ -403,7 +476,6 @@ function resolveIata(
     // ICAO (4-letter) → strip leading country prefix for common cases
     const icao = nested.icao ?? nested.ICAO ?? "";
     if (icao && icao.length === 4) {
-      // Last 3 chars of ICAO often match IATA for many major airports
       const candidate = icao.slice(1).toUpperCase();
       if (AIRPORTS[candidate]) return candidate;
     }
@@ -458,10 +530,12 @@ function generateMockFlight(
   const dep = AIRPORTS[depIata] || AIRPORTS["JFK"];
   const arr = AIRPORTS[arrIata] || AIRPORTS["LAX"];
 
+  const aircraft = AIRCRAFT_POOL[seed % AIRCRAFT_POOL.length];
+
   const distKm = haversineKm(dep.lat, dep.lon, arr.lat, arr.lon);
   const distMiles = Math.round(kmToMiles(distKm));
   const durationMinutes = Math.round((distKm / 870) * 60 + 30);
-  const co2Kg = Math.round(distKm * 0.115);
+  const co2Kg = calcCo2Kg(distKm, aircraft);
 
   const delayRoll = seededRandom(seed, 5);
   const isDelayed = delayRoll < 0.2;
@@ -475,8 +549,6 @@ function generateMockFlight(
   const arrHour = Math.floor(totalMin / 60) % 24;
   const arrMin = totalMin % 60;
   const arrStr = `${String(arrHour).padStart(2, "0")}:${String(arrMin).padStart(2, "0")}`;
-
-  const aircraft = AIRCRAFT_POOL[seed % AIRCRAFT_POOL.length];
 
   return {
     flightCode: code,
@@ -526,7 +598,6 @@ interface AeroDataBoxAirport {
   runwayTime?: { local?: string; utc?: string };
   delay?: number | null;
   quality?: string[];
-  // Some AeroDataBox response variants nest the airport info here
   airport?: {
     iata?: string;
     icao?: string;
@@ -570,9 +641,7 @@ async function lookupFromAeroDataBox(
     return null;
   }
 
-  // Strip spaces from flight number (e.g. "LX 19" → "LX19")
   const flightNumber = code.replace(/\s+/g, "").toUpperCase();
-
   const url = `https://aerodatabox.p.rapidapi.com/flights/number/${flightNumber}/${date}`;
   console.log(`[AeroDataBox] GET ${url}`);
 
@@ -602,23 +671,18 @@ async function lookupFromAeroDataBox(
 
     if (!Array.isArray(data) || data.length === 0) return null;
 
-    // Log the raw departure shape on the first result to help debug IATA location
     console.log("[AeroDataBox] departure shape:", JSON.stringify(data[0]?.departure ?? null));
     console.log("[AeroDataBox] arrival shape:", JSON.stringify(data[0]?.arrival ?? null));
 
-    // Prefer the operated (non-codeshare) leg; fall back to first result
     const flight =
       data.find((f) => f.codeshareStatus === "IsOperatedAs" || f.codeshareStatus === "IsOperating") ??
       data[0];
 
-    // Use the robust resolver that handles nested airport objects and ICAO fallback
     const depIata = resolveIata(flight.departure, hintDep);
     const arrIata = resolveIata(flight.arrival, hintArr);
 
     console.log(`[AeroDataBox] Resolved IATA: dep=${depIata || "(empty)"} arr=${arrIata || "(empty)"}`);
 
-    // If we still can't resolve both airport codes the result would be badly
-    // incomplete — abort and let the mock fallback produce consistent data.
     if (!depIata || !arrIata) {
       console.warn(
         `[AeroDataBox] Could not resolve IATA codes (dep="${depIata}" arr="${arrIata}") — falling back to mock`,
@@ -626,7 +690,6 @@ async function lookupFromAeroDataBox(
       return null;
     }
 
-    // Prefer actual times, fall back to scheduled
     const depTimeRaw =
       flight.departure?.actualTime?.local ??
       flight.departure?.runwayTime?.local ??
@@ -639,7 +702,6 @@ async function lookupFromAeroDataBox(
     const departureTime = toHHMM(depTimeRaw);
     const arrivalTime = toHHMM(arrTimeRaw);
 
-    // Duration: use actual ms if available, else scheduled ms, else haversine estimate
     let durationMinutes: number;
     if (flight.duration?.actualMs) {
       durationMinutes = Math.round(flight.duration.actualMs / 60000);
@@ -654,20 +716,24 @@ async function lookupFromAeroDataBox(
           : 120;
     }
 
-    // Distance: use AeroDataBox great-circle if provided, else haversine from our table
+    const aircraftModel =
+      flight.aircraft?.model
+        ? (flight.aircraft.model.includes(" ") ? flight.aircraft.model : icaoToReadable(flight.aircraft.model))
+        : "Commercial Aircraft";
+
+    // Distance + CO₂: use AeroDataBox great-circle if provided, else haversine
     let distMiles: number;
     let co2Kg: number;
     if (flight.greatCircleDistance?.mile) {
       distMiles = Math.round(flight.greatCircleDistance.mile);
       const distKm = flight.greatCircleDistance.km ?? distMiles / 0.621371;
-      co2Kg = Math.round(distKm * 0.115);
+      co2Kg = calcCo2Kg(distKm, aircraftModel);
     } else {
-      const calc = calcDistAndCo2(depIata, arrIata);
+      const calc = calcDistAndCo2(depIata, arrIata, aircraftModel);
       distMiles = calc.distMiles;
       co2Kg = calc.co2Kg;
     }
 
-    // Guard: if distance is still 0 (airport not in our table) compute a basic estimate
     if (distMiles === 0) {
       console.warn(`[AeroDataBox] Airport not in local table (dep=${depIata} arr=${arrIata}) — distance/co2 may be 0`);
     }
@@ -689,12 +755,6 @@ async function lookupFromAeroDataBox(
     const depData = AIRPORTS[depIata];
     const arrData = AIRPORTS[arrIata];
 
-    const aircraftModel =
-      flight.aircraft?.model
-        ? (flight.aircraft.model.includes(" ") ? flight.aircraft.model : icaoToReadable(flight.aircraft.model))
-        : "Commercial Aircraft";
-
-    // City: prefer our local table, then API municipalityName, then nested airport name, then IATA code
     const depCity =
       depData?.city ??
       flight.departure?.municipalityName ??
@@ -709,7 +769,7 @@ async function lookupFromAeroDataBox(
       arrIata;
 
     console.log(
-      `[AeroDataBox] Resolved: ${depIata}→${arrIata} | ${departureTime}-${arrivalTime} | ${distMiles}mi | status=${status} | isMock=false`,
+      `[AeroDataBox] Resolved: ${depIata}→${arrIata} | ${departureTime}-${arrivalTime} | ${distMiles}mi | co2=${co2Kg}kg | status=${status} | isMock=false`,
     );
 
     return {
