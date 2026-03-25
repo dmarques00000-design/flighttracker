@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   SectionList,
   Pressable,
@@ -16,6 +17,7 @@ import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { Colors } from "@/constants/colors";
 import { useFlights, Flight } from "@/context/flights";
+import { getAirlineInfo } from "@/utils/airlineLogos";
 
 const TODAY = new Date().toISOString().substring(0, 10);
 
@@ -85,6 +87,40 @@ function groupFlights(
       return { title: `${MONTHS[m]} ${y}`, data };
     });
 }
+
+// ─── Airline logo (small, for list cards) ──────────────────────────────────────
+function AirlineLogoSmall({ airlineCode }: { airlineCode: string }) {
+  const [errored, setErrored] = useState(false);
+  const { logoUrl, color } = getAirlineInfo(airlineCode);
+  const SIZE = 24;
+
+  if (errored) {
+    return (
+      <View style={[logoSmStyles.fallback, { width: SIZE, height: SIZE, borderRadius: SIZE / 4, backgroundColor: color + "18", borderColor: color + "40" }]}>
+        <Ionicons name="airplane" size={12} color={color} />
+      </View>
+    );
+  }
+  return (
+    <View style={[logoSmStyles.wrap, { width: SIZE, height: SIZE, borderRadius: SIZE / 4 }]}>
+      <Image
+        source={{ uri: logoUrl }}
+        style={{ width: SIZE - 4, height: SIZE - 4 }}
+        resizeMode="contain"
+        onError={() => setErrored(true)}
+      />
+    </View>
+  );
+}
+const logoSmStyles = StyleSheet.create({
+  wrap: {
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.border, overflow: "hidden",
+  },
+  fallback: {
+    alignItems: "center", justifyContent: "center", borderWidth: 1,
+  },
+});
 
 // ─── Dropdown pill (identical pattern to home screen) ──────────────────────────
 interface DropdownOption { key: TimeFilter; label: string; }
@@ -194,6 +230,7 @@ function FlightItem({ flight, onDelete, index }: { flight: Flight; onDelete: () 
                 )}
               </View>
               <View style={styles.metaRow}>
+                <AirlineLogoSmall airlineCode={flight.airlineCode} />
                 <Text style={styles.meta}>
                   {flight.flightCode}
                   {"  \u00b7  "}
