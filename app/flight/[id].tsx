@@ -41,6 +41,21 @@ function formatHours(minutes: number): string {
   return `${h}h ${m}m`;
 }
 
+/**
+ * Derive the displayed flight duration purely from HH:MM departure and
+ * arrival time strings. Handles overnight flights (arrival < departure).
+ * Returns null if either string is missing or malformed.
+ */
+function deriveDurationMins(depTime: string, arrTime: string): number | null {
+  if (!depTime || !arrTime) return null;
+  const [dh, dm] = depTime.split(":").map(Number);
+  const [ah, am] = arrTime.split(":").map(Number);
+  if (isNaN(dh) || isNaN(dm) || isNaN(ah) || isNaN(am)) return null;
+  let diff = (ah * 60 + am) - (dh * 60 + dm);
+  if (diff < 0) diff += 24 * 60; // overnight
+  return diff;
+}
+
 function InfoRow({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <View style={infoStyles.row}>
@@ -125,7 +140,6 @@ function FlightNotFound({ topPad }: { topPad: number }) {
         <Pressable
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            // Go back, or navigate home if there’s nothing to go back to
             if (router.canGoBack()) router.back();
             else router.replace("/(tabs)");
           }}
@@ -150,7 +164,6 @@ export default function FlightDetailScreen() {
   const topPad    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 20;
 
-  // ── Render the polished not-found screen instead of crashing ──
   if (!flight) return <FlightNotFound topPad={topPad} />;
 
   async function handleShare() {
@@ -188,6 +201,11 @@ export default function FlightDetailScreen() {
   const avgSpeedMph = flight.durationMinutes > 0
     ? Math.round((flight.distanceMiles / flight.durationMinutes) * 60)
     : 0;
+
+  // Use derived duration (from actual times) for the hero card display.
+  // Fall back to durationMinutes only if times are unavailable.
+  const derivedMins = deriveDurationMins(flight.departureTime, flight.arrivalTime);
+  const heroDisplayDuration = formatHours(derivedMins ?? flight.durationMinutes);
 
   const statusColor = isUpcoming ? Colors.accent : isDelayed ? Colors.red : Colors.green;
   const statusLabel = isUpcoming ? "Upcoming" : isDelayed ? `Delayed +${flight.delayMinutes} min` : "Completed";
@@ -271,6 +289,7 @@ export default function FlightDetailScreen() {
 
           {/* Row 3: Times + duration */}
           <View style={styles.timesRow}>
+            {/* Departure */}
             <View style={styles.timesBlock}>
               <Text style={styles.timeText}>{flight.departureTime}</Text>
               {(flight.departureTerminal || flight.departureGate) ? (
@@ -279,12 +298,17 @@ export default function FlightDetailScreen() {
                 </Text>
               ) : null}
             </View>
+
+            {/* Middle: derived duration + date */}
             <View style={styles.timesMid}>
-              <Text style={styles.durationText}>{formatHours(flight.durationMinutes)}</Text>
+              <Text style={styles.durationText}>{heroDisplayDuration}</Text>
               <Text style={styles.dateText}>{formatDateShort(flight.date)}</Text>
             </View>
+
+            {/* Arrival */}
             <View style={[styles.timesBlock, { alignItems: "flex-end" }]}>
               <Text style={styles.timeText}>{flight.arrivalTime}</Text>
+              <Text style={styles.localTimeLabel}>local</Text>
               {(flight.arrivalTerminal || flight.arrivalGate) ? (
                 <Text style={styles.timeSubText} numberOfLines={1}>
                   {[flight.arrivalTerminal ? `T${flight.arrivalTerminal}` : null, flight.arrivalGate ? `Gate ${flight.arrivalGate}` : null].filter(Boolean).join(" \u00b7 ")}
@@ -347,7 +371,7 @@ export default function FlightDetailScreen() {
             />
             <InfoRow
               label="Arrival"
-              value={`${flight.arrivalAirport}  \u00b7  ${flight.arrivalTime}${flight.arrivalTerminal ? `  \u00b7  T${flight.arrivalTerminal}` : ""}${flight.arrivalGate ? `  \u00b7  Gate ${flight.arrivalGate}` : ""}`}
+              value={`${flight.arrivalAirport}  \u00b7  ${flight.arrivalTime} (local)${flight.arrivalTerminal ? `  \u00b7  T${flight.arrivalTerminal}` : ""}${flight.arrivalGate ? `  \u00b7  Gate ${flight.arrivalGate}` : ""}`}
             />
             <InfoRow
               label="Distance"
@@ -490,12 +514,13 @@ const styles = StyleSheet.create({
     flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start",
     paddingTop: 16, borderTopWidth: 1, borderTopColor: Colors.border, marginBottom: 16,
   },
-  timesBlock:   { flex: 1, minWidth: 0 },
-  timesMid:     { flex: 1, alignItems: "center", paddingTop: 2 },
-  timeText:     { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold" },
-  timeSubText:  { fontSize: 10, color: Colors.textMuted, fontFamily: "DMSans_400Regular", marginTop: 3 },
-  durationText: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginBottom: 2 },
-  dateText:     { fontSize: 11, color: Colors.textMuted, fontFamily: "DMSans_400Regular" },
+  timesBlock:      { flex: 1, minWidth: 0 },
+  timesMid:        { flex: 1, alignItems: "center", paddingTop: 2 },
+  timeText:        { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold" },
+  timeSubText:     { fontSize: 10, color: Colors.textMuted, fontFamily: "DMSans_400Regular", marginTop: 3 },
+  localTimeLabel:  { fontSize: 10, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 2, letterSpacing: 0.3 },
+  durationText:    { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginBottom: 2 },
+  dateText:        { fontSize: 11, color: Colors.textMuted, fontFamily: "DMSans_400Regular" },
 
   heroBottomRow: {
     flexDirection: "row", alignItems: "center",
