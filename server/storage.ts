@@ -301,9 +301,25 @@ function extractAirlineCode(code: string): string {
   return match ? match[1] : code.substring(0, 2);
 }
 
+/**
+ * Extract HH:MM from any datetime string AeroDataBox may return.
+ *
+ * AeroDataBox returns scheduledTime.local in several formats:
+ *   "2026-03-25T14:30+01:00"  — ISO 8601 with T separator
+ *   "2026-03-25 14:30"        — space-separated (no T, no offset)
+ *   "2026-03-25 14:30+01:00"  — space-separated with offset
+ *   "14:30"                   — already HH:MM
+ *
+ * The original code only checked for "T", so space-separated strings
+ * fell through to substring(0,5) and returned "2026-" instead of "14:30".
+ */
 function toHHMM(isoOrTime: string | null | undefined): string {
   if (!isoOrTime) return "00:00";
+  // ISO 8601 with "T" separator: "2026-03-25T14:30..." → chars 11-15
   if (isoOrTime.includes("T")) return isoOrTime.substring(11, 16);
+  // Space-separated datetime: "2026-03-25 14:30..." → chars 11-15
+  if (isoOrTime.length > 10 && isoOrTime[10] === " ") return isoOrTime.substring(11, 16);
+  // Already HH:MM or HH:MM:SS
   return isoOrTime.substring(0, 5);
 }
 
