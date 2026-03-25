@@ -6,8 +6,6 @@ export interface UserProfile {
   email: string;
   homeCityCode: string;
   nationality: string;
-  passportNumber: string;
-  passportExpiry: string;
   frequentFlyerNumber: string;
   preferredAirline: string;
   seatPreference: "window" | "middle" | "aisle" | "";
@@ -19,8 +17,6 @@ const DEFAULT_PROFILE: UserProfile = {
   email: "",
   homeCityCode: "",
   nationality: "",
-  passportNumber: "",
-  passportExpiry: "",
   frequentFlyerNumber: "",
   preferredAirline: "",
   seatPreference: "",
@@ -51,9 +47,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     AsyncStorage.multiGet([STORAGE_KEY, AUTH_KEY]).then((pairs) => {
       const profileRaw = pairs[0][1];
-      const authRaw = pairs[1][1];
+      const authRaw    = pairs[1][1];
       if (profileRaw) {
-        try { setProfile({ ...DEFAULT_PROFILE, ...JSON.parse(profileRaw) }); } catch {}
+        try {
+          const parsed = JSON.parse(profileRaw);
+          // Strip any legacy passport fields that may still exist in stored data
+          const { passportNumber, passportExpiry, ...safe } = parsed;
+          setProfile({ ...DEFAULT_PROFILE, ...safe });
+        } catch {}
       }
       if (authRaw === "true") setIsLoggedIn(true);
     });
