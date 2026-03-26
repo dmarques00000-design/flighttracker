@@ -99,20 +99,6 @@ interface FlightLookupResult {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Compute duration from HH:MM departure and arrival strings.
- * Handles overnight flights (arrival < departure) by adding 24h.
- */
-function calcDurationMinutes(depTime: string, arrTime: string): number {
-  const [dh, dm] = depTime.split(":").map(Number);
-  const [ah, am] = arrTime.split(":").map(Number);
-  if (isNaN(dh) || isNaN(dm) || isNaN(ah) || isNaN(am)) return 0;
-  let diff = (ah * 60 + am) - (dh * 60 + dm);
-  if (diff < 0) diff += 24 * 60; // overnight
-  return diff;
-}
-
 function formatHours(minutes: number): string {
   const h = Math.floor(minutes / 60); const m = minutes % 60;
   if (h === 0) return `${m}m`; if (m === 0) return `${h}h`; return `${h}h ${m}m`;
@@ -127,7 +113,6 @@ function formatDate(str: string): string {
 
 /** Clearbit favicon — small, no API key needed, covers all major airlines. */
 function airlineLogoUrl(airlineCode: string): string {
-  // Map IATA airline codes to their main website domain
   const domainMap: Record<string, string> = {
     LX: "swiss.com", LH: "lufthansa.com", BA: "britishairways.com",
     AF: "airfrance.com", KL: "klm.com", EK: "emirates.com",
@@ -196,8 +181,10 @@ function FlightCard({
   const logoUrl = airlineLogoUrl(flight.airlineCode);
   const [logoError, setLogoError] = useState(false);
 
-  // Compute duration directly from time strings so it's always consistent
-  const displayMinutes = calcDurationMinutes(flight.departureTime, flight.arrivalTime) || flight.durationMinutes;
+  // Always use durationMinutes from the API — it is derived from scheduledMs
+  // (UTC milliseconds) by AeroDataBox, so it correctly accounts for timezone
+  // differences between departure and arrival airports.
+  const displayMinutes = flight.durationMinutes;
 
   return (
     <Animated.View entering={FadeInDown.springify()} layout={Layout.springify()} style={{ backgroundColor: C.card, borderRadius: 18, padding: 20, borderWidth: 1, borderColor: C.border, marginTop: 16 }}>
@@ -211,7 +198,6 @@ function FlightCard({
               onError={() => setLogoError(true)}
             />
           ) : (
-            // Fallback: coloured initials badge
             <View style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: C.accent + "22", alignItems: "center", justifyContent: "center" }}>
               <Text style={{ fontSize: 11, color: C.accent, fontFamily: "DMSans_700Bold" }}>
                 {flight.airlineCode.slice(0, 2)}
@@ -409,7 +395,8 @@ export default function AddFlightScreen() {
         departureAirport: flight.departureAirport, arrivalAirport: flight.arrivalAirport,
         departureCity: flight.departureCity, arrivalCity: flight.arrivalCity,
         departureTime: flight.departureTime, arrivalTime: flight.arrivalTime,
-        durationMinutes: calcDurationMinutes(flight.departureTime, flight.arrivalTime) || flight.durationMinutes,
+        // Use the API value — derived from UTC scheduledMs, timezone-correct
+        durationMinutes: flight.durationMinutes,
         distanceMiles: flight.distanceMiles,
         co2Kg: flight.co2Kg, status: flight.status || "on_time",
         delayMinutes: flight.delayMinutes ?? 0, aircraft: flight.aircraft,
