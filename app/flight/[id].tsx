@@ -39,15 +39,6 @@ function formatHours(minutes: number): string {
   if (m === 0) return `${h}h`;
   return `${h}h ${m}m`;
 }
-function deriveDurationMins(depTime: string, arrTime: string): number | null {
-  if (!depTime || !arrTime) return null;
-  const [dh, dm] = depTime.split(":").map(Number);
-  const [ah, am] = arrTime.split(":").map(Number);
-  if (isNaN(dh) || isNaN(dm) || isNaN(ah) || isNaN(am)) return null;
-  let diff = (ah * 60 + am) - (dh * 60 + dm);
-  if (diff < 0) diff += 24 * 60;
-  return diff;
-}
 
 function InfoRow({ label, value, accent }: { label: string; value: string; accent?: string }) {
   const C = useColors();
@@ -197,8 +188,10 @@ export default function FlightDetailScreen() {
     ? Math.round((flight.distanceMiles / flight.durationMinutes) * 60)
     : 0;
 
-  const derivedMins = deriveDurationMins(flight.departureTime, flight.arrivalTime);
-  const heroDisplayDuration = formatHours(derivedMins ?? flight.durationMinutes);
+  // Use the stored durationMinutes (from API scheduledMs/actualMs, or haversine estimate
+  // for mock flights) — never derive from HH:MM strings which are airport-local and
+  // would give wrong results across timezone boundaries (e.g. ZRH → JFK).
+  const heroDisplayDuration = formatHours(flight.durationMinutes);
 
   const statusColor = isUpcoming ? C.accent : isDelayed ? C.red : C.green;
   const statusLabel = isUpcoming ? "Upcoming" : isDelayed ? `Delayed +${flight.delayMinutes} min` : "Completed";
