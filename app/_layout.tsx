@@ -25,44 +25,46 @@ function RootLayoutNav() {
   const { isDark } = useTheme();
   const C = useColors();
   return (
-    <>
-      <StatusBar style={isDark ? "light" : "dark"} />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="add-flight"
-          options={{
-            presentation: "formSheet",
-            sheetAllowedDetents: [0.6, 1],
-            sheetGrabberVisible: true,
-            headerShown: false,
-            // Pin the sheet chrome (the area below content) to the app surface colour
-            // so it matches perfectly in both light and dark mode.
-            contentStyle: { backgroundColor: C.surface },
-          }}
-        />
-        <Stack.Screen
-          name="flight/[id]"
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="share"
-          options={{
-            presentation: "modal",
-            headerShown: false,
-            contentStyle: { backgroundColor: "transparent" },
-          }}
-        />
-        <Stack.Screen
-          name="auth"
-          options={{
-            presentation: "modal",
-            headerShown: false,
-            contentStyle: { backgroundColor: "transparent" },
-          }}
-        />
-      </Stack>
-    </>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
+      <KeyboardProvider>
+        <StatusBar style={isDark ? "light" : "dark"} />
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg } }}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="add-flight"
+            options={{
+              presentation: "formSheet",
+              sheetAllowedDetents: [0.6, 1],
+              sheetGrabberVisible: true,
+              headerShown: false,
+              // Both the sheet content area and the dead zone below it
+              // are painted with the app surface colour, matching light + dark.
+              contentStyle: { backgroundColor: C.surface },
+            }}
+          />
+          <Stack.Screen
+            name="flight/[id]"
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="share"
+            options={{
+              presentation: "modal",
+              headerShown: false,
+              contentStyle: { backgroundColor: "transparent" },
+            }}
+          />
+          <Stack.Screen
+            name="auth"
+            options={{
+              presentation: "modal",
+              headerShown: false,
+              contentStyle: { backgroundColor: "transparent" },
+            }}
+          />
+        </Stack>
+      </KeyboardProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -88,11 +90,7 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <FlightsProvider>
             <UserProvider>
-              <GestureHandlerRootView style={{ flex: 1 }}>
-                <KeyboardProvider>
-                  <RootLayoutNav />
-                </KeyboardProvider>
-              </GestureHandlerRootView>
+              <RootLayoutNav />
             </UserProvider>
           </FlightsProvider>
         </QueryClientProvider>
