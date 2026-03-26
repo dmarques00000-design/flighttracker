@@ -85,9 +85,9 @@ const OFFSET_LABEL_MAP: Record<ReminderOffset, string> = {
 };
 
 const OFFSET_SUBLABEL_MAP: Record<ReminderOffset, string> = {
-  24: "Day before — great for packing",
-  6:  "Same day — time to head to the airport",
-  3:  "Final call — check in & gate ready",
+  24: "Day before \u2014 great for packing",
+  6:  "Same day \u2014 time to head to the airport",
+  3:  "Final call \u2014 check in & gate ready",
 };
 
 function InfoRow({ label, value, accent }: { label: string; value: string; accent?: string }) {
@@ -294,6 +294,9 @@ export default function FlightDetailScreen() {
 
   if (!flight) return <FlightNotFound topPad={topPad} />;
 
+  const remindersAvailable = isUpcoming && Platform.OS !== "web" && getNotif() !== null;
+  const calendarAvailable  = isUpcoming && Platform.OS !== "web" && getCal() !== null;
+
   // ─── Share ───────────────────────────────────────────────────────────────
   async function handleShare() {
     if (!flight) return;
@@ -400,9 +403,6 @@ export default function FlightDetailScreen() {
   const statusLabel = isUpcoming ? "Upcoming" : isDelayed ? `Delayed +${flight.delayMinutes} min` : "Completed";
   const airlineInfo = getAirlineInfo(flight.airlineCode);
 
-  const calendarAvailable = Platform.OS !== "web" && getCal() !== null;
-
-  // Count active reminders for the header badge
   const activeReminderCount = scheduled.size;
 
   return (
@@ -432,6 +432,7 @@ export default function FlightDetailScreen() {
             {flight.departureAirport}{" \u2192 "}{flight.arrivalAirport}
           </Text>
         </View>
+        {/* Share — top-right, the only share entry point */}
         <Pressable
           onPress={handleShare}
           disabled={sharing}
@@ -555,42 +556,59 @@ export default function FlightDetailScreen() {
           </View>
         </Animated.View>
 
-        {/* ─── QUICK ACTION BAR ─── */}
-        <Animated.View entering={FadeInDown.delay(60).springify()} style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
-          <Pressable
-            onPress={handleShare}
-            disabled={sharing}
-            style={({ pressed }) => [{
-              flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-              gap: 8, paddingVertical: 14, borderRadius: 14,
-              backgroundColor: C.accent,
-            }, { opacity: sharing || pressed ? 0.78 : 1 }]}
-          >
-            {sharing
-              ? <ActivityIndicator size="small" color={C.white} />
-              : <Ionicons name="share-social-outline" size={18} color={C.white} />}
-            <Text style={{ fontSize: 14, color: C.white, fontFamily: "DMSans_700Bold" }}>Share</Text>
-          </Pressable>
+        {/* ─── QUICK ACTION BAR (upcoming only) ─── */}
+        {isUpcoming && (remindersAvailable || calendarAvailable) && (
+          <Animated.View entering={FadeInDown.delay(60).springify()} style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
+            {remindersAvailable && (
+              <Pressable
+                onPress={() => {
+                  // Scroll is handled by layout; just give haptic feedback to draw
+                  // the user's eye to the reminders section below.
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                style={({ pressed }) => [{
+                  flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+                  gap: 8, paddingVertical: 14, borderRadius: 14,
+                  backgroundColor: activeReminderCount > 0 ? C.accentDim : C.card,
+                  borderWidth: 1,
+                  borderColor: activeReminderCount > 0 ? C.accent + "55" : C.border,
+                }, { opacity: pressed ? 0.78 : 1 }]}
+              >
+                <Ionicons
+                  name={activeReminderCount > 0 ? "notifications" : "notifications-outline"}
+                  size={18}
+                  color={activeReminderCount > 0 ? C.accent : C.textSec}
+                />
+                <Text style={{
+                  fontSize: 14,
+                  color: activeReminderCount > 0 ? C.accent : C.textSec,
+                  fontFamily: "DMSans_700Bold",
+                }}>
+                  {activeReminderCount > 0 ? `${activeReminderCount} Reminder${activeReminderCount > 1 ? "s" : ""}` : "Add Reminder"}
+                </Text>
+              </Pressable>
+            )}
 
-          {isUpcoming && calendarAvailable && (
-            <Pressable
-              onPress={handleAddToCalendar}
-              disabled={addingCalendar}
-              style={({ pressed }) => [{
-                flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-                gap: 8, paddingVertical: 14, borderRadius: 14,
-                backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-              }, { opacity: addingCalendar || pressed ? 0.78 : 1 }]}
-            >
-              {addingCalendar
-                ? <ActivityIndicator size="small" color={C.accent} />
-                : <Ionicons name="calendar-outline" size={18} color={C.accent} />}
-              <Text style={{ fontSize: 14, color: C.accent, fontFamily: "DMSans_700Bold" }}>
-                {addingCalendar ? "Adding\u2026" : "Add to Calendar"}
-              </Text>
-            </Pressable>
-          )}
-        </Animated.View>
+            {calendarAvailable && (
+              <Pressable
+                onPress={handleAddToCalendar}
+                disabled={addingCalendar}
+                style={({ pressed }) => [{
+                  flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+                  gap: 8, paddingVertical: 14, borderRadius: 14,
+                  backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
+                }, { opacity: addingCalendar || pressed ? 0.78 : 1 }]}
+              >
+                {addingCalendar
+                  ? <ActivityIndicator size="small" color={C.accent} />
+                  : <Ionicons name="calendar-outline" size={18} color={C.accent} />}
+                <Text style={{ fontSize: 14, color: C.accent, fontFamily: "DMSans_700Bold" }}>
+                  {addingCalendar ? "Adding\u2026" : "Add to Calendar"}
+                </Text>
+              </Pressable>
+            )}
+          </Animated.View>
+        )}
 
         {/* ─── STATS ROW ─── */}
         <Animated.View entering={FadeInDown.delay(80).springify()} style={{
@@ -625,24 +643,21 @@ export default function FlightDetailScreen() {
         </Animated.View>
 
         {/* ─── PER-FLIGHT REMINDERS ─── */}
-        {isUpcoming && Platform.OS !== "web" && getNotif() !== null && (
+        {remindersAvailable && (
           <Animated.View entering={FadeInDown.delay(120).springify()} style={{ marginBottom: 16 }}>
-            {/* Header row with active count badge */}
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
-                <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase" }}>Flight Reminders</Text>
-                {activeReminderCount > 0 && (
-                  <View style={{
-                    paddingHorizontal: 7, paddingVertical: 2,
-                    borderRadius: 10, backgroundColor: C.accentDim,
-                    borderWidth: 1, borderColor: C.accent + "44",
-                  }}>
-                    <Text style={{ fontSize: 11, color: C.accent, fontFamily: "DMSans_700Bold" }}>
-                      {activeReminderCount} active
-                    </Text>
-                  </View>
-                )}
-              </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 10 }}>
+              <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase" }}>Flight Reminders</Text>
+              {activeReminderCount > 0 && (
+                <View style={{
+                  paddingHorizontal: 7, paddingVertical: 2,
+                  borderRadius: 10, backgroundColor: C.accentDim,
+                  borderWidth: 1, borderColor: C.accent + "44",
+                }}>
+                  <Text style={{ fontSize: 11, color: C.accent, fontFamily: "DMSans_700Bold" }}>
+                    {activeReminderCount} active
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Context note */}
@@ -663,9 +678,9 @@ export default function FlightDetailScreen() {
 
             <View style={{ backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, overflow: "hidden" }}>
               {REMINDER_OFFSETS.map((offset, i) => {
-                const isOn      = scheduled.has(offset);
-                const isLast    = i === REMINDER_OFFSETS.length - 1;
-                const toggling  = togglingOffset === offset;
+                const isOn     = scheduled.has(offset);
+                const isLast   = i === REMINDER_OFFSETS.length - 1;
+                const toggling = togglingOffset === offset;
                 return (
                   <Pressable
                     key={offset}
@@ -678,7 +693,6 @@ export default function FlightDetailScreen() {
                     !isLast && { borderBottomWidth: 1, borderBottomColor: C.border },
                     ]}
                   >
-                    {/* Icon */}
                     <View style={{
                       width: 36, height: 36, borderRadius: 10,
                       backgroundColor: isOn ? C.accent + "22" : C.surface,
@@ -689,7 +703,6 @@ export default function FlightDetailScreen() {
                         : <Ionicons name={isOn ? "notifications" : "notifications-outline"} size={18} color={isOn ? C.accent : C.textMuted} />}
                     </View>
 
-                    {/* Labels */}
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={{ fontSize: 14, color: C.text, fontFamily: isOn ? "DMSans_700Bold" : "DMSans_500Medium" }}>
                         {OFFSET_LABEL_MAP[offset]}
@@ -699,7 +712,6 @@ export default function FlightDetailScreen() {
                       </Text>
                     </View>
 
-                    {/* On/Off badge */}
                     <View style={[{
                       paddingHorizontal: 12, paddingVertical: 5,
                       borderRadius: 20, borderWidth: 1, flexShrink: 0,
@@ -709,8 +721,7 @@ export default function FlightDetailScreen() {
                       : { backgroundColor: C.surface, borderColor: C.border },
                     ]}>
                       <Text style={{
-                        fontSize: 12,
-                        fontFamily: "DMSans_700Bold",
+                        fontSize: 12, fontFamily: "DMSans_700Bold",
                         color: isOn ? C.white : C.textMuted,
                       }}>
                         {isOn ? "On" : "Off"}
@@ -762,31 +773,6 @@ export default function FlightDetailScreen() {
           </View>
         </Animated.View>
 
-        {/* ─── SHARE ─── */}
-        <Animated.View entering={FadeInDown.delay(isUpcoming ? 240 : 200).springify()} style={{ marginBottom: 8 }}>
-          <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Share This Flight</Text>
-          <Pressable
-            onPress={handleShare}
-            disabled={sharing}
-            style={({ pressed }) => [{
-              backgroundColor: C.accent, borderRadius: 14, padding: 17,
-              flexDirection: "row", alignItems: "center", justifyContent: "center",
-              gap: 10, marginBottom: 10,
-            }, { opacity: sharing || pressed ? 0.75 : 1 }]}
-          >
-            {sharing
-              ? <ActivityIndicator size="small" color={C.white} />
-              : (
-                <>
-                  <Ionicons name="share-social-outline" size={20} color={C.white} />
-                  <Text style={{ fontSize: 16, color: C.white, fontFamily: "DMSans_700Bold" }}>Share with friends</Text>
-                </>
-              )}
-          </Pressable>
-          <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 17 }}>
-            Generates a boarding-pass style card \u2014 share to Instagram, WhatsApp, and more.
-          </Text>
-        </Animated.View>
       </ScrollView>
     </View>
   );
