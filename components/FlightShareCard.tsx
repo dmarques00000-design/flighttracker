@@ -76,7 +76,7 @@ export default function FlightShareCard({ flight }: { flight: Flight }) {
         </View>
 
         <Text style={styles.duration}>
-          {formatHours(flight.durationMinutes)} \u00b7 {flight.flightCode} \u00b7 {flight.airline}
+          {`${formatHours(flight.durationMinutes)} \u00b7 ${flight.flightCode} \u00b7 ${flight.airline}`}
         </Text>
 
         <View style={styles.tearLine}>
@@ -97,7 +97,7 @@ export default function FlightShareCard({ flight }: { flight: Flight }) {
           <View style={styles.statItem}>
             <Ionicons name="leaf" size={14} color="#10B981" />
             <Text style={styles.statValue}>{flight.co2Kg} kg</Text>
-            <Text style={styles.statSub}>CO\u2082</Text>
+            <Text style={styles.statSub}>{"CO\u2082"}</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
@@ -110,7 +110,7 @@ export default function FlightShareCard({ flight }: { flight: Flight }) {
         {funFact ? (
           <View style={styles.funFactRow}>
             <Ionicons name="leaf-outline" size={11} color="#10B981" />
-            <Text style={styles.funFactText}>That\u2019s like {funFact}</Text>
+            <Text style={styles.funFactText}>{`That\u2019s like `}{funFact}</Text>
           </View>
         ) : null}
 
