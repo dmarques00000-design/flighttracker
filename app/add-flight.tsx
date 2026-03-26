@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  View, Text, TextInput, Pressable,
+  View, Text, Pressable,
   ActivityIndicator, ScrollView, Platform, Alert, KeyboardAvoidingView,
-  AppState, AppStateStatus,
+  AppState, AppStateStatus, TextInput,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,6 +15,7 @@ import { useFlights } from "@/context/flights";
 import { apiRequest } from "@/lib/query-client";
 import { getRateLimiter, formatRetryAfter } from "@/lib/rate-limiter";
 import { DatePicker } from "@/components/DatePicker";
+import { AirportInput } from "@/components/AirportInput";
 
 const lookupLimiter = getRateLimiter("flight-lookup", { maxCalls: 5, windowMs: 60_000 });
 export const percentileLimiter = getRateLimiter("percentile", { maxCalls: 10, windowMs: 60_000 });
@@ -22,7 +23,7 @@ export const percentileLimiter = getRateLimiter("percentile", { maxCalls: 10, wi
 // ─── Search mode ─────────────────────────────────────────────────────────────
 type SearchMode = "code" | "airport";
 
-// ─── Error types ────────────────────────────────────────────────────────────
+// ─── Error types ─────────────────────────────────────────────────────────────
 type LookupErrorKind = "offline" | "server" | "timeout" | "not_found" | "invalid_input" | "rate_limit" | "unknown";
 
 interface LookupError {
@@ -32,7 +33,7 @@ interface LookupError {
 }
 
 function classifyError(err: unknown, isOnline: boolean): LookupError {
-  if (!isOnline) return { kind: "offline",  message: "You\'re offline. Check your connection and try again.", retryable: true };
+  if (!isOnline) return { kind: "offline",  message: "You're offline. Check your connection and try again.", retryable: true };
   const msg = err instanceof Error ? err.message : String(err);
   if (msg.includes("AbortError") || msg.toLowerCase().includes("timeout"))
     return { kind: "timeout",  message: "The server took too long to respond. It may be temporarily down — try again in a moment.", retryable: true };
@@ -43,7 +44,7 @@ function classifyError(err: unknown, isOnline: boolean): LookupError {
   return { kind: "unknown",   message: "Could not look up that flight. Please check the details and date.", retryable: true };
 }
 
-// ─── Network hook ────────────────────────────────────────────────────────────
+// ─── Network hook ─────────────────────────────────────────────────────────────
 function useIsOnline(): boolean {
   const [online, setOnline] = useState(true);
   const check = useCallback(async () => {
@@ -60,7 +61,7 @@ function useIsOnline(): boolean {
   return online;
 }
 
-// ─── Validation ──────────────────────────────────────────────────────────────
+// ─── Validation ───────────────────────────────────────────────────────────────
 function sanitiseFlightCode(raw: string): { value: string; error: string | null } {
   const value = raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (!value) return { value: "", error: "Please enter a flight code (e.g. LX2819)" };
@@ -77,14 +78,8 @@ function sanitiseDate(raw: string): { value: string; error: string | null } {
   if (d < new Date("2000-01-01T00:00:00")) return { value: raw, error: "Date is too far in the past" };
   return { value: raw, error: null };
 }
-function sanitiseIATA(raw: string): { value: string; error: string | null } {
-  const value = raw.trim().toUpperCase().replace(/[^A-Z]/g, "");
-  if (!value) return { value: "", error: null }; // empty is ok (optional field)
-  if (!/^[A-Z]{3}$/.test(value)) return { value, error: `"${value}" is not a valid 3-letter IATA code` };
-  return { value, error: null };
-}
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface FlightLookupResult {
   flightCode: string; date: string; airline: string; airlineCode: string;
   departureAirport: string; arrivalAirport: string; departureCity: string; arrivalCity: string;
@@ -93,7 +88,7 @@ interface FlightLookupResult {
   delayMinutes: number; aircraft: string; isMock?: boolean;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatHours(minutes: number): string {
   const h = Math.floor(minutes / 60); const m = minutes % 60;
   if (h === 0) return `${m}m`; if (m === 0) return `${h}h`; return `${h}h ${m}m`;
@@ -109,13 +104,9 @@ function formatDate(str: string): string {
 // ─── Error banner ─────────────────────────────────────────────────────────────
 function ErrorBanner({ err, onRetry, C }: { err: LookupError; onRetry: () => void; C: ReturnType<typeof useColors> }) {
   const iconMap: Record<LookupErrorKind, string> = {
-    offline:       "wifi-outline",
-    server:        "cloud-offline-outline",
-    timeout:       "time-outline",
-    not_found:     "search-outline",
-    invalid_input: "alert-circle-outline",
-    rate_limit:    "warning-outline",
-    unknown:       "alert-circle-outline",
+    offline: "wifi-outline", server: "cloud-offline-outline", timeout: "time-outline",
+    not_found: "search-outline", invalid_input: "alert-circle-outline",
+    rate_limit: "warning-outline", unknown: "alert-circle-outline",
   };
   return (
     <Animated.View entering={FadeIn} style={{ borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
@@ -123,11 +114,8 @@ function ErrorBanner({ err, onRetry, C }: { err: LookupError; onRetry: () => voi
         <Ionicons name={iconMap[err.kind] as never} size={18} color={C.red} style={{ marginTop: 1 }} />
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 13, color: C.red, fontFamily: "DMSans_600SemiBold", marginBottom: err.retryable ? 6 : 0 }}>
-            {err.kind === "offline"  ? "No internet connection" :
-             err.kind === "server"   ? "Server unreachable" :
-             err.kind === "timeout"  ? "Request timed out" :
-             err.kind === "not_found"? "Flight not found" :
-             "Something went wrong"}
+            {err.kind === "offline" ? "No internet connection" : err.kind === "server" ? "Server unreachable" :
+             err.kind === "timeout" ? "Request timed out" : err.kind === "not_found" ? "Flight not found" : "Something went wrong"}
           </Text>
           <Text style={{ fontSize: 12, color: C.red + "cc", fontFamily: "DMSans_400Regular", lineHeight: 17 }}>{err.message}</Text>
           {err.retryable && (
@@ -142,7 +130,7 @@ function ErrorBanner({ err, onRetry, C }: { err: LookupError; onRetry: () => voi
   );
 }
 
-// ─── Flight result card (shared between single preview and airport list) ──────
+// ─── Flight result card ───────────────────────────────────────────────────────
 function FlightCard({
   flight, C, action, actionLabel, actionLoading,
 }: {
@@ -228,34 +216,33 @@ function FlightCard({
   );
 }
 
-// ─── Screen ──────────────────────────────────────────────────────────────────
+// ─── Screen ───────────────────────────────────────────────────────────────────
 export default function AddFlightScreen() {
-  const insets  = useSafeAreaInsets();
-  const C       = useColors();
+  const insets   = useSafeAreaInsets();
+  const C        = useColors();
   const { addFlight, flights } = useFlights();
   const isOnline = useIsOnline();
 
-  // ── Shared state ────────────────────────────────────────────────────────
-  const [searchMode, setSearchMode] = useState<SearchMode>("code");
-  const [date, setDate]       = useState(todayStr());
-  const [loading, setLoading] = useState(false);
-  const [lookupErr, setLookupErr] = useState<LookupError | null>(null);
-  const [savingId, setSavingId] = useState<string | null>(null); // flightCode being saved
+  // ── Shared state
+  const [searchMode, setSearchMode]   = useState<SearchMode>("code");
+  const [date, setDate]               = useState(todayStr());
+  const [loading, setLoading]         = useState(false);
+  const [lookupErr, setLookupErr]     = useState<LookupError | null>(null);
+  const [savingId, setSavingId]       = useState<string | null>(null);
   const [remainingCalls, setRemainingCalls] = useState<number | null>(null);
 
-  // ── Code-mode state ──────────────────────────────────────────────────────
-  const [code, setCode]       = useState("");
+  // ── Code-mode state
+  const [code, setCode]     = useState("");
   const [preview, setPreview] = useState<FlightLookupResult | null>(null);
 
-  // ── Airport-mode state ───────────────────────────────────────────────────
-  const [depIATA, setDepIATA] = useState("");
-  const [arrIATA, setArrIATA] = useState("");
+  // ── Airport-mode state
+  const [depIATA, setDepIATA]           = useState("");
+  const [arrIATA, setArrIATA]           = useState("");
   const [airportResults, setAirportResults] = useState<FlightLookupResult[]>([]);
 
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
   const topPad    = Platform.OS === "web" ? 67 : insets.top + 8;
 
-  // ── Reset results when switching mode ────────────────────────────────────
   function switchMode(mode: SearchMode) {
     setSearchMode(mode);
     setPreview(null);
@@ -263,37 +250,23 @@ export default function AddFlightScreen() {
     setLookupErr(null);
   }
 
-  // Show offline banner as soon as connectivity is lost
   useEffect(() => {
-    if (!isOnline) setLookupErr({ kind: "offline", message: "You\'re offline. Check your connection and try again.", retryable: true });
+    if (!isOnline) setLookupErr({ kind: "offline", message: "You're offline. Check your connection and try again.", retryable: true });
     else if (lookupErr?.kind === "offline") setLookupErr(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOnline]);
 
-  // ── Code-mode lookup ──────────────────────────────────────────────────────
+  // ── Code-mode lookup
   const handleCodeLookup = useCallback(async () => {
-    setLookupErr(null);
-    setPreview(null);
-
-    if (!isOnline) {
-      setLookupErr({ kind: "offline", message: "You\'re offline. Check your connection and try again.", retryable: true });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      return;
-    }
-
+    setLookupErr(null); setPreview(null);
+    if (!isOnline) { setLookupErr({ kind: "offline", message: "You're offline. Check your connection and try again.", retryable: true }); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); return; }
     const codeResult = sanitiseFlightCode(code);
     if (codeResult.error) { setLookupErr({ kind: "invalid_input", message: codeResult.error, retryable: false }); return; }
     const dateResult = sanitiseDate(date);
     if (dateResult.error) { setLookupErr({ kind: "invalid_input", message: dateResult.error, retryable: false }); return; }
-
     const limit = await lookupLimiter.check();
     setRemainingCalls(limit.remainingCalls - 1);
-    if (!limit.allowed) {
-      setLookupErr({ kind: "rate_limit", message: `Too many lookups — please wait ${formatRetryAfter(limit.retryAfterMs)} before trying again.`, retryable: false });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      return;
-    }
-
+    if (!limit.allowed) { setLookupErr({ kind: "rate_limit", message: `Too many lookups — please wait ${formatRetryAfter(limit.retryAfterMs)} before trying again.`, retryable: false }); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); return; }
     setLoading(true);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -307,52 +280,26 @@ export default function AddFlightScreen() {
     } catch (err) {
       setLookupErr(classifyError(err, isOnline));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }, [code, date, isOnline]);
 
-  // ── Airport-mode search ───────────────────────────────────────────────────
+  // ── Airport-mode search
   const handleAirportSearch = useCallback(async () => {
-    setLookupErr(null);
-    setAirportResults([]);
-
-    if (!isOnline) {
-      setLookupErr({ kind: "offline", message: "You\'re offline. Check your connection and try again.", retryable: true });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      return;
-    }
-
-    const depResult = sanitiseIATA(depIATA);
-    if (depResult.error) { setLookupErr({ kind: "invalid_input", message: depResult.error, retryable: false }); return; }
-    const arrResult = sanitiseIATA(arrIATA);
-    if (arrResult.error) { setLookupErr({ kind: "invalid_input", message: arrResult.error, retryable: false }); return; }
-
-    if (!depResult.value && !arrResult.value) {
-      setLookupErr({ kind: "invalid_input", message: "Enter at least one airport — departure, arrival, or both.", retryable: false });
-      return;
-    }
-
+    setLookupErr(null); setAirportResults([]);
+    if (!isOnline) { setLookupErr({ kind: "offline", message: "You're offline. Check your connection and try again.", retryable: true }); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); return; }
+    if (!depIATA && !arrIATA) { setLookupErr({ kind: "invalid_input", message: "Enter at least one airport — departure, arrival, or both.", retryable: false }); return; }
     const dateResult = sanitiseDate(date);
     if (dateResult.error) { setLookupErr({ kind: "invalid_input", message: dateResult.error, retryable: false }); return; }
-
     const limit = await lookupLimiter.check();
     setRemainingCalls(limit.remainingCalls - 1);
-    if (!limit.allowed) {
-      setLookupErr({ kind: "rate_limit", message: `Too many lookups — please wait ${formatRetryAfter(limit.retryAfterMs)} before trying again.`, retryable: false });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      return;
-    }
-
+    if (!limit.allowed) { setLookupErr({ kind: "rate_limit", message: `Too many lookups — please wait ${formatRetryAfter(limit.retryAfterMs)} before trying again.`, retryable: false }); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); return; }
     setLoading(true);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await lookupLimiter.consume();
-
       const params = new URLSearchParams({ date: dateResult.value });
-      if (depResult.value) params.set("dep", depResult.value);
-      if (arrResult.value) params.set("arr", arrResult.value);
-
+      if (depIATA) params.set("dep", depIATA);
+      if (arrIATA) params.set("arr", arrIATA);
       const res  = await apiRequest("GET", `/api/flights/search?${params.toString()}`);
       const data = (await res.json()) as FlightLookupResult[];
       setAirportResults(Array.isArray(data) ? data : []);
@@ -362,24 +309,17 @@ export default function AddFlightScreen() {
     } catch (err) {
       setLookupErr(classifyError(err, isOnline));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }, [depIATA, arrIATA, date, isOnline]);
 
-  // ── Save a flight (used by both modes) ───────────────────────────────────
+  // ── Save a flight (both modes)
   async function handleSave(flight: FlightLookupResult) {
     setSavingId(flight.flightCode);
     try {
       const isDuplicate = flights.some((f) => f.flightCode === flight.flightCode && f.date === flight.date);
-      if (isDuplicate) {
-        setLookupErr({ kind: "unknown", message: "This flight has already been added to your logbook.", retryable: false });
-        setSavingId(null);
-        return;
-      }
+      if (isDuplicate) { setLookupErr({ kind: "unknown", message: "This flight has already been added to your logbook.", retryable: false }); setSavingId(null); return; }
       await addFlight({
-        flightCode: flight.flightCode, date: flight.date,
-        airline: flight.airline, airlineCode: flight.airlineCode,
+        flightCode: flight.flightCode, date: flight.date, airline: flight.airline, airlineCode: flight.airlineCode,
         departureAirport: flight.departureAirport, arrivalAirport: flight.arrivalAirport,
         departureCity: flight.departureCity, arrivalCity: flight.arrivalCity,
         departureTime: flight.departureTime, arrivalTime: flight.arrivalTime,
@@ -400,8 +340,11 @@ export default function AddFlightScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: C.bg }}>
       <View style={[{ flex: 1, backgroundColor: C.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20 }, { paddingTop: topPad }]}>
-        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 24, paddingBottom: bottomPad + 24 }}>
-
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ padding: 24, paddingBottom: bottomPad + 24 }}
+        >
           {/* Header */}
           <Animated.View entering={FadeInDown.delay(0).springify()}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
@@ -415,21 +358,14 @@ export default function AddFlightScreen() {
             </Text>
           </Animated.View>
 
-          {/* ── Mode toggle ── */}
+          {/* Mode toggle */}
           <Animated.View entering={FadeInDown.delay(40).springify()} style={{ flexDirection: "row", backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 4, marginBottom: 24, gap: 4 }}>
             {(["code", "airport"] as SearchMode[]).map((mode) => {
               const active = searchMode === mode;
               return (
-                <Pressable
-                  key={mode}
-                  onPress={() => switchMode(mode)}
-                  style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 11, backgroundColor: active ? C.accent : "transparent" }}
-                >
-                  <Ionicons
-                    name={mode === "code" ? "barcode-outline" : "navigate-outline"}
-                    size={15}
-                    color={active ? C.white : C.textSec}
-                  />
+                <Pressable key={mode} onPress={() => switchMode(mode)}
+                  style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 11, backgroundColor: active ? C.accent : "transparent" }}>
+                  <Ionicons name={mode === "code" ? "barcode-outline" : "navigate-outline"} size={15} color={active ? C.white : C.textSec} />
                   <Text style={{ fontSize: 13, fontFamily: "DMSans_600SemiBold", color: active ? C.white : C.textSec }}>
                     {mode === "code" ? "Flight Code" : "By Airport"}
                   </Text>
@@ -438,7 +374,7 @@ export default function AddFlightScreen() {
             })}
           </Animated.View>
 
-          {/* Offline persistent banner */}
+          {/* Offline banner */}
           {!isOnline && (
             <Animated.View entering={FadeIn} style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.amber + "18", borderWidth: 1, borderColor: C.amber + "44", borderRadius: 12, padding: 12, marginBottom: 20 }}>
               <Ionicons name="wifi-outline" size={16} color={C.amber} />
@@ -446,9 +382,8 @@ export default function AddFlightScreen() {
             </Animated.View>
           )}
 
-          {/* ── Inputs ── */}
+          {/* Inputs */}
           <Animated.View entering={FadeInDown.delay(80).springify()} style={{ gap: 16, marginBottom: 24 }}>
-
             {searchMode === "code" ? (
               <View style={{ gap: 8 }}>
                 <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.3, textTransform: "uppercase" }}>Flight Code</Text>
@@ -465,56 +400,23 @@ export default function AddFlightScreen() {
                 />
               </View>
             ) : (
-              <View style={{ gap: 12 }}>
-                {/* Departure */}
-                <View style={{ gap: 8 }}>
-                  <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.3, textTransform: "uppercase" }}>Departure Airport</Text>
-                  <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, paddingHorizontal: 16 }}>
-                    <Ionicons name="airplane-outline" size={16} color={C.textSec} style={{ marginRight: 10 }} />
-                    <TextInput
-                      style={{ flex: 1, paddingVertical: 16, fontSize: 17, color: C.text, fontFamily: "DMSans_500Medium" }}
-                      value={depIATA}
-                      onChangeText={(t) => { setDepIATA(t.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3)); setAirportResults([]); setLookupErr(null); }}
-                      placeholder="e.g. ZRH  (optional)"
-                      placeholderTextColor={C.textSec}
-                      autoCapitalize="characters"
-                      autoCorrect={false}
-                      returnKeyType="next"
-                      maxLength={3}
-                    />
-                    {depIATA.length === 3 && (
-                      <View style={{ backgroundColor: C.accentDim, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-                        <Text style={{ fontSize: 11, color: C.accent, fontFamily: "DMSans_700Bold" }}>{depIATA}</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-
-                {/* Arrival */}
-                <View style={{ gap: 8 }}>
-                  <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.3, textTransform: "uppercase" }}>Arrival Airport</Text>
-                  <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, paddingHorizontal: 16 }}>
-                    <Ionicons name="location-outline" size={16} color={C.textSec} style={{ marginRight: 10 }} />
-                    <TextInput
-                      style={{ flex: 1, paddingVertical: 16, fontSize: 17, color: C.text, fontFamily: "DMSans_500Medium" }}
-                      value={arrIATA}
-                      onChangeText={(t) => { setArrIATA(t.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3)); setAirportResults([]); setLookupErr(null); }}
-                      placeholder="e.g. LHR  (optional)"
-                      placeholderTextColor={C.textSec}
-                      autoCapitalize="characters"
-                      autoCorrect={false}
-                      returnKeyType="done"
-                      maxLength={3}
-                    />
-                    {arrIATA.length === 3 && (
-                      <View style={{ backgroundColor: C.accentDim, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-                        <Text style={{ fontSize: 11, color: C.accent, fontFamily: "DMSans_700Bold" }}>{arrIATA}</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-
-                {/* Hint */}
+              <View style={{ gap: 14 }}>
+                <AirportInput
+                  label="Departure Airport"
+                  value={depIATA}
+                  onChange={(v) => { setDepIATA(v); setAirportResults([]); setLookupErr(null); }}
+                  placeholder="e.g. ZRH  (optional)"
+                  icon="airplane-outline"
+                  returnKeyType="next"
+                />
+                <AirportInput
+                  label="Arrival Airport"
+                  value={arrIATA}
+                  onChange={(v) => { setArrIATA(v); setAirportResults([]); setLookupErr(null); }}
+                  placeholder="e.g. LHR  (optional)"
+                  icon="location-outline"
+                  returnKeyType="done"
+                />
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                   <Ionicons name="information-circle-outline" size={13} color={C.textMuted} />
                   <Text style={{ fontSize: 12, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>
@@ -544,7 +446,7 @@ export default function AddFlightScreen() {
           {/* Error banner */}
           {lookupErr && <ErrorBanner err={lookupErr} onRetry={activeSearch} C={C} />}
 
-          {/* Search / Lookup button */}
+          {/* Search button */}
           <Pressable onPress={activeSearch} disabled={loading || !isOnline}
             style={({ pressed }) => [{ backgroundColor: isOnline ? C.accent : C.textMuted, borderRadius: 14, padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 4, opacity: loading || pressed ? 0.7 : 1 }]}>
             {loading
@@ -552,18 +454,12 @@ export default function AddFlightScreen() {
               : <><Ionicons name="search-outline" size={18} color={C.white} /><Text style={{ fontSize: 16, color: C.white, fontFamily: "DMSans_700Bold" }}>{searchMode === "code" ? "Look Up Flight" : "Search Flights"}</Text></>}
           </Pressable>
 
-          {/* ── Code-mode: single preview card ── */}
+          {/* Code-mode: single preview card */}
           {searchMode === "code" && preview && (
-            <FlightCard
-              flight={preview}
-              C={C}
-              action={() => handleSave(preview)}
-              actionLabel="Add to Logbook"
-              actionLoading={savingId === preview.flightCode}
-            />
+            <FlightCard flight={preview} C={C} action={() => handleSave(preview)} actionLabel="Add to Logbook" actionLoading={savingId === preview.flightCode} />
           )}
 
-          {/* ── Airport-mode: results list ── */}
+          {/* Airport-mode: results list */}
           {searchMode === "airport" && airportResults.length > 0 && (
             <Animated.View entering={FadeInDown.springify()} style={{ marginTop: 8 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
@@ -573,19 +469,12 @@ export default function AddFlightScreen() {
                 </Text>
               </View>
               {airportResults.map((flight) => (
-                <FlightCard
-                  key={`${flight.flightCode}-${flight.date}`}
-                  flight={flight}
-                  C={C}
-                  action={() => handleSave(flight)}
-                  actionLabel="Add to Logbook"
-                  actionLoading={savingId === flight.flightCode}
-                />
+                <FlightCard key={`${flight.flightCode}-${flight.date}`} flight={flight} C={C} action={() => handleSave(flight)} actionLabel="Add to Logbook" actionLoading={savingId === flight.flightCode} />
               ))}
             </Animated.View>
           )}
 
-          {/* ── Airport-mode: empty state ── */}
+          {/* Airport-mode: empty state */}
           {searchMode === "airport" && !loading && airportResults.length === 0 && !lookupErr && (depIATA || arrIATA) && (
             <Animated.View entering={FadeIn} style={{ alignItems: "center", paddingVertical: 32, gap: 10 }}>
               <Ionicons name="airplane-outline" size={36} color={C.textMuted} />
@@ -594,7 +483,6 @@ export default function AddFlightScreen() {
               </Text>
             </Animated.View>
           )}
-
         </ScrollView>
       </View>
     </KeyboardAvoidingView>
