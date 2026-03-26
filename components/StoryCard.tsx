@@ -2,8 +2,8 @@
  * StoryCard — Yearly Recap
  * 9:16 portrait card for Instagram / WhatsApp story sharing.
  *
- * Language: "You’ve taken X flights [this year / all time]"
- * Fun facts: CO\u2082 comparison + time-in-air comparison
+ * Language: "You've taken X flights [this year / all time]"
+ * Fun facts: CO₂ comparison + time-in-air comparison
  * Branding: LogoMark + "Logbook" wordmark top-left, iOS App Store badge bottom-right
  * CTA: "Track yours at logbook.app"
  */
@@ -161,7 +161,7 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
         {/* ── PERIOD + HEADLINE ── */}
         <View style={c.headlineBlock}>
           <Text style={c.headlinePeriod}>
-            {isAllTime ? "ALL TIME" : periodLabel.toUpperCase()} \u00b7 YEAR RECAP
+            {`${isAllTime ? "ALL TIME" : periodLabel.toUpperCase()} · YEAR RECAP`}
           </Text>
           <Text style={c.headline}>{headline}</Text>
         </View>
@@ -179,7 +179,7 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
           <View style={c.statDivider} />
           <StatItem icon="time" color="#F59E0B" value={formatHours(flightMin)} label="in air" />
           <View style={c.statDivider} />
-          <StatItem icon="leaf" color="#10B981" value={`${formatNum(co2)}kg`} label="CO\u2082" />
+          <StatItem icon="leaf" color="#10B981" value={`${formatNum(co2)}kg`} label="CO₂" />
           {delayMin > 0 && <><View style={c.statDivider} /><StatItem icon="hourglass" color="#EF4444" value={formatHours(delayMin)} label="delayed" /></>}
         </View>
 
@@ -187,19 +187,19 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
         <View style={c.factsBlock}>
           {timeFact && (
             <View style={c.factRow}>
-              <Text style={c.factEmoji}>\u23F0</Text>
+              <Text style={c.factEmoji}>{"⏰"}</Text>
               <Text style={c.factText}>
                 <Text style={c.factHighlight}>{formatHours(flightMin)} in the air.</Text>
-                {" That\u2019s "}{timeFact}
+                {` That\u2019s `}{timeFact}
               </Text>
             </View>
           )}
           {co2Fact && (
             <View style={c.factRow}>
-              <Text style={c.factEmoji}>\uD83C\uDF43</Text>
+              <Text style={c.factEmoji}>{"🍃"}</Text>
               <Text style={c.factText}>
-                <Text style={c.factHighlight}>{formatNum(co2)} kg CO\u2082.</Text>
-                {" That\u2019s like "}{co2Fact}
+                <Text style={c.factHighlight}>{formatNum(co2)} kg CO₂.</Text>
+                {` That\u2019s like `}{co2Fact}
               </Text>
             </View>
           )}
@@ -208,7 +208,7 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
         {/* ── TOP ROUTES ── */}
         {topRoutes.length > 0 && (
           <View style={c.routesBlock}>
-            <Text style={c.sectionLabel}>\u2708\uFE0F TOP ROUTES</Text>
+            <Text style={c.sectionLabel}>{"✈️ TOP ROUTES"}</Text>
             {topRoutes.map((r,i)=>(
               <View key={i} style={c.routeRow}>
                 <Text style={c.routeIata}>{r.dep}</Text>
