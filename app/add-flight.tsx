@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  View, Text, Pressable,
+  View, Text, Pressable, Image,
   ActivityIndicator, ScrollView, Platform, Alert, KeyboardAvoidingView,
   AppState, AppStateStatus, TextInput,
 } from "react-native";
@@ -43,9 +43,7 @@ function classifyError(err: unknown, isOnline: boolean): LookupError {
   return { kind: "unknown",   message:"Could not look up that flight. Please check the details and date.", retryable: true };
 }
 
-// ─── Network hook (no expo-network needed) ────────────────────────────────────
-// Uses a lightweight fetch HEAD against a reliable public URL.
-// Falls back to true (optimistic) on any error so we never block the user.
+// ─── Network hook ─────────────────────────────────────────────────────────────
 function useIsOnline(): boolean {
   const [online, setOnline] = useState(true);
   const check = useCallback(async () => {
@@ -101,6 +99,20 @@ interface FlightLookupResult {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Compute duration from HH:MM departure and arrival strings.
+ * Handles overnight flights (arrival < departure) by adding 24h.
+ */
+function calcDurationMinutes(depTime: string, arrTime: string): number {
+  const [dh, dm] = depTime.split(":").map(Number);
+  const [ah, am] = arrTime.split(":").map(Number);
+  if (isNaN(dh) || isNaN(dm) || isNaN(ah) || isNaN(am)) return 0;
+  let diff = (ah * 60 + am) - (dh * 60 + dm);
+  if (diff < 0) diff += 24 * 60; // overnight
+  return diff;
+}
+
 function formatHours(minutes: number): string {
   const h = Math.floor(minutes / 60); const m = minutes % 60;
   if (h === 0) return `${m}m`; if (m === 0) return `${h}h`; return `${h}h ${m}m`;
@@ -111,6 +123,33 @@ function formatDate(str: string): string {
     const [y, m, d] = str.split("-").map(Number);
     return new Date(y, m - 1, d).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
   } catch { return str; }
+}
+
+/** Clearbit favicon — small, no API key needed, covers all major airlines. */
+function airlineLogoUrl(airlineCode: string): string {
+  // Map IATA airline codes to their main website domain
+  const domainMap: Record<string, string> = {
+    LX: "swiss.com", LH: "lufthansa.com", BA: "britishairways.com",
+    AF: "airfrance.com", KL: "klm.com", EK: "emirates.com",
+    QR: "qatarairways.com", SQ: "singaporeair.com", CX: "cathaypacific.com",
+    TK: "turkishairlines.com", AY: "finnair.com", SK: "sas.se",
+    IB: "iberia.com", VY: "vueling.com", FR: "ryanair.com",
+    U2: "easyjet.com", EJU: "easyjet.com", W6: "wizzair.com",
+    HV: "transavia.com", TO: "transavia.com", EI: "aerlingus.com",
+    TP: "flytap.com", AZ: "ita-airways.com", AA: "aa.com",
+    UA: "united.com", DL: "delta.com", WN: "southwest.com",
+    B6: "jetblue.com", AS: "alaskaair.com", AC: "aircanada.com",
+    WS: "westjet.com", LA: "latam.com", QF: "qantas.com",
+    NZ: "airnewzealand.com", JL: "jal.com", NH: "ana.co.jp",
+    KE: "koreanair.com", OZ: "flyasiana.com", CA: "airchina.com.cn",
+    MU: "ceair.com", CZ: "csair.com", TG: "thaiairways.com",
+    MH: "malaysiaairlines.com", SV: "saudia.com", EY: "etihad.com",
+    FZ: "flydubai.com", PC: "flypgs.com", VU: "volotea.com",
+    MS: "egyptair.com", ET: "ethiopianairlines.com",
+  };
+  const domain = domainMap[airlineCode] ?? null;
+  if (!domain) return "";
+  return `https://logo.clearbit.com/${domain}?size=64`;
 }
 
 // ─── Error banner ─────────────────────────────────────────────────────────────
@@ -154,12 +193,35 @@ function FlightCard({
 }) {
   const dep = flight.departureAirport || "—";
   const arr = flight.arrivalAirport   || "—";
+  const logoUrl = airlineLogoUrl(flight.airlineCode);
+  const [logoError, setLogoError] = useState(false);
+
+  // Compute duration directly from time strings so it's always consistent
+  const displayMinutes = calcDurationMinutes(flight.departureTime, flight.arrivalTime) || flight.durationMinutes;
+
   return (
     <Animated.View entering={FadeInDown.springify()} layout={Layout.springify()} style={{ backgroundColor: C.card, borderRadius: 18, padding: 20, borderWidth: 1, borderColor: C.border, marginTop: 16 }}>
+      {/* ── Header row: logo + name / badges ── */}
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-        <View>
-          <Text style={{ fontSize: 20, color: C.accent, fontFamily: "DMSans_700Bold" }}>{flight.flightCode}</Text>
-          <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 }}>{flight.airline}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1, marginRight: 8 }}>
+          {logoUrl && !logoError ? (
+            <Image
+              source={{ uri: logoUrl }}
+              style={{ width: 28, height: 28, borderRadius: 6 }}
+              onError={() => setLogoError(true)}
+            />
+          ) : (
+            // Fallback: coloured initials badge
+            <View style={{ width: 28, height: 28, borderRadius: 6, backgroundColor: C.accent + "22", alignItems: "center", justifyContent: "center" }}>
+              <Text style={{ fontSize: 11, color: C.accent, fontFamily: "DMSans_700Bold" }}>
+                {flight.airlineCode.slice(0, 2)}
+              </Text>
+            </View>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 20, color: C.accent, fontFamily: "DMSans_700Bold" }}>{flight.flightCode}</Text>
+            <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 1 }}>{flight.airline}</Text>
+          </View>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           {flight.isMock && (
@@ -175,37 +237,53 @@ function FlightCard({
           </View>
         </View>
       </View>
+
+      {/* ── Date row ── */}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 14 }}>
         <Ionicons name="calendar-outline" size={13} color={C.textSec} />
         <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_400Regular" }}>{formatDate(flight.date)}</Text>
       </View>
+
       <View style={{ height: 1, backgroundColor: C.border, marginVertical: 14 }} />
+
+      {/* ── Route row ── */}
       <View style={{ flexDirection: "row", alignItems: "center" }}>
+        {/* Departure */}
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 28, color: C.text, fontFamily: "DMSans_700Bold" }}>{dep}</Text>
           <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 }}>{flight.departureCity}</Text>
           <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_500Medium", marginTop: 6 }}>{flight.departureTime}</Text>
         </View>
+
+        {/* Arrow */}
         <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 8, flex: 1 }}>
           <View style={{ flex: 1, height: 1, backgroundColor: C.border }} />
           <Ionicons name="airplane" size={20} color={C.accent} />
           <View style={{ flex: 1, height: 1, backgroundColor: C.border }} />
         </View>
+
+        {/* Arrival */}
         <View style={{ flex: 1, alignItems: "flex-end" }}>
           <Text style={{ fontSize: 28, color: C.text, fontFamily: "DMSans_700Bold" }}>{arr}</Text>
           <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 }}>{flight.arrivalCity}</Text>
           <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_500Medium", marginTop: 6 }}>{flight.arrivalTime}</Text>
+          <Text style={{ fontSize: 10, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 1 }}>local time</Text>
         </View>
       </View>
+
       <View style={{ height: 1, backgroundColor: C.border, marginVertical: 14 }} />
+
+      {/* ── Aircraft row ── */}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 10 }}>
         <Ionicons name="airplane-outline" size={13} color={C.textSec} />
         <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_400Regular" }}>{flight.aircraft}</Text>
       </View>
+
+      {/* ── Stats row ── */}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 18 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
           <Ionicons name="time-outline" size={14} color={C.textSec} />
-          <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium" }}>{formatHours(flight.durationMinutes)}</Text>
+          <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium" }}>{formatHours(displayMinutes)}</Text>
         </View>
         <View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: C.border }} />
         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
@@ -218,6 +296,8 @@ function FlightCard({
           <Text style={{ fontSize: 13, color: C.green, fontFamily: "DMSans_500Medium" }}>{flight.co2Kg} kg CO₂</Text>
         </View>
       </View>
+
+      {/* ── Action button ── */}
       <Pressable onPress={action} disabled={actionLoading}
         style={({ pressed }) => [{ backgroundColor: C.accent, borderRadius: 14, padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, opacity: actionLoading || pressed ? 0.8 : 1 }]}>
         {actionLoading
@@ -235,7 +315,6 @@ export default function AddFlightScreen() {
   const { addFlight, flights } = useFlights();
   const isOnline = useIsOnline();
 
-  // ── Shared state
   const [searchMode, setSearchMode]   = useState<SearchMode>("code");
   const [date, setDate]               = useState(todayStr());
   const [loading, setLoading]         = useState(false);
@@ -243,11 +322,9 @@ export default function AddFlightScreen() {
   const [savingId, setSavingId]       = useState<string | null>(null);
   const [remainingCalls, setRemainingCalls] = useState<number | null>(null);
 
-  // ── Code-mode state
   const [code, setCode]     = useState("");
   const [preview, setPreview] = useState<FlightLookupResult | null>(null);
 
-  // ── Airport-mode state
   const [depIATA, setDepIATA]           = useState("");
   const [arrIATA, setArrIATA]           = useState("");
   const [airportResults, setAirportResults] = useState<FlightLookupResult[]>([]);
@@ -268,7 +345,6 @@ export default function AddFlightScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOnline]);
 
-  // ── Code-mode lookup
   const handleCodeLookup = useCallback(async () => {
     setLookupErr(null); setPreview(null);
     if (!isOnline) { setLookupErr({ kind: "offline", message: "You're offline. Check your connection and try again.", retryable: true }); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); return; }
@@ -295,7 +371,6 @@ export default function AddFlightScreen() {
     } finally { setLoading(false); }
   }, [code, date, isOnline]);
 
-  // ── Airport-mode search
   const handleAirportSearch = useCallback(async () => {
     setLookupErr(null); setAirportResults([]);
     if (!isOnline) { setLookupErr({ kind: "offline", message: "You're offline. Check your connection and try again.", retryable: true }); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); return; }
@@ -324,7 +399,6 @@ export default function AddFlightScreen() {
     } finally { setLoading(false); }
   }, [depIATA, arrIATA, date, isOnline]);
 
-  // ── Save a flight (both modes)
   async function handleSave(flight: FlightLookupResult) {
     setSavingId(flight.flightCode);
     try {
@@ -335,7 +409,8 @@ export default function AddFlightScreen() {
         departureAirport: flight.departureAirport, arrivalAirport: flight.arrivalAirport,
         departureCity: flight.departureCity, arrivalCity: flight.arrivalCity,
         departureTime: flight.departureTime, arrivalTime: flight.arrivalTime,
-        durationMinutes: flight.durationMinutes, distanceMiles: flight.distanceMiles,
+        durationMinutes: calcDurationMinutes(flight.departureTime, flight.arrivalTime) || flight.durationMinutes,
+        distanceMiles: flight.distanceMiles,
         co2Kg: flight.co2Kg, status: flight.status || "on_time",
         delayMinutes: flight.delayMinutes ?? 0, aircraft: flight.aircraft,
         verified: false, isMock: flight.isMock ?? false,
