@@ -3,10 +3,10 @@
  * 9:16 portrait card for Instagram / WhatsApp story sharing.
  */
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, Image, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, {
-  G, Path, Circle, Rect, Defs, LinearGradient as SvgLG, Stop, ClipPath,
+  Path, Rect, Defs, LinearGradient as SvgLG, Stop,
 } from "react-native-svg";
 import { Flight } from "@/context/flights";
 import { getCO2FunFact } from "@/utils/co2FunFact";
@@ -35,51 +35,15 @@ function computeRank(n: number): number {
   if (n <= 40) return 96; return 99;
 }
 
-// ── Inline LogoMark ───────────────────────────────────────────────────────────────────
-function LogoMark({ size = 28 }: { size?: number }) {
-  const s=size, pad=s*0.10, bw=s-pad*2, bh=bw*0.72, bx=pad, by=(s-bh)/2, spX=bx+bw/2;
-  const lx1=bx,ly1=by+bh*0.06,lx2=spX-1,ly2=by,lx3=spX-1,ly3=by+bh,lx4=bx,ly4=by+bh*0.94;
-  const rx1=spX+1,ry1=by,rx2=bx+bw,ry2=by+bh*0.06,rx3=bx+bw,ry3=by+bh*0.94,rx4=spX+1,ry4=by+bh;
-  const arcPad=bw*0.1,arcX0=spX+arcPad+2,arcX3=bx+bw-arcPad,arcCX=(arcX0+arcX3)/2,arcY=by+bh*0.5,arcCY=arcY-bh*0.22;
-  return (
-    <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
-      <Defs>
-        <ClipPath id="sc_clip"><Rect x="0" y="0" width={s} height={s} rx={s*0.22} ry={s*0.22} /></ClipPath>
-        <SvgLG id="sc_bg" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0%" stopColor="#16161E" stopOpacity="1" />
-          <Stop offset="100%" stopColor="#0E0E18" stopOpacity="1" />
-        </SvgLG>
-      </Defs>
-      <Rect x="0" y="0" width={s} height={s} rx={s*0.22} ry={s*0.22} fill="url(#sc_bg)" />
-      <G clipPath="url(#sc_clip)">
-        <Path d={`M${lx1},${ly1} L${lx2},${ly2} L${lx3},${ly3} L${lx4},${ly4} Z`} fill="#16161E" stroke="#2A2A3A" strokeWidth={s*0.025} />
-        {[0.3,0.5,0.7].map((t,i)=>{ const ly=by+bh*t,xo=bw*0.08; return <Path key={i} d={`M${bx+xo},${ly} L${spX-xo*0.5},${ly}`} stroke="#2A2A3A" strokeWidth={s*0.018} strokeLinecap="round" />; })}
-        <Path d={`M${rx1},${ry1} L${rx2},${ry2} L${rx3},${ry3} L${rx4},${ry4} Z`} fill="#16161E" stroke="#2A2A3A" strokeWidth={s*0.025} />
-        <Rect x={spX-s*0.03} y={by} width={s*0.06} height={bh} fill="#000" opacity={0.4} />
-        <Path d={`M${spX},${by+bh*0.04} L${spX},${by+bh*0.96}`} stroke="#4F8EF7" strokeWidth={s*0.022} strokeLinecap="round" opacity={0.8} />
-        <Path d={`M${arcX0},${arcY} Q${arcCX},${arcCY} ${arcX3},${arcY}`} fill="none" stroke="#4F8EF7" strokeWidth={s*0.1} strokeLinecap="round" opacity={0.1} />
-        <Path d={`M${arcX0},${arcY} Q${arcCX},${arcCY} ${arcX3},${arcY}`} fill="none" stroke="#4F8EF7" strokeWidth={s*0.038} strokeLinecap="round" />
-        <Circle cx={arcX0} cy={arcY} r={s*0.042} fill="#4F8EF7" />
-        <Circle cx={arcX0} cy={arcY} r={s*0.018} fill="#FFF" opacity={0.9} />
-        <Circle cx={arcX3} cy={arcY} r={s*0.042} fill="#4F8EF7" />
-        <Circle cx={arcX3} cy={arcY} r={s*0.018} fill="#FFF" opacity={0.9} />
-      </G>
-      <Rect x={s*0.015} y={s*0.015} width={s*0.97} height={s*0.97} rx={s*0.21} ry={s*0.21} fill="none" stroke="#2A2A3A" strokeWidth={s*0.02} opacity={0.6} />
-    </Svg>
-  );
-}
-
-// ── Official-style App Store Badge (Apple logo + text) ──────────────────────────────
-function AppStoreBadge({ width = 140 }: { width?: number }) {
+// ── Official-style App Store Badge ───────────────────────────────────────────────────
+function AppStoreBadge({ width = 148 }: { width?: number }) {
   const h = width * 0.31;
   const r = h * 0.26;
-  // Apple logo path scaled to badge height. The canonical Apple SVG viewBox is ~814x1000.
-  // We render it at ~h*0.55 tall, centred left of the text block.
   const appleH = h * 0.58;
   const appleW = appleH * 0.814;
   const appleX = width * 0.07;
   const appleY = (h - appleH) / 2;
-  const aS = appleH / 1000; // scale factor from 1000-unit viewBox
+  const aS = appleH / 1000;
 
   return (
     <Svg width={width} height={h} viewBox={`0 0 ${width} ${h}`}>
@@ -89,22 +53,14 @@ function AppStoreBadge({ width = 140 }: { width?: number }) {
           <Stop offset="100%" stopColor="#0A0A0C" stopOpacity="1" />
         </SvgLG>
       </Defs>
-
-      {/* Badge background */}
       <Rect x={0} y={0} width={width} height={h} rx={r} ry={r}
         fill="url(#as_bg)" stroke="rgba(255,255,255,0.22)" strokeWidth={0.9} />
-
-      {/* Apple logo — simplified silhouette path, normalised to 814x1000 */}
-      <G transform={`translate(${appleX}, ${appleY}) scale(${aS})`}>
-        {/* Main apple body */}
-        <Path
-          d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-57.8-155.5-127.4C46 790.8 0 663.5 0 541.8c0-207.4 135.4-317 269-317 71 0 130.3 46.9 174.9 46.9 42.8 0 109.8-49.5 190.5-49.5 30.5 0 110.8 2.6 173 66.3zm-180.9-157.4c32.1-38.1 55.3-91 55.3-143.9 0-7.4-.6-14.8-1.9-20.8-52.3 1.9-114.5 34.7-151.7 75.8-28.8 32.7-56.5 85-56.5 138.6 0 8.3 1.3 16.6 1.9 19.2 3.2.6 8.3 1.3 13.4 1.3 46.9 0 105.8-31.4 139.5-70.2z"
-          fill="#FFFFFF"
-          opacity={0.95}
-        />
-      </G>
-
-      {/* Text block */}
+      <Path
+        transform={`translate(${appleX}, ${appleY}) scale(${aS})`}
+        d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-57.8-155.5-127.4C46 790.8 0 663.5 0 541.8c0-207.4 135.4-317 269-317 71 0 130.3 46.9 174.9 46.9 42.8 0 109.8-49.5 190.5-49.5 30.5 0 110.8 2.6 173 66.3zm-180.9-157.4c32.1-38.1 55.3-91 55.3-143.9 0-7.4-.6-14.8-1.9-20.8-52.3 1.9-114.5 34.7-151.7 75.8-28.8 32.7-56.5 85-56.5 138.6 0 8.3 1.3 16.6 1.9 19.2 3.2.6 8.3 1.3 13.4 1.3 46.9 0 105.8-31.4 139.5-70.2z"
+        fill="#FFFFFF"
+        opacity={0.95}
+      />
       <Text
         x={appleX + appleW + width * 0.06}
         y={h * 0.38}
@@ -144,6 +100,7 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
   const flightMin = flights.reduce((s,f)=>s+f.durationMinutes, 0);
   const delayMin  = flights.reduce((s,f)=>s+f.delayMinutes, 0);
   const rank      = computeRank(count);
+  const topPct    = 100 - rank;
   const co2Fact   = co2 > 0 ? getCO2FunFact(co2) : null;
   const timeFact  = flightMin > 0 ? getTimeFunFact(flightMin) : null;
 
@@ -166,22 +123,31 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
 
         {/* ── TOP BRANDING ROW ── */}
         <View style={c.topRow}>
-          <LogoMark size={52} />
+          <Image
+            source={require("@/assets/images/icon.png")}
+            style={c.logoIcon}
+            resizeMode="cover"
+          />
           <View style={c.topBrand}>
             <Text style={c.brandName}>Logbook</Text>
             <Text style={c.brandSub}>Flight Journal</Text>
           </View>
-          {rank > 0 && (
-            <View style={c.rankPill}>
-              <Text style={c.rankPillText}>TOP {100-rank}%</Text>
-            </View>
-          )}
         </View>
+
+        {/* ── RANK PILL — centred below branding ── */}
+        {rank > 0 && (
+          <View style={c.rankRow}>
+            <View style={c.rankPill}>
+              <Text style={c.rankStar}>{"\u2605"}</Text>
+              <Text style={c.rankPillText}>TOP {topPct}% of all travellers</Text>
+            </View>
+          </View>
+        )}
 
         {/* ── PERIOD + HEADLINE ── */}
         <View style={c.headlineBlock}>
           <Text style={c.headlinePeriod}>
-            {`${isAllTime ? "ALL TIME" : periodLabel.toUpperCase()} · YEAR RECAP`}
+            {`${isAllTime ? "ALL TIME" : periodLabel.toUpperCase()} \u00b7 YEAR RECAP`}
           </Text>
           <Text style={c.headline}>{headline}</Text>
         </View>
@@ -199,7 +165,7 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
           <View style={c.statDivider} />
           <StatItem icon="time" color="#F59E0B" value={formatHours(flightMin)} label="in air" />
           <View style={c.statDivider} />
-          <StatItem icon="leaf" color="#10B981" value={`${formatNum(co2)}kg`} label="CO₂" />
+          <StatItem icon="leaf" color="#10B981" value={`${formatNum(co2)}kg`} label="CO\u2082" />
           {delayMin > 0 && <><View style={c.statDivider} /><StatItem icon="hourglass" color="#EF4444" value={formatHours(delayMin)} label="delayed" /></>}
         </View>
 
@@ -218,7 +184,7 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
             <View style={c.factRow}>
               <Text style={c.factEmoji}>{"🍃"}</Text>
               <Text style={c.factText}>
-                <Text style={c.factHighlight}>{formatNum(co2)} kg CO₂.</Text>
+                <Text style={c.factHighlight}>{formatNum(co2)} kg CO\u2082.</Text>
                 {` That\u2019s like `}{co2Fact}
               </Text>
             </View>
@@ -270,12 +236,16 @@ const c = StyleSheet.create({
 
   inner: {flex:1,paddingHorizontal:32,paddingTop:38,paddingBottom:30,justifyContent:"space-between"},
 
-  topRow:    {flexDirection:"row",alignItems:"center",gap:12},
-  topBrand:  {flex:1,gap:2},
-  brandName: {fontSize:26,color:"#F0F6FF",fontFamily:"DMSans_700Bold",letterSpacing:-0.5,lineHeight:28},
-  brandSub:  {fontSize:12,color:"rgba(79,142,240,0.7)",fontFamily:"DMSans_400Regular",letterSpacing:0.6},
-  rankPill:  {backgroundColor:"rgba(79,142,240,0.15)",borderWidth:1,borderColor:"rgba(79,142,240,0.4)",paddingHorizontal:12,paddingVertical:5,borderRadius:20},
-  rankPillText:{fontSize:11,color:"#4F8EF0",fontFamily:"DMSans_700Bold",letterSpacing:1.5},
+  topRow:   {flexDirection:"row",alignItems:"center",gap:12},
+  logoIcon: {width:52,height:52,borderRadius:52*0.22,overflow:"hidden"},
+  topBrand: {flex:1,gap:2},
+  brandName:{fontSize:26,color:"#F0F6FF",fontFamily:"DMSans_700Bold",letterSpacing:-0.5,lineHeight:28},
+  brandSub: {fontSize:12,color:"rgba(79,142,240,0.7)",fontFamily:"DMSans_400Regular",letterSpacing:0.6},
+
+  rankRow:      {alignItems:"center",marginTop:-4},
+  rankPill:     {flexDirection:"row",alignItems:"center",gap:5,backgroundColor:"rgba(79,142,240,0.13)",borderWidth:1,borderColor:"rgba(79,142,240,0.35)",paddingHorizontal:14,paddingVertical:6,borderRadius:20},
+  rankStar:     {fontSize:10,color:"#4F8EF0"},
+  rankPillText: {fontSize:11,color:"#4F8EF0",fontFamily:"DMSans_700Bold",letterSpacing:0.8},
 
   headlineBlock: {gap:4},
   headlinePeriod:{fontSize:9,color:"rgba(240,246,255,0.3)",fontFamily:"DMSans_500Medium",letterSpacing:2.5,textTransform:"uppercase"},
