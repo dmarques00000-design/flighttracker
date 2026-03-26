@@ -10,6 +10,7 @@ import { queryClient } from "@/lib/query-client";
 import { FlightsProvider } from "@/context/flights";
 import { UserProvider } from "@/context/user";
 import { ThemeProvider, useTheme } from "@/context/theme";
+import { useColors } from "@/constants/colors";
 import {
   useFonts,
   DMSans_400Regular,
@@ -22,6 +23,7 @@ SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
   const { isDark } = useTheme();
+  const C = useColors();
   return (
     <>
       <StatusBar style={isDark ? "light" : "dark"} />
@@ -34,8 +36,9 @@ function RootLayoutNav() {
             sheetAllowedDetents: [0.6, 1],
             sheetGrabberVisible: true,
             headerShown: false,
-            // No contentStyle override — let the sheet use its natural background
-            // so the area below the sheet content is never exposed as black.
+            // Pin the sheet chrome (the area below content) to the app surface colour
+            // so it matches perfectly in both light and dark mode.
+            contentStyle: { backgroundColor: C.surface },
           }}
         />
         <Stack.Screen
