@@ -30,7 +30,7 @@ function fmtHours(minutes: number): string {
   const h=Math.floor(minutes/60), m=minutes%60;
   if (h===0) return `${m}m`;
   if (m===0) return `${h}h`;
-  return `${h}h\u2009${m}m`;
+  return `${h}h ${m}m`;
 }
 function computeRank(n: number): number {
   if (n===0) return 0;
@@ -40,9 +40,9 @@ function computeRank(n: number): number {
 }
 function getTopRoutes(flights: Flight[]): { dep:string;arr:string;count:number }[] {
   const freq: Record<string,number> = {};
-  flights.forEach((f) => { const k=`${f.departureAirport}\u2192${f.arrivalAirport}`; freq[k]=(freq[k]||0)+1; });
+  flights.forEach((f) => { const k=`${f.departureAirport}→${f.arrivalAirport}`; freq[k]=(freq[k]||0)+1; });
   return Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,3)
-    .map(([k,count])=>{ const [dep,arr]=k.split("\u2192"); return {dep,arr,count}; });
+    .map(([k,count])=>{ const [dep,arr]=k.split("→"); return {dep,arr,count}; });
 }
 function getUniqueDestinations(flights: Flight[]): number {
   return new Set(flights.map((f)=>f.arrivalCity)).size;
@@ -134,7 +134,7 @@ export default function MonthlyRecapCard({ flights, month, year, theme = "dark" 
   const monthName   = MONTH_NAMES[month];
   const co2Fact     = co2 > 0 ? getCO2FunFact(co2) : null;
   const timeFact    = flightMin > 0 ? getTimeFunFact(flightMin) : null;
-  const headline    = `You\u2019ve taken ${count} flight${count!==1?"s":""} this ${monthName}`;
+  const headline    = `You’ve taken ${count} flight${count!==1?"s":""} this ${monthName}`;
 
   return (
     <View style={[s.card, { backgroundColor: tk.cardBg }]}>
@@ -180,7 +180,7 @@ export default function MonthlyRecapCard({ flights, month, year, theme = "dark" 
           <View style={[s.statDivV, { backgroundColor: tk.dividerColor }]} />
           <StatBox icon="time" color="#F59E0B" value={fmtHours(flightMin)} label="IN AIR" tk={tk} />
           <View style={[s.statDivV, { backgroundColor: tk.dividerColor }]} />
-          <StatBox icon="leaf" color="#10B981" value={`${fmt(co2)}kg`} label="CO\u2082" tk={tk} />
+          <StatBox icon="leaf" color="#10B981" value={`${fmt(co2)}kg`} label="CO₂" tk={tk} />
           <View style={[s.statDivV, { backgroundColor: tk.dividerColor }]} />
           <StatBox icon="location" color="#4F8EF0" value={String(destinations)} label={destinations===1?"DEST":"DESTS"} tk={tk} />
         </View>
@@ -192,7 +192,7 @@ export default function MonthlyRecapCard({ flights, month, year, theme = "dark" 
               <Text style={s.factEmoji}>{"\u23F0"}</Text>
               <Text style={[s.factText, { color: tk.textSecondary }]}>
                 <Text style={[s.factHighlight, { color: tk.textPrimary }]}>{fmtHours(flightMin)} in the air.</Text>
-                {" That\u2019s "}{timeFact}
+                {" That’s "}{timeFact}
               </Text>
             </View>
           )}
@@ -200,8 +200,8 @@ export default function MonthlyRecapCard({ flights, month, year, theme = "dark" 
             <View style={[s.factRow, { backgroundColor: tk.factBg, borderColor: tk.factBorder }]}>
               <Text style={s.factEmoji}>{"\uD83C\uDF43"}</Text>
               <Text style={[s.factText, { color: tk.textSecondary }]}>
-                <Text style={[s.factHighlight, { color: tk.textPrimary }]}>{fmt(co2)} kg CO\u2082.</Text>
-                {" That\u2019s like "}{co2Fact}
+                <Text style={[s.factHighlight, { color: tk.textPrimary }]}>{fmt(co2)} kg CO₂.</Text>
+                {" That’s like "}{co2Fact}
               </Text>
             </View>
           )}

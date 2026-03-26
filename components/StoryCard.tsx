@@ -36,7 +36,6 @@ function computeRank(n: number): number {
 }
 
 function AppStoreBadge({ width = 148, t }: { width?: number; t: ReturnType<typeof THEMES["dark"][""] extends never ? never : typeof THEMES["dark"]> }) {
-  // t is CardThemeTokens
   const h = width * 0.31;
   const r = h * 0.26;
   const appleH = h * 0.58;
@@ -106,8 +105,8 @@ export default function StoryCard({ flights, periodLabel, theme = "dark" }: Stor
 
   const isAllTime = periodLabel.toLowerCase() === "all time";
   const headline  = isAllTime
-    ? `You\u2019ve taken ${count} flight${count !== 1 ? "s" : ""} \u2014 all time`
-    : `You\u2019ve taken ${count} flight${count !== 1 ? "s" : ""} in ${periodLabel}`;
+    ? `You’ve taken ${count} flight${count !== 1 ? "s" : ""} — all time`
+    : `You’ve taken ${count} flight${count !== 1 ? "s" : ""} in ${periodLabel}`;
 
   return (
     <View style={[c.card, { backgroundColor: tk.cardBg }]}>
@@ -132,7 +131,7 @@ export default function StoryCard({ flights, periodLabel, theme = "dark" }: Stor
           </View>
         </View>
 
-        {/* RANK PILL — centred */}
+        {/* RANK PILL */}
         {rank > 0 && (
           <View style={c.rankRow}>
             <View style={[c.rankPill, { backgroundColor: tk.pillBg, borderColor: tk.pillBorder }]}>
@@ -145,7 +144,7 @@ export default function StoryCard({ flights, periodLabel, theme = "dark" }: Stor
         {/* PERIOD + HEADLINE */}
         <View style={c.headlineBlock}>
           <Text style={[c.headlinePeriod, { color: tk.textMuted }]}>
-            {`${isAllTime ? "ALL TIME" : periodLabel.toUpperCase()} \u00b7 YEAR RECAP`}
+            {`${isAllTime ? "ALL TIME" : periodLabel.toUpperCase()} · YEAR RECAP`}
           </Text>
           <Text style={[c.headline, { color: tk.textPrimary }]}>{headline}</Text>
         </View>
@@ -163,7 +162,7 @@ export default function StoryCard({ flights, periodLabel, theme = "dark" }: Stor
           <View style={[c.statDivider, { backgroundColor: tk.dividerColor }]} />
           <StatItem icon="time" color="#F59E0B" value={formatHours(flightMin)} label="in air" tk={tk} />
           <View style={[c.statDivider, { backgroundColor: tk.dividerColor }]} />
-          <StatItem icon="leaf" color="#10B981" value={`${formatNum(co2)}kg`} label="CO\u2082" tk={tk} />
+          <StatItem icon="leaf" color="#10B981" value={`${formatNum(co2)}kg`} label="CO₂" tk={tk} />
           {delayMin > 0 && (
             <><View style={[c.statDivider, { backgroundColor: tk.dividerColor }]} />
             <StatItem icon="hourglass" color="#EF4444" value={formatHours(delayMin)} label="delayed" tk={tk} /></>
@@ -177,7 +176,7 @@ export default function StoryCard({ flights, periodLabel, theme = "dark" }: Stor
               <Text style={c.factEmoji}>{"⏰"}</Text>
               <Text style={[c.factText, { color: tk.textSecondary }]}>
                 <Text style={[c.factHighlight, { color: tk.textPrimary }]}>{formatHours(flightMin)} in the air.</Text>
-                {` That\u2019s `}{timeFact}
+                {` That’s `}{timeFact}
               </Text>
             </View>
           )}
@@ -185,8 +184,8 @@ export default function StoryCard({ flights, periodLabel, theme = "dark" }: Stor
             <View style={[c.factRow, { backgroundColor: tk.factBg, borderColor: tk.factBorder }]}>
               <Text style={c.factEmoji}>{"🍃"}</Text>
               <Text style={[c.factText, { color: tk.textSecondary }]}>
-                <Text style={[c.factHighlight, { color: tk.textPrimary }]}>{formatNum(co2)} kg CO\u2082.</Text>
-                {` That\u2019s like `}{co2Fact}
+                <Text style={[c.factHighlight, { color: tk.textPrimary }]}>{formatNum(co2)} kg CO₂.</Text>
+                {` That’s like `}{co2Fact}
               </Text>
             </View>
           )}

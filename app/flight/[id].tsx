@@ -163,7 +163,7 @@ export default function FlightDetailScreen() {
       if (available) {
         await Sharing.shareAsync(uri, {
           mimeType: "image/png",
-          dialogTitle: `Share ${flight.flightCode} \u2014 ${flight.departureAirport} to ${flight.arrivalAirport}`,
+          dialogTitle: `Share ${flight.flightCode} — ${flight.departureAirport} to ${flight.arrivalAirport}`,
         });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
@@ -189,11 +189,8 @@ export default function FlightDetailScreen() {
     ? Math.round((flight.distanceMiles / flight.durationMinutes) * 60)
     : 0;
 
-  // Scheduled duration from API (or haversine estimate for mock flights)
   const scheduledDuration = formatHours(flight.durationMinutes);
 
-  // Actual block time: convert local HH:MM times to UTC using each airport's
-  // IANA timezone, then diff. Returns null if timezones are unknown.
   const actualBlockMins = computeActualBlockMinutes(
     flight.departureTime,
     flight.arrivalTime,
@@ -231,7 +228,7 @@ export default function FlightDetailScreen() {
             <Text style={{ fontSize: 11, color: C.textSec, fontFamily: "DMSans_400Regular", letterSpacing: 0.5, textTransform: "uppercase" }}>{flight.airline}</Text>
           </View>
           <Text style={{ fontSize: 16, color: C.text, fontFamily: "DMSans_700Bold" }}>
-            {flight.departureAirport}{" \u2192 "}{flight.arrivalAirport}
+            {flight.departureAirport}{" → "}{flight.arrivalAirport}
           </Text>
         </View>
         <Pressable
@@ -316,12 +313,12 @@ export default function FlightDetailScreen() {
               <Text style={{ fontSize: 22, color: C.text, fontFamily: "DMSans_700Bold" }}>{flight.departureTime}</Text>
               {(flight.departureTerminal || flight.departureGate) ? (
                 <Text style={{ fontSize: 10, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 3 }} numberOfLines={1}>
-                  {[flight.departureTerminal ? `T${flight.departureTerminal}` : null, flight.departureGate ? `Gate ${flight.departureGate}` : null].filter(Boolean).join(" \u00b7 ")}
+                  {[flight.departureTerminal ? `T${flight.departureTerminal}` : null, flight.departureGate ? `Gate ${flight.departureGate}` : null].filter(Boolean).join(" · ")}
                 </Text>
               ) : null}
             </View>
 
-            {/* Duration block — shows actual (tz-corrected) + scheduled from API */}
+            {/* Duration block */}
             <View style={{ flex: 1, alignItems: "center", paddingTop: 2 }}>
               {actualDuration !== null ? (
                 <>
@@ -345,7 +342,7 @@ export default function FlightDetailScreen() {
               <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2, letterSpacing: 0.3 }}>local time</Text>
               {(flight.arrivalTerminal || flight.arrivalGate) ? (
                 <Text style={{ fontSize: 10, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 3 }} numberOfLines={1}>
-                  {[flight.arrivalTerminal ? `T${flight.arrivalTerminal}` : null, flight.arrivalGate ? `Gate ${flight.arrivalGate}` : null].filter(Boolean).join(" \u00b7 ")}
+                  {[flight.arrivalTerminal ? `T${flight.arrivalTerminal}` : null, flight.arrivalGate ? `Gate ${flight.arrivalGate}` : null].filter(Boolean).join(" · ")}
                 </Text>
               ) : null}
             </View>
@@ -386,7 +383,7 @@ export default function FlightDetailScreen() {
           <View style={{ flex: 1, alignItems: "center", paddingVertical: 18, gap: 4, paddingHorizontal: 4 }}>
             <Ionicons name="leaf-outline" size={18} color={C.green} />
             <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_700Bold" }} adjustsFontSizeToFit numberOfLines={1}>{flight.co2Kg}</Text>
-            <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular" }}>kg CO\u2082</Text>
+            <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular" }}>kg CO₂</Text>
           </View>
           <View style={{ width: 1, backgroundColor: C.border, marginVertical: 12 }} />
           <View style={{ flex: 1, alignItems: "center", paddingVertical: 18, gap: 4, paddingHorizontal: 4 }}>
@@ -409,21 +406,21 @@ export default function FlightDetailScreen() {
             <InfoRow label="Date" value={formatDate(flight.date)} />
             <InfoRow
               label="Departure"
-              value={`${flight.departureAirport}  \u00b7  ${flight.departureTime}${flight.departureTerminal ? `  \u00b7  T${flight.departureTerminal}` : ""}${flight.departureGate ? `  \u00b7  Gate ${flight.departureGate}` : ""}`}
+              value={`${flight.departureAirport}  ·  ${flight.departureTime}${flight.departureTerminal ? `  ·  T${flight.departureTerminal}` : ""}${flight.departureGate ? `  ·  Gate ${flight.departureGate}` : ""}`}
             />
             <InfoRow
               label="Arrival"
-              value={`${flight.arrivalAirport}  \u00b7  ${flight.arrivalTime} (local)${flight.arrivalTerminal ? `  \u00b7  T${flight.arrivalTerminal}` : ""}${flight.arrivalGate ? `  \u00b7  Gate ${flight.arrivalGate}` : ""}`}
+              value={`${flight.arrivalAirport}  ·  ${flight.arrivalTime} (local)${flight.arrivalTerminal ? `  ·  T${flight.arrivalTerminal}` : ""}${flight.arrivalGate ? `  ·  Gate ${flight.arrivalGate}` : ""}`}
             />
             {actualDuration !== null && (
-              <InfoRow label="Block Time" value={`${actualDuration} (tz-corrected)  \u00b7  ${scheduledDuration} scheduled`} />
+              <InfoRow label="Block Time" value={`${actualDuration} (tz-corrected)  ·  ${scheduledDuration} scheduled`} />
             )}
             <InfoRow
               label="Distance"
-              value={`${flight.distanceMiles.toLocaleString()} mi  \u00b7  ${Math.round(flight.distanceMiles * 1.60934).toLocaleString()} km`}
+              value={`${flight.distanceMiles.toLocaleString()} mi  ·  ${Math.round(flight.distanceMiles * 1.60934).toLocaleString()} km`}
             />
             {avgSpeedMph > 0 && (
-              <InfoRow label="Avg Speed" value={`${avgSpeedMph} mph  \u00b7  ${Math.round(avgSpeedMph * 1.60934)} km/h`} />
+              <InfoRow label="Avg Speed" value={`${avgSpeedMph} mph  ·  ${Math.round(avgSpeedMph * 1.60934)} km/h`} />
             )}
           </View>
         </Animated.View>
@@ -432,7 +429,7 @@ export default function FlightDetailScreen() {
         <Animated.View entering={FadeInDown.delay(220).springify()} style={{ marginBottom: 16 }}>
           <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Environmental Impact</Text>
           <View style={{ backgroundColor: C.card, borderRadius: 16, paddingHorizontal: 16, borderWidth: 1, borderColor: C.border }}>
-            <InfoRow label="CO\u2082 Emitted" value={`${flight.co2Kg} kg`} accent={C.green} />
+            <InfoRow label="CO₂ Emitted" value={`${flight.co2Kg} kg`} accent={C.green} />
             <InfoRow label="Tree equivalent" value={`${co2Trees} trees / year to offset`} />
           </View>
         </Animated.View>
@@ -459,7 +456,7 @@ export default function FlightDetailScreen() {
               )}
           </Pressable>
           <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 17 }}>
-            Generates a boarding-pass style card \u2014 share to Instagram, WhatsApp, and more.
+            Generates a boarding-pass style card — share to Instagram, WhatsApp, and more.
           </Text>
         </Animated.View>
       </ScrollView>

@@ -84,7 +84,7 @@ export default function FlightShareCard({ flight, theme = "dark" }: { flight: Fl
         </View>
 
         <Text style={[ss.duration, { color: tk.textMuted }]}>
-          {`${formatHours(flight.durationMinutes)} \u00b7 ${flight.flightCode} \u00b7 ${flight.airline}`}
+          {`${formatHours(flight.durationMinutes)} · ${flight.flightCode} · ${flight.airline}`}
         </Text>
 
         {/* TEAR LINE */}
@@ -109,7 +109,7 @@ export default function FlightShareCard({ flight, theme = "dark" }: { flight: Fl
           <View style={ss.statItem}>
             <Ionicons name="leaf" size={14} color="#10B981" />
             <Text style={[ss.statValue, { color: tk.textPrimary }]}>{flight.co2Kg} kg</Text>
-            <Text style={[ss.statSub, { color: tk.textMuted }]}>{"CO\u2082"}</Text>
+            <Text style={[ss.statSub, { color: tk.textMuted }]}>CO₂</Text>
           </View>
           <View style={[ss.statDivider, { backgroundColor: tk.dividerColor }]} />
           <View style={ss.statItem}>
@@ -122,7 +122,7 @@ export default function FlightShareCard({ flight, theme = "dark" }: { flight: Fl
         {funFact ? (
           <View style={[ss.funFactRow, { backgroundColor: tk.factBg, borderColor: tk.factBorder, borderWidth: 1, borderRadius: 10, padding: 8 }]}>
             <Ionicons name="leaf-outline" size={11} color="#10B981" />
-            <Text style={ss.funFactText}>{`That\u2019s like `}{funFact}</Text>
+            <Text style={ss.funFactText}>{`That’s like `}{funFact}</Text>
           </View>
         ) : null}
 
