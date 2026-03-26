@@ -18,6 +18,7 @@ import { useColors } from "@/constants/colors";
 import { useUser, UserProfile } from "@/context/user";
 import { useFlights } from "@/context/flights";
 import { useTheme, ThemeMode } from "@/context/theme";
+import { FeedbackModal } from "@/components/FeedbackModal";
 
 const SEAT_OPTIONS: { value: UserProfile["seatPreference"]; label: string; icon: string }[] = [
   { value: "window", label: "Window", icon: "partly-sunny-outline" },
@@ -124,12 +125,13 @@ export default function ProfileScreen() {
   const { mode, setMode } = useTheme();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<UserProfile>(profile);
+  const [feedbackVisible, setFeedbackVisible] = useState(false);
 
   const topPadding    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
-  const totalFlights   = flights.length;
-  const TODAY          = new Date().toISOString().substring(0, 10);
+  const totalFlights    = flights.length;
+  const TODAY           = new Date().toISOString().substring(0, 10);
   const upcomingFlights = flights.filter((f) => f.date >= TODAY).length;
   const uniqueAirports  = new Set(flights.flatMap((f) => [f.departureAirport, f.arrivalAirport])).size;
 
@@ -268,9 +270,40 @@ export default function ProfileScreen() {
               </SectionCard>
             </Animated.View>
 
+            {/* Beta Feedback */}
+            {!editing && (
+              <Animated.View entering={FadeInDown.delay(140).springify()}>
+                <SectionCard title="Beta" icon="flask-outline" C={C}>
+                  <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
+                    <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.accent + "18", alignItems: "center", justifyContent: "center", marginTop: 2 }}>
+                      <Ionicons name="chatbubbles-outline" size={18} color={C.accent} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, color: C.text, fontFamily: "DMSans_600SemiBold", marginBottom: 3 }}>Share your feedback</Text>
+                      <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_400Regular", lineHeight: 18 }}>
+                        Found a bug or have an idea? Let us know — your feedback shapes the next release.
+                      </Text>
+                    </View>
+                  </View>
+                  <Pressable
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setFeedbackVisible(true); }}
+                    style={({ pressed }) => [{
+                      flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+                      backgroundColor: C.accent, borderRadius: 12,
+                      paddingVertical: 13, paddingHorizontal: 20,
+                      opacity: pressed ? 0.85 : 1,
+                    }]}
+                  >
+                    <Ionicons name="send-outline" size={15} color={C.white} />
+                    <Text style={{ fontSize: 14, color: C.white, fontFamily: "DMSans_700Bold" }}>Send Feedback</Text>
+                  </Pressable>
+                </SectionCard>
+              </Animated.View>
+            )}
+
             {/* Account actions */}
             {!editing && (
-              <Animated.View entering={FadeInDown.delay(150).springify()} style={S.dangerSection}>
+              <Animated.View entering={FadeInDown.delay(160).springify()} style={S.dangerSection}>
                 <Pressable onPress={confirmLogout} style={[S.dangerBtn, { marginBottom: 10, backgroundColor: C.surface, borderColor: C.border }]}>
                   <Ionicons name="log-out-outline" size={16} color={C.textSec} />
                   <Text style={[S.dangerBtnText, { color: C.textSec }]}>Log Out</Text>
@@ -284,6 +317,14 @@ export default function ProfileScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* Feedback modal */}
+      <FeedbackModal
+        visible={feedbackVisible}
+        onClose={() => setFeedbackVisible(false)}
+        userName={profile.name}
+        userEmail={profile.email}
+      />
     </View>
   );
 }
