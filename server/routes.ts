@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "node:http";
-import { lookupFlight } from "./storage";
+import { lookupFlight, lookupFlightsByAirport } from "./storage";
 
 // ─── Empirical annual flights-per-person CDF ──────────────────────────────────
 //
@@ -128,6 +128,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Lookup failed";
       console.error("[Route] Error in lookupFlight:", err);
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // ── Airport schedule search endpoint ────────────────────────────────────
+  //
+  // GET /api/flights/search?date=YYYY-MM-DD&dep=ZRH[&arr=LHR]
+  // GET /api/flights/search?date=YYYY-MM-DD&arr=LHR
+  //
+  // At least one of dep or arr must be provided.
+  // Returns an array of flight objects (same shape as /api/flights/lookup).
+  app.get("/api/flights/search", async (req, res) => {
+    const { date, dep, arr } = req.query;
+
+    console.log("[Route] /api/flights/search called");
+    console.log("[Route] Query params:", { date, dep, arr });
+
+    if (!date || typeof date !== "string") {
+      return res.status(400).json({ error: "Missing date parameter (YYYY-MM-DD)" });
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: "Invalid date format — use YYYY-MM-DD" });
+    }
+
+    const depStr = typeof dep === "string" && dep.trim() ? dep.trim().toUpperCase() : undefined;
+    const arrStr = typeof arr === "string" && arr.trim() ? arr.trim().toUpperCase() : undefined;
+
+    if (!depStr && !arrStr) {
+      return res.status(400).json({ error: "Provide at least one of dep or arr (IATA airport code)" });
+    }
+
+    if (depStr && !/^[A-Z]{3}$/.test(depStr)) {
+      return res.status(400).json({ error: `Invalid departure airport code: ${depStr}` });
+    }
+    if (arrStr && !/^[A-Z]{3}$/.test(arrStr)) {
+      return res.status(400).json({ error: `Invalid arrival airport code: ${arrStr}` });
+    }
+
+    try {
+      const results = await lookupFlightsByAirport(depStr, arrStr, date);
+      console.log(`[Route] /api/flights/search returning ${results.length} flight(s)`);
+      return res.json(results);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Search failed";
+      console.error("[Route] Error in lookupFlightsByAirport:", err);
       return res.status(500).json({ error: msg });
     }
   });
