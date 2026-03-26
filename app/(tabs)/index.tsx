@@ -76,16 +76,13 @@ function usePercentile(count: number): { topPercent: number } | null {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        // Check rate limit before firing
         const limit = await percentileLimiter.check();
         if (!limit.allowed) {
-          // Silently fall back to the local CDF — no user-visible error for background calls
           const p = computeFallbackPercentile(count);
           setResult({ topPercent: Math.max(0.1, Math.round((100 - p) * 10) / 10) });
           return;
         }
         await percentileLimiter.consume();
-        // Validate count is a safe positive integer before sending
         const safeCount = Math.max(0, Math.floor(count));
         const res = await fetch(`/api/percentile?count=${safeCount}`, { signal: AbortSignal.timeout(4000) });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -362,7 +359,14 @@ export default function HomeScreen() {
                   </View>
                 )}
               </View>
-              {stats.co2 > 0 && <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 6, fontStyle: "italic" }}>\uD83C\uDF43 {"That\u2019s like "}{getCO2FunFact(stats.co2)}</Text>}
+              {stats.co2 > 0 && (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 6 }}>
+                  <Ionicons name="leaf-outline" size={11} color={C.green} />
+                  <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular", fontStyle: "italic", flex: 1 }}>
+                    {"That\u2019s like "}{getCO2FunFact(stats.co2)}
+                  </Text>
+                </View>
+              )}
             </Animated.View>
 
             <Animated.View entering={FadeInDown.delay(120).springify()} style={{ marginTop: 4, marginBottom: 24 }}>

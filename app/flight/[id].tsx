@@ -41,18 +41,13 @@ function formatHours(minutes: number): string {
   return `${h}h ${m}m`;
 }
 
-/**
- * Derive the displayed flight duration purely from HH:MM departure and
- * arrival time strings. Handles overnight flights (arrival < departure).
- * Returns null if either string is missing or malformed.
- */
 function deriveDurationMins(depTime: string, arrTime: string): number | null {
   if (!depTime || !arrTime) return null;
   const [dh, dm] = depTime.split(":").map(Number);
   const [ah, am] = arrTime.split(":").map(Number);
   if (isNaN(dh) || isNaN(dm) || isNaN(ah) || isNaN(am)) return null;
   let diff = (ah * 60 + am) - (dh * 60 + dm);
-  if (diff < 0) diff += 24 * 60; // overnight
+  if (diff < 0) diff += 24 * 60;
   return diff;
 }
 
@@ -81,7 +76,6 @@ const infoStyles = StyleSheet.create({
   },
 });
 
-// Airline logo with graceful fallback
 function AirlineLogo({ logoUrl, color, size = 32 }: { logoUrl: string; color: string; size?: number }) {
   const [errored, setErrored] = useState(false);
   if (errored) {
@@ -112,23 +106,15 @@ const logoStyles = StyleSheet.create({
   },
 });
 
-// ─── Not-found fallback ──────────────────────────────────────────────────────────
 function FlightNotFound({ topPad }: { topPad: number }) {
   return (
     <View style={[styles.container, { paddingTop: topPad }]}>
-      {/* minimal nav — back button only */}
       <View style={styles.navBar}>
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.navBtn}
-          hitSlop={8}
-        >
+        <Pressable onPress={() => router.back()} style={styles.navBtn} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={Colors.text} />
         </Pressable>
         <View style={{ flex: 1 }} />
       </View>
-
-      {/* centred empty state */}
       <Animated.View entering={FadeIn.delay(60)} style={styles.notFoundWrap}>
         <View style={styles.notFoundIconCircle}>
           <Ionicons name="airplane-outline" size={40} color={Colors.accent} />
@@ -202,8 +188,6 @@ export default function FlightDetailScreen() {
     ? Math.round((flight.distanceMiles / flight.durationMinutes) * 60)
     : 0;
 
-  // Use derived duration (from actual times) for the hero card display.
-  // Fall back to durationMinutes only if times are unavailable.
   const derivedMins = deriveDurationMins(flight.departureTime, flight.arrivalTime);
   const heroDisplayDuration = formatHours(derivedMins ?? flight.durationMinutes);
 
@@ -227,8 +211,9 @@ export default function FlightDetailScreen() {
             <AirlineLogo logoUrl={airlineInfo.logoUrl} color={airlineInfo.color} size={18} />
             <Text style={styles.navLabel}>{flight.airline}</Text>
           </View>
+          {/* Use proper unicode arrow \u2192 (→) instead of ASCII " -> " */}
           <Text style={styles.navTitle}>
-            {flight.departureAirport}{" -> "}{flight.arrivalAirport}
+            {flight.departureAirport}{" \u2192 "}{flight.arrivalAirport}
           </Text>
         </View>
         <Pressable
@@ -251,7 +236,6 @@ export default function FlightDetailScreen() {
         {/* ─── HERO CARD ─── */}
         <Animated.View entering={FadeInDown.delay(0).springify()} style={styles.heroCard}>
 
-          {/* Row 1: flight code | status pill | verified badge */}
           <View style={styles.heroTopRow}>
             <Text style={styles.heroFlightCode}>{flight.flightCode}</Text>
             <View style={styles.heroTopRight}>
@@ -268,7 +252,6 @@ export default function FlightDetailScreen() {
             </View>
           </View>
 
-          {/* Row 2: Route */}
           <View style={styles.routeRow}>
             <View style={styles.routeEnd}>
               <Text style={styles.iata}>{flight.departureAirport}</Text>
@@ -287,9 +270,7 @@ export default function FlightDetailScreen() {
             </View>
           </View>
 
-          {/* Row 3: Times + duration */}
           <View style={styles.timesRow}>
-            {/* Departure */}
             <View style={styles.timesBlock}>
               <Text style={styles.timeText}>{flight.departureTime}</Text>
               {(flight.departureTerminal || flight.departureGate) ? (
@@ -299,13 +280,11 @@ export default function FlightDetailScreen() {
               ) : null}
             </View>
 
-            {/* Middle: derived duration + date */}
             <View style={styles.timesMid}>
               <Text style={styles.durationText}>{heroDisplayDuration}</Text>
               <Text style={styles.dateText}>{formatDateShort(flight.date)}</Text>
             </View>
 
-            {/* Arrival */}
             <View style={[styles.timesBlock, { alignItems: "flex-end" }]}>
               <Text style={styles.timeText}>{flight.arrivalTime}</Text>
               <Text style={styles.localTimeLabel}>local</Text>
@@ -317,7 +296,6 @@ export default function FlightDetailScreen() {
             </View>
           </View>
 
-          {/* Row 4: Airline logo + name | aircraft */}
           <View style={styles.heroBottomRow}>
             <View style={styles.airlineRow}>
               <AirlineLogo logoUrl={airlineInfo.logoUrl} color={airlineInfo.color} size={32} />
@@ -422,7 +400,6 @@ const styles = StyleSheet.create({
   container:     { flex: 1, backgroundColor: Colors.bg },
   hiddenCapture: { position: "absolute", left: -9999, top: 0 },
 
-  // ── Nav ──
   navBar: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10,
@@ -442,7 +419,6 @@ const styles = StyleSheet.create({
 
   scroll:   { paddingHorizontal: 20, paddingTop: 16 },
 
-  // ── Not-found state ──
   notFoundWrap: {
     flex: 1, alignItems: "center", justifyContent: "center",
     paddingHorizontal: 36, paddingBottom: 60,
@@ -469,7 +445,6 @@ const styles = StyleSheet.create({
   },
   notFoundBtnText: { fontSize: 15, color: Colors.white, fontFamily: "DMSans_700Bold" },
 
-  // ── Hero card ──
   heroCard: {
     backgroundColor: Colors.card, borderRadius: 20,
     borderWidth: 1, borderColor: Colors.border,
