@@ -4,13 +4,12 @@
  *  - Full-screen card preview (no shrinking)
  *  - Primary CTA: "Share" (system sheet) — large, always visible
  *  - Quick-access: Instagram · WhatsApp · Save
- *  - Period selector stays accessible
+ *  - Period selector + card theme toggle (Dark / Light)
  */
 import React, { useRef, useState, useMemo } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   Pressable,
   Platform,
@@ -26,14 +25,15 @@ import * as MediaLibrary from "expo-media-library";
 import { Linking } from "react-native";
 import ViewShot from "react-native-view-shot";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import { Colors } from "@/constants/colors";
+import { useColors } from "@/constants/colors";
+import { CardTheme } from "@/constants/cardThemes";
 import { useFlights } from "@/context/flights";
 import StoryCard, { CARD_WIDTH, CARD_HEIGHT } from "@/components/StoryCard";
 
-// Scale card so it fills ~92% of screen width while keeping aspect ratio
 const SCREEN_PAD = 20;
 
 export default function ShareScreen() {
+  const C = useColors();
   const insets  = useSafeAreaInsets();
   const { flights } = useFlights();
   const cardRef = useRef<ViewShot>(null);
@@ -41,6 +41,7 @@ export default function ShareScreen() {
 
   const currentYear = new Date().getFullYear();
   const [period, setPeriod] = useState<"all" | number>(currentYear);
+  const [cardTheme, setCardTheme] = useState<CardTheme>("dark");
 
   const topPad    = Platform.OS === "web" ? 67 : insets.top + 8;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 8;
@@ -144,71 +145,114 @@ export default function ShareScreen() {
     }
   }
 
-  // Scale factor to fit card in available width
-  const availableW = 390 - SCREEN_PAD * 2; // approx full-width preview
+  const availableW = 390 - SCREEN_PAD * 2;
   const scale      = availableW / CARD_WIDTH;
   const previewH   = CARD_HEIGHT * scale;
 
   return (
-    <View style={[st.container, { paddingTop: topPad }]}>
+    <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPad }}>
 
       {/* ── NAV BAR ── */}
-      <View style={st.navBar}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={st.navBack}>
-          <Ionicons name="close" size={22} color={Colors.textSec} />
+      <View style={{
+        flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+        paddingHorizontal: 20, paddingBottom: 10,
+        borderBottomWidth: 1, borderBottomColor: C.border,
+      }}>
+        <Pressable onPress={() => router.back()} hitSlop={12} style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="close" size={22} color={C.textSec} />
         </Pressable>
-        <View style={st.navCenter}>
-          <Text style={st.navSub}>Logbook</Text>
-          <Text style={st.navTitle}>Year Recap</Text>
+        <View style={{ flex: 1, alignItems: "center", gap: 1 }}>
+          <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular", letterSpacing: 0.5, textTransform: "uppercase" }}>Logbook</Text>
+          <Text style={{ fontSize: 16, color: C.text, fontFamily: "DMSans_700Bold" }}>Year Recap</Text>
         </View>
-        {/* Share icon shortcut */}
         <Pressable
           onPress={handleShare}
           disabled={capturing || filtered.length === 0}
-          style={({ pressed }) => [st.navShareBtn, { opacity: capturing || pressed ? 0.6 : 1 }]}
+          style={({ pressed }) => [{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }, { opacity: capturing || pressed ? 0.6 : 1 }]}
           hitSlop={8}
         >
           {capturing
-            ? <ActivityIndicator size="small" color={Colors.accent} />
-            : <Ionicons name="share-outline" size={20} color={Colors.accent} />}
+            ? <ActivityIndicator size="small" color={C.accent} />
+            : <Ionicons name="share-outline" size={20} color={C.accent} />}
         </Pressable>
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[st.scroll, { paddingBottom: bottomPad + 16 }]}
+        contentContainerStyle={{ paddingHorizontal: SCREEN_PAD, alignItems: "center", gap: 20, paddingTop: 16, paddingBottom: bottomPad + 16 }}
       >
         {/* ── Period selector ── */}
-        <Animated.View entering={FadeInDown.delay(0).springify()} style={st.periodRow}>
+        <Animated.View entering={FadeInDown.delay(0).springify()} style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
           <Pressable
             onPress={() => { Haptics.selectionAsync(); setPeriod("all"); }}
-            style={[st.pill, period === "all" && st.pillActive]}
+            style={[
+              { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+              period === "all"
+                ? { backgroundColor: C.accent, borderColor: C.accent }
+                : { backgroundColor: C.card, borderColor: C.border },
+            ]}
           >
-            <Text style={[st.pillText, period === "all" && st.pillTextActive]}>All Time</Text>
+            <Text style={{ fontSize: 13, fontFamily: "DMSans_500Medium", color: period === "all" ? C.white : C.textSec }}>All Time</Text>
           </Pressable>
           {years.map((y) => (
             <Pressable
               key={y}
               onPress={() => { Haptics.selectionAsync(); setPeriod(y); }}
-              style={[st.pill, period === y && st.pillActive]}
+              style={[
+                { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+                period === y
+                  ? { backgroundColor: C.accent, borderColor: C.accent }
+                  : { backgroundColor: C.card, borderColor: C.border },
+              ]}
             >
-              <Text style={[st.pillText, period === y && st.pillTextActive]}>{y}</Text>
+              <Text style={{ fontSize: 13, fontFamily: "DMSans_500Medium", color: period === y ? C.white : C.textSec }}>{y}</Text>
             </Pressable>
           ))}
         </Animated.View>
 
+        {/* ── Card theme toggle ── */}
+        <Animated.View entering={FadeInDown.delay(30).springify()} style={{ flexDirection: "row", alignItems: "center", gap: 0, backgroundColor: C.surface, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 4 }}>
+          {/* Dark option */}
+          <Pressable
+            onPress={() => { Haptics.selectionAsync(); setCardTheme("dark"); }}
+            style={[
+              { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 11 },
+              cardTheme === "dark" && { backgroundColor: C.card, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 3 },
+            ]}
+          >
+            <Ionicons name="moon" size={15} color={cardTheme === "dark" ? C.accent : C.textMuted} />
+            <Text style={{ fontSize: 13, fontFamily: cardTheme === "dark" ? "DMSans_700Bold" : "DMSans_400Regular", color: cardTheme === "dark" ? C.text : C.textMuted }}>Dark</Text>
+          </Pressable>
+
+          {/* Light option */}
+          <Pressable
+            onPress={() => { Haptics.selectionAsync(); setCardTheme("light"); }}
+            style={[
+              { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 11 },
+              cardTheme === "light" && { backgroundColor: C.card, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 3 },
+            ]}
+          >
+            <Ionicons name="sunny" size={15} color={cardTheme === "light" ? C.amber : C.textMuted} />
+            <Text style={{ fontSize: 13, fontFamily: cardTheme === "light" ? "DMSans_700Bold" : "DMSans_400Regular", color: cardTheme === "light" ? C.text : C.textMuted }}>Light</Text>
+          </Pressable>
+        </Animated.View>
+
         {/* ── Card preview (full-res, scaled to fit) ── */}
-        <Animated.View entering={FadeInDown.delay(50).springify()} style={st.cardOuter}>
+        <Animated.View entering={FadeInDown.delay(50).springify()} style={{ alignItems: "center", width: "100%" }}>
           <ViewShot
             ref={cardRef}
             options={{ format: "png", quality: 1.0 }}
-            style={[
-              st.cardShot,
-              {
-                width: availableW,
-                height: previewH,
-              },
-            ]}
+            style={{
+              width: availableW,
+              height: previewH,
+              borderRadius: 24,
+              overflow: "hidden",
+              shadowColor: "#4F8EF0",
+              shadowOffset: { width: 0, height: 14 },
+              shadowOpacity: 0.30,
+              shadowRadius: 32,
+              elevation: 18,
+            }}
           >
             <View
               style={{
@@ -218,126 +262,78 @@ export default function ShareScreen() {
                 transformOrigin: "top left",
               }}
             >
-              <StoryCard flights={filtered} periodLabel={periodLabel} />
+              <StoryCard flights={filtered} periodLabel={periodLabel} theme={cardTheme} />
             </View>
           </ViewShot>
         </Animated.View>
 
         {/* ── Story-format hint ── */}
-        <Animated.View entering={FadeInDown.delay(90).springify()} style={st.hintRow}>
-          <Ionicons name="phone-portrait-outline" size={13} color={Colors.textSec} />
-          <Text style={st.hintText}>
+        <Animated.View entering={FadeInDown.delay(90).springify()} style={{ flexDirection: "row", gap: 7, alignItems: "center" }}>
+          <Ionicons name="phone-portrait-outline" size={13} color={C.textSec} />
+          <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", lineHeight: 17 }}>
             9:16 story card \u2014 perfect for Instagram Stories, WhatsApp and more.
           </Text>
         </Animated.View>
 
         {/* ── PRIMARY CTA ── */}
-        <Animated.View entering={FadeInDown.delay(130).springify()} style={st.actions}>
+        <Animated.View entering={FadeInDown.delay(130).springify()} style={{ width: "100%", gap: 16 }}>
           <Pressable
             onPress={handleShare}
             disabled={capturing || filtered.length === 0}
             style={({ pressed }) => [
-              st.shareBtn,
-              { opacity: capturing || filtered.length === 0 ? 0.45 : pressed ? 0.87 : 1,
-                transform: [{ scale: pressed ? 0.98 : 1 }] },
+              { backgroundColor: C.accent, borderRadius: 16, paddingVertical: 18, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
+              { opacity: capturing || filtered.length === 0 ? 0.45 : pressed ? 0.87 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
             ]}
           >
             {capturing
-              ? <ActivityIndicator color={Colors.white} size="small" />
+              ? <ActivityIndicator color={C.white} size="small" />
               : <>
-                  <Ionicons name="share-social-outline" size={21} color={Colors.white} />
-                  <Text style={st.shareBtnText}>Share Year Recap</Text>
+                  <Ionicons name="share-social-outline" size={21} color={C.white} />
+                  <Text style={{ fontSize: 17, color: C.white, fontFamily: "DMSans_700Bold" }}>Share Year Recap</Text>
                 </>}
           </Pressable>
 
           {/* ── Quick actions ── */}
-          <View style={st.quickRow}>
+          <View style={{ flexDirection: "row", justifyContent: "center", gap: 28 }}>
             <Pressable
               onPress={handleInstagram}
               disabled={capturing}
-              style={({ pressed }) => [st.quickBtn, { opacity: pressed ? 0.7 : 1 }]}
+              style={({ pressed }) => [{ alignItems: "center", gap: 7 }, { opacity: pressed ? 0.7 : 1 }]}
             >
-              <View style={[st.quickIcon, { backgroundColor: "#C13584" }]}>
+              <View style={{ width: 56, height: 56, borderRadius: 17, backgroundColor: "#C13584", alignItems: "center", justifyContent: "center" }}>
                 <Ionicons name="logo-instagram" size={22} color="#fff" />
               </View>
-              <Text style={st.quickLabel}>Instagram</Text>
+              <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular" }}>Instagram</Text>
             </Pressable>
 
             <Pressable
               onPress={handleWhatsApp}
               disabled={capturing}
-              style={({ pressed }) => [st.quickBtn, { opacity: pressed ? 0.7 : 1 }]}
+              style={({ pressed }) => [{ alignItems: "center", gap: 7 }, { opacity: pressed ? 0.7 : 1 }]}
             >
-              <View style={[st.quickIcon, { backgroundColor: "#25D366" }]}>
+              <View style={{ width: 56, height: 56, borderRadius: 17, backgroundColor: "#25D366", alignItems: "center", justifyContent: "center" }}>
                 <Ionicons name="logo-whatsapp" size={22} color="#fff" />
               </View>
-              <Text style={st.quickLabel}>WhatsApp</Text>
+              <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular" }}>WhatsApp</Text>
             </Pressable>
 
             <Pressable
               onPress={handleSaveToPhotos}
               disabled={capturing}
-              style={({ pressed }) => [st.quickBtn, { opacity: pressed ? 0.7 : 1 }]}
+              style={({ pressed }) => [{ alignItems: "center", gap: 7 }, { opacity: pressed ? 0.7 : 1 }]}
             >
-              <View style={[st.quickIcon, { backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border }]}>
-                <Ionicons name="download-outline" size={22} color={Colors.text} />
+              <View style={{ width: 56, height: 56, borderRadius: 17, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="download-outline" size={22} color={C.text} />
               </View>
-              <Text style={st.quickLabel}>Save</Text>
+              <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular" }}>Save</Text>
             </Pressable>
           </View>
         </Animated.View>
 
         {filtered.length === 0 && (
-          <Text style={st.noFlights}>No flights logged for {periodLabel}.</Text>
+          <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_400Regular", textAlign: "center" }}>No flights logged for {periodLabel}.</Text>
         )}
       </ScrollView>
     </View>
   );
 }
-
-const st = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-
-  navBar: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 20, paddingBottom: 10,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  navBack: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  navCenter: { flex: 1, alignItems: "center", gap: 1 },
-  navSub: { fontSize: 10, color: Colors.textSec, fontFamily: "DMSans_400Regular", letterSpacing: 0.5, textTransform: "uppercase" },
-  navTitle: { fontSize: 16, color: Colors.text, fontFamily: "DMSans_700Bold" },
-  navShareBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-
-  scroll: { paddingHorizontal: SCREEN_PAD, alignItems: "center", gap: 20, paddingTop: 16 },
-
-  periodRow: { flexDirection: "row", gap: 8, flexWrap: "wrap", justifyContent: "center" },
-  pill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border },
-  pillActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  pillText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_500Medium" },
-  pillTextActive: { color: Colors.white },
-
-  cardOuter: { alignItems: "center", width: "100%" },
-  cardShot: {
-    borderRadius: 24, overflow: "hidden",
-    shadowColor: "#4F8EF0", shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.30, shadowRadius: 32, elevation: 18,
-  },
-
-  hintRow: { flexDirection: "row", gap: 7, alignItems: "center" },
-  hintText: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", lineHeight: 17 },
-
-  actions: { width: "100%", gap: 16 },
-  shareBtn: {
-    backgroundColor: Colors.accent, borderRadius: 16, paddingVertical: 18,
-    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10,
-  },
-  shareBtnText: { fontSize: 17, color: Colors.white, fontFamily: "DMSans_700Bold" },
-
-  quickRow: { flexDirection: "row", justifyContent: "center", gap: 28 },
-  quickBtn: { alignItems: "center", gap: 7 },
-  quickIcon: { width: 56, height: 56, borderRadius: 17, alignItems: "center", justifyContent: "center" },
-  quickLabel: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
-
-  noFlights: { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular", textAlign: "center" },
-});
