@@ -809,9 +809,15 @@ async function lookupFromAeroDataBox(
     console.log("[AeroDataBox] departure shape:", JSON.stringify(data[0]?.departure ?? null));
     console.log("[AeroDataBox] arrival shape:", JSON.stringify(data[0]?.arrival ?? null));
 
+    // Prefer the operating entry (IsOperating = the actual operator, e.g. EJU)
+    // over the marketed codeshare entry (IsOperatedAs = the marketing carrier, e.g. U2).
+    // Fall back to IsOperatedAs if no IsOperating entry exists, then data[0].
     const flight =
-      data.find((f) => f.codeshareStatus === "IsOperatedAs" || f.codeshareStatus === "IsOperating") ??
+      data.find((f) => f.codeshareStatus === "IsOperating") ??
+      data.find((f) => f.codeshareStatus === "IsOperatedAs") ??
       data[0];
+
+    console.log(`[AeroDataBox] Selected entry: codeshareStatus=${flight.codeshareStatus ?? "(none)"} airline=${flight.airline?.iata ?? "?"}`);
 
     const depIata = resolveIata(flight.departure, hintDep);
     const arrIata = resolveIata(flight.arrival, hintArr);
