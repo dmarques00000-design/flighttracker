@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -15,13 +15,27 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
+import * as Notifications from "expo-notifications";
 import ViewShot from "react-native-view-shot";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { useColors } from "@/constants/colors";
 import { useFlights } from "@/context/flights";
+import { useUser } from "@/context/user";
 import { getAirlineInfo } from "@/utils/airlineLogos";
 import FlightShareCard from "@/components/FlightShareCard";
 import { computeActualBlockMinutes } from "@/utils/airportTimezones";
+import {
+  REMINDER_OFFSETS,
+  ReminderOffset,
+  OFFSET_LABELS,
+  notifId,
+  scheduleFlightReminder,
+  cancelFlightReminder,
+  requestNotificationPermission,
+} from "@/utils/notifications";
+
+// Re-export the labels so the import resolves (defined in notifications.ts)
+declare const OFFSET_LABELS: Record<ReminderOffset, string>;
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
@@ -40,6 +54,12 @@ function formatHours(minutes: number): string {
   if (m === 0) return `${h}h`;
   return `${h}h ${m}m`;
 }
+
+const OFFSET_LABEL_MAP: Record<ReminderOffset, string> = {
+  24: "24h before",
+  6:  "6h before",
+  3:  "3h before",
+};
 
 function InfoRow({ label, value, accent }: { label: string; value: string; accent?: string }) {
   const C = useColors();
@@ -139,17 +159,44 @@ function FlightNotFound({ topPad }: { topPad: number }) {
   );
 }
 
+/** Tracks which notification IDs are currently scheduled for a given flight. */
+function useScheduledReminders(flightId: string) {
+  const [scheduled, setScheduled] = useState<Set<ReminderOffset>>(new Set());
+
+  async function refresh() {
+    if (Platform.OS === "web") return;
+    const all = await Notifications.getAllScheduledNotificationsAsync();
+    const ids = new Set(all.map((n) => n.identifier));
+    const active = new Set<ReminderOffset>();
+    for (const offset of REMINDER_OFFSETS) {
+      if (ids.has(notifId(flightId, offset))) active.add(offset);
+    }
+    setScheduled(active);
+  }
+
+  useEffect(() => { refresh(); }, [flightId]);
+
+  return { scheduled, refresh };
+}
+
 export default function FlightDetailScreen() {
   const C = useColors();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { flights } = useFlights();
+  const { notifPrefs } = useUser();
   const insets = useSafeAreaInsets();
   const flight = flights.find((f) => f.id === id);
   const shareRef = useRef<ViewShot>(null);
   const [sharing, setSharing] = useState(false);
+  const [togglingOffset, setTogglingOffset] = useState<ReminderOffset | null>(null);
 
   const topPad    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 20;
+
+  const TODAY = new Date().toISOString().substring(0, 10);
+  const isUpcoming = !!flight && flight.date >= TODAY;
+
+  const { scheduled, refresh: refreshReminders } = useScheduledReminders(flight?.id ?? "");
 
   if (!flight) return <FlightNotFound topPad={topPad} />;
 
@@ -181,8 +228,34 @@ export default function FlightDetailScreen() {
     }
   }
 
-  const TODAY      = new Date().toISOString().substring(0, 10);
-  const isUpcoming = flight.date >= TODAY;
+  async function handleReminderToggle(offset: ReminderOffset, currentlyOn: boolean) {
+    Haptics.selectionAsync();
+    setTogglingOffset(offset);
+    try {
+      if (currentlyOn) {
+        await cancelFlightReminder(flight.id, offset);
+      } else {
+        const granted = await requestNotificationPermission();
+        if (!granted) {
+          Alert.alert(
+            "Permission Required",
+            "Please enable notifications for Logbook in your device Settings.",
+          );
+          return;
+        }
+        const scheduled = await scheduleFlightReminder(flight, offset);
+        if (!scheduled) {
+          Alert.alert("Too late", "This reminder time has already passed.");
+          return;
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      await refreshReminders();
+    } finally {
+      setTogglingOffset(null);
+    }
+  }
+
   const isDelayed  = flight.status === "delayed";
   const co2Trees   = (flight.co2Kg / 21).toFixed(1);
   const avgSpeedMph = flight.durationMinutes > 0
@@ -190,7 +263,6 @@ export default function FlightDetailScreen() {
     : 0;
 
   const scheduledDuration = formatHours(flight.durationMinutes);
-
   const actualBlockMins = computeActualBlockMinutes(
     flight.departureTime,
     flight.arrivalTime,
@@ -317,26 +389,17 @@ export default function FlightDetailScreen() {
                 </Text>
               ) : null}
             </View>
-
-            {/* Duration block */}
             <View style={{ flex: 1, alignItems: "center", paddingTop: 2 }}>
               {actualDuration !== null ? (
                 <>
-                  <Text style={{ fontSize: 12, color: C.text, fontFamily: "DMSans_600SemiBold", marginBottom: 1 }}>
-                    {actualDuration}
-                  </Text>
-                  <Text style={{ fontSize: 10, color: C.textMuted, fontFamily: "DMSans_400Regular", marginBottom: 1 }}>
-                    {scheduledDuration} scheduled
-                  </Text>
+                  <Text style={{ fontSize: 12, color: C.text, fontFamily: "DMSans_600SemiBold", marginBottom: 1 }}>{actualDuration}</Text>
+                  <Text style={{ fontSize: 10, color: C.textMuted, fontFamily: "DMSans_400Regular", marginBottom: 1 }}>{scheduledDuration} scheduled</Text>
                 </>
               ) : (
-                <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginBottom: 2 }}>
-                  {scheduledDuration}
-                </Text>
+                <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginBottom: 2 }}>{scheduledDuration}</Text>
               )}
               <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>{formatDateShort(flight.date)}</Text>
             </View>
-
             <View style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
               <Text style={{ fontSize: 22, color: C.text, fontFamily: "DMSans_700Bold" }}>{flight.arrivalTime}</Text>
               <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2, letterSpacing: 0.3 }}>local time</Text>
@@ -395,8 +458,75 @@ export default function FlightDetailScreen() {
           </View>
         </Animated.View>
 
+        {/* ─── REMINDERS (upcoming flights only) ─── */}
+        {isUpcoming && Platform.OS !== "web" && (
+          <Animated.View entering={FadeInDown.delay(120).springify()} style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Reminders</Text>
+            <View style={{ backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, overflow: "hidden" }}>
+              {REMINDER_OFFSETS.map((offset, i) => {
+                const isOn      = scheduled.has(offset);
+                const isDefault = notifPrefs.enabled && notifPrefs.offsets.includes(offset);
+                const isLast    = i === REMINDER_OFFSETS.length - 1;
+                const toggling  = togglingOffset === offset;
+                return (
+                  <Pressable
+                    key={offset}
+                    onPress={() => !toggling && handleReminderToggle(offset, isOn)}
+                    style={({ pressed }) => [{
+                      flexDirection: "row", alignItems: "center",
+                      paddingHorizontal: 16, paddingVertical: 14,
+                      gap: 12,
+                      backgroundColor: pressed ? C.surface : C.card,
+                    },
+                    !isLast && { borderBottomWidth: 1, borderBottomColor: C.border },
+                    ]}
+                  >
+                    <View style={{
+                      width: 34, height: 34, borderRadius: 9,
+                      backgroundColor: isOn ? C.accentDim : C.surface,
+                      alignItems: "center", justifyContent: "center",
+                    }}>
+                      {toggling
+                        ? <ActivityIndicator size="small" color={C.accent} />
+                        : <Ionicons name={isOn ? "notifications" : "notifications-outline"} size={18} color={isOn ? C.accent : C.textMuted} />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, color: C.text, fontFamily: isOn ? "DMSans_600SemiBold" : "DMSans_400Regular" }}>
+                        {OFFSET_LABEL_MAP[offset]}
+                      </Text>
+                      {isDefault && !isOn && (
+                        <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 1 }}>
+                          Default — not yet scheduled
+                        </Text>
+                      )}
+                    </View>
+                    <View style={[{
+                      paddingHorizontal: 10, paddingVertical: 4,
+                      borderRadius: 20, borderWidth: 1,
+                    },
+                    isOn
+                      ? { backgroundColor: C.accentDim, borderColor: C.accent + "55" }
+                      : { backgroundColor: C.surface,   borderColor: C.border },
+                    ]}>
+                      <Text style={{
+                        fontSize: 11, fontFamily: "DMSans_600SemiBold",
+                        color: isOn ? C.accent : C.textMuted,
+                      }}>
+                        {isOn ? "On" : "Off"}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 8, lineHeight: 16, paddingHorizontal: 2 }}>
+              Reminders are local to this device. Manage default settings in your Profile.
+            </Text>
+          </Animated.View>
+        )}
+
         {/* ─── FLIGHT INFO ─── */}
-        <Animated.View entering={FadeInDown.delay(160).springify()} style={{ marginBottom: 16 }}>
+        <Animated.View entering={FadeInDown.delay(isUpcoming ? 160 : 120).springify()} style={{ marginBottom: 16 }}>
           <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Flight Info</Text>
           <View style={{ backgroundColor: C.card, borderRadius: 16, paddingHorizontal: 16, borderWidth: 1, borderColor: C.border }}>
             <InfoRow label="Airline" value={flight.airline} />
@@ -426,7 +556,7 @@ export default function FlightDetailScreen() {
         </Animated.View>
 
         {/* ─── ENV IMPACT ─── */}
-        <Animated.View entering={FadeInDown.delay(220).springify()} style={{ marginBottom: 16 }}>
+        <Animated.View entering={FadeInDown.delay(isUpcoming ? 200 : 160).springify()} style={{ marginBottom: 16 }}>
           <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Environmental Impact</Text>
           <View style={{ backgroundColor: C.card, borderRadius: 16, paddingHorizontal: 16, borderWidth: 1, borderColor: C.border }}>
             <InfoRow label="CO₂ Emitted" value={`${flight.co2Kg} kg`} accent={C.green} />
@@ -435,7 +565,7 @@ export default function FlightDetailScreen() {
         </Animated.View>
 
         {/* ─── SHARE ─── */}
-        <Animated.View entering={FadeInDown.delay(280).springify()} style={{ marginBottom: 8 }}>
+        <Animated.View entering={FadeInDown.delay(isUpcoming ? 240 : 200).springify()} style={{ marginBottom: 8 }}>
           <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Share This Flight</Text>
           <Pressable
             onPress={handleShare}

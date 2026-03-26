@@ -8,6 +8,7 @@ import {
   Pressable,
   Platform,
   Alert,
+  Switch,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,6 +20,12 @@ import { useUser, UserProfile } from "@/context/user";
 import { useFlights } from "@/context/flights";
 import { useTheme, ThemeMode } from "@/context/theme";
 import { FeedbackModal } from "@/components/FeedbackModal";
+import {
+  REMINDER_OFFSETS,
+  ReminderOffset,
+  requestNotificationPermission,
+  syncGlobalReminders,
+} from "@/utils/notifications";
 
 const SEAT_OPTIONS: { value: UserProfile["seatPreference"]; label: string; icon: string }[] = [
   { value: "window", label: "Window", icon: "partly-sunny-outline" },
@@ -31,6 +38,12 @@ const THEME_OPTIONS: { value: ThemeMode; label: string; icon: string }[] = [
   { value: "system", label: "Auto",  icon: "phone-portrait-outline" },
   { value: "dark",   label: "Dark",  icon: "moon-outline" },
 ];
+
+const OFFSET_LABELS: Record<ReminderOffset, string> = {
+  24: "24h before",
+  6:  "6h before",
+  3:  "3h before",
+};
 
 function getInitials(name: string): string {
   if (!name.trim()) return "?";
@@ -120,7 +133,7 @@ function NotLoggedInState({ C }: { C: ReturnType<typeof useColors> }) {
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const C = useColors();
-  const { profile, isLoggedIn, updateProfile, clearProfile, logout } = useUser();
+  const { profile, isLoggedIn, notifPrefs, updateProfile, updateNotifPrefs, clearProfile, logout } = useUser();
   const { flights } = useFlights();
   const { mode, setMode } = useTheme();
   const [editing, setEditing] = useState(false);
@@ -130,8 +143,8 @@ export default function ProfileScreen() {
   const topPadding    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
-  const totalFlights    = flights.length;
   const TODAY           = new Date().toISOString().substring(0, 10);
+  const totalFlights    = flights.length;
   const upcomingFlights = flights.filter((f) => f.date >= TODAY).length;
   const uniqueAirports  = new Set(flights.flatMap((f) => [f.departureAirport, f.arrivalAirport])).size;
 
@@ -141,6 +154,37 @@ export default function ProfileScreen() {
     await updateProfile({ ...draft, avatarInitials: getInitials(draft.name) });
     setEditing(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+
+  // Toggle global notification master switch
+  async function handleNotifToggle(value: boolean) {
+    Haptics.selectionAsync();
+    if (value) {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        Alert.alert(
+          "Permission Required",
+          "Please enable notifications for Logbook in your device Settings to receive flight reminders.",
+        );
+        return;
+      }
+    }
+    const updated = { ...notifPrefs, enabled: value };
+    await updateNotifPrefs(updated);
+    await syncGlobalReminders(flights, updated, TODAY);
+  }
+
+  // Toggle a specific offset
+  async function handleOffsetToggle(offset: ReminderOffset, value: boolean) {
+    Haptics.selectionAsync();
+    const newOffsets = value
+      ? [...notifPrefs.offsets, offset]
+      : notifPrefs.offsets.filter((o) => o !== offset);
+    const updated = { ...notifPrefs, offsets: newOffsets as ReminderOffset[] };
+    await updateNotifPrefs(updated);
+    if (notifPrefs.enabled) {
+      await syncGlobalReminders(flights, updated, TODAY);
+    }
   }
 
   function confirmLogout() {
@@ -232,8 +276,88 @@ export default function ProfileScreen() {
               </SectionCard>
             </Animated.View>
 
+            {/* ─── NOTIFICATIONS ─── */}
+            {!editing && (
+              <Animated.View entering={FadeInDown.delay(95).springify()}>
+                <SectionCard title="Flight Reminders" icon="notifications-outline" C={C}>
+                  {/* Master toggle */}
+                  <View style={[S.field, { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 0 }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, color: C.text, fontFamily: "DMSans_600SemiBold" }}>Enable reminders</Text>
+                      <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2, lineHeight: 17 }}>
+                        Get notified before all upcoming flights
+                      </Text>
+                    </View>
+                    <Switch
+                      value={notifPrefs.enabled}
+                      onValueChange={handleNotifToggle}
+                      trackColor={{ false: C.border, true: C.accent }}
+                      thumbColor={C.white}
+                    />
+                  </View>
+
+                  {/* Offset toggles — only shown when enabled */}
+                  {notifPrefs.enabled && (
+                    <Animated.View entering={FadeIn.duration(200)} style={{ marginTop: 16, gap: 2 }}>
+                      <Text style={[S.fieldLabel, { marginBottom: 8 }]}>Remind me</Text>
+                      {REMINDER_OFFSETS.map((offset) => {
+                        const isOn = notifPrefs.offsets.includes(offset);
+                        return (
+                          <View
+                            key={offset}
+                            style={[
+                              {
+                                flexDirection: "row", alignItems: "center",
+                                justifyContent: "space-between",
+                                paddingVertical: 11, paddingHorizontal: 14,
+                                borderRadius: 12, marginBottom: 6,
+                                borderWidth: 1,
+                              },
+                              isOn
+                                ? { backgroundColor: C.accentDim, borderColor: C.accent + "55" }
+                                : { backgroundColor: C.surface, borderColor: C.border },
+                            ]}
+                          >
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                              <View style={{
+                                width: 32, height: 32, borderRadius: 8,
+                                backgroundColor: isOn ? C.accent + "22" : C.card,
+                                alignItems: "center", justifyContent: "center",
+                              }}>
+                                <Ionicons
+                                  name="alarm-outline"
+                                  size={16}
+                                  color={isOn ? C.accent : C.textMuted}
+                                />
+                              </View>
+                              <Text style={{
+                                fontSize: 14,
+                                fontFamily: isOn ? "DMSans_600SemiBold" : "DMSans_400Regular",
+                                color: isOn ? C.text : C.textSec,
+                              }}>
+                                {OFFSET_LABELS[offset]}
+                              </Text>
+                            </View>
+                            <Switch
+                              value={isOn}
+                              onValueChange={(v) => handleOffsetToggle(offset, v)}
+                              trackColor={{ false: C.border, true: C.accent }}
+                              thumbColor={C.white}
+                            />
+                          </View>
+                        );
+                      })}
+                      <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 4, lineHeight: 16 }}>
+                        These defaults apply to all upcoming flights. You can also set reminders for individual flights from their detail page.
+                      </Text>
+                    </Animated.View>
+                  )}
+                </SectionCard>
+              </Animated.View>
+            )}
+
             {/* Personal Info */}
-            <Animated.View entering={FadeInDown.delay(90).springify()}>
+            <Animated.View entering={FadeInDown.delay(100).springify()}>
               <SectionCard title="Personal Info" icon="person-outline" C={C}>
                 <Field label="Email"        value={editing ? draft.email        : profile.email}        onChangeText={(v) => setDraft((d) => ({ ...d, email: v }))}        placeholder="your@email.com"   keyboardType="email-address" editing={editing} icon="mail-outline"  C={C} />
                 <Field label="Nationality"  value={editing ? draft.nationality  : profile.nationality}  onChangeText={(v) => setDraft((d) => ({ ...d, nationality: v }))}  placeholder="e.g. Portuguese"  editing={editing} icon="flag-outline"  C={C} />
@@ -318,7 +442,6 @@ export default function ProfileScreen() {
         )}
       </ScrollView>
 
-      {/* Feedback modal */}
       <FeedbackModal
         visible={feedbackVisible}
         onClose={() => setFeedbackVisible(false)}
@@ -376,16 +499,16 @@ const styles = (C: ReturnType<typeof useColors>) => StyleSheet.create({
   fieldValueEmpty: { color: C.textMuted, fontStyle: "italic" },
   fieldInput:      { fontSize: 15, color: C.text,    fontFamily: "DMSans_400Regular", borderBottomWidth: 1.5, borderBottomColor: C.accent, paddingVertical: 4, paddingHorizontal: 2 },
 
-  themeRow:         { flexDirection: "row", gap: 8 },
-  themeBtn:         { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10, backgroundColor: C.surface, borderWidth: 1, borderColor: C.border },
-  themeBtnActive:   { backgroundColor: C.accent, borderColor: C.accent },
-  themeBtnText:     { fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium" },
+  themeRow:           { flexDirection: "row", gap: 8 },
+  themeBtn:           { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10, backgroundColor: C.surface, borderWidth: 1, borderColor: C.border },
+  themeBtnActive:     { backgroundColor: C.accent, borderColor: C.accent },
+  themeBtnText:       { fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium" },
   themeBtnTextActive: { color: C.white, fontFamily: "DMSans_700Bold" },
 
-  seatRow:         { flexDirection: "row", gap: 8 },
-  seatBtn:         { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 9, borderRadius: 10, backgroundColor: C.surface, borderWidth: 1, borderColor: C.border },
-  seatBtnActive:   { backgroundColor: C.accent, borderColor: C.accent },
-  seatBtnText:     { fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium" },
+  seatRow:           { flexDirection: "row", gap: 8 },
+  seatBtn:           { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: 9, borderRadius: 10, backgroundColor: C.surface, borderWidth: 1, borderColor: C.border },
+  seatBtnActive:     { backgroundColor: C.accent, borderColor: C.accent },
+  seatBtnText:       { fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium" },
   seatBtnTextActive: { color: C.white, fontFamily: "DMSans_700Bold" },
 
   dangerSection: { marginTop: 8, marginBottom: 8 },
