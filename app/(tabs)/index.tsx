@@ -122,73 +122,25 @@ function useFilteredStats(flights: Flight[], period: "all" | number): FilteredSt
     const airportSet = new Set<string>();
     for (const f of filtered) { airportSet.add(f.departureAirport); airportSet.add(f.arrivalAirport); }
     const countrySet = new Set<string>();
-    for (const code of airportSet) {
-      const info = getAirportInfo(code);
-      if (info) countrySet.add(info.countryCode);
-    }
-    const longestFlight = filtered.length > 0
-      ? filtered.reduce((best, f) => f.distanceMiles > best.distanceMiles ? f : best)
-      : null;
+    for (const code of airportSet) { const info = getAirportInfo(code); if (info) countrySet.add(info.countryCode); }
+    const longestFlight = filtered.length > 0 ? filtered.reduce((best, f) => f.distanceMiles > best.distanceMiles ? f : best) : null;
     const airlineCount = new Map<string, number>();
     for (const f of filtered) { airlineCount.set(f.airline, (airlineCount.get(f.airline) ?? 0) + 1); }
     let topAirline: { name: string; count: number } | null = null;
-    for (const [name, c] of airlineCount) {
-      if (!topAirline || c > topAirline.count) topAirline = { name, count: c };
-    }
+    for (const [name, c] of airlineCount) { if (!topAirline || c > topAirline.count) topAirline = { name, count: c }; }
     return { count, miles, co2, flightMin, delayMin, uniqueAirports: airportSet.size, uniqueCountries: countrySet.size, avgFlightMin: count >= 2 ? Math.round(flightMin / count) : null, longestFlight, topAirline };
   }, [flights, period]);
 }
 
-// Two-column stat card — always exactly half the row width
 function StatCard({ label, value, icon, accent }: { label: string; value: string; icon: string; accent: string }) {
   const C = useColors();
   return (
-    <View style={{
-      width: "48%",
-      backgroundColor: C.card, borderRadius: 16,
-      padding: 16, borderWidth: 1, borderColor: C.border,
-    }}>
+    <View style={{ width: "48%", backgroundColor: C.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: C.border }}>
       <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: accent + "1A", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
         <Ionicons name={icon as never} size={18} color={accent} />
       </View>
       <Text style={{ fontSize: 22, color: C.text, fontFamily: "DMSans_700Bold" }} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
-      <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 }} numberOfLines={1}>{label}</Text>
-    </View>
-  );
-}
-
-// Full-width highlight card for longest flight / top airline
-function HighlightCard({
-  icon, accent, title, subtitle, badge,
-}: { icon: string; accent: string; title: string; subtitle: string; badge?: string }) {
-  const C = useColors();
-  return (
-    <View style={{
-      flex: 1,
-      backgroundColor: C.card, borderRadius: 16,
-      borderWidth: 1, borderColor: C.border,
-      padding: 14, flexDirection: "row", alignItems: "center", gap: 10,
-    }}>
-      <View style={{
-        width: 36, height: 36, borderRadius: 10,
-        backgroundColor: accent + "1A",
-        alignItems: "center", justifyContent: "center", flexShrink: 0,
-      }}>
-        <Ionicons name={icon as never} size={18} color={accent} />
-      </View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontSize: 13, color: C.text, fontFamily: "DMSans_700Bold" }} numberOfLines={1} ellipsizeMode="tail">{title}</Text>
-        <Text style={{ fontSize: 11, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 }} numberOfLines={1}>{subtitle}</Text>
-      </View>
-      {badge ? (
-        <View style={{
-          paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10,
-          backgroundColor: accent + "18", borderWidth: 1, borderColor: accent + "40",
-          flexShrink: 0,
-        }}>
-          <Text style={{ fontSize: 11, color: accent, fontFamily: "DMSans_700Bold" }}>{badge}</Text>
-        </View>
-      ) : null}
+      <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 }}>{label}</Text>
     </View>
   );
 }
@@ -447,60 +399,17 @@ export default function HomeScreen() {
               <GlobeView flights={flights} />
             </Animated.View>
 
-            {/* ─── Statistics grid ─── */}
-            <Animated.View entering={FadeInDown.delay(140).springify()}>
+            {/* ─── Statistics: 4 original cards in a clean 2×2 grid ─── */}
+            <Animated.View entering={FadeInDown.delay(140).springify()} style={{ marginBottom: 24 }}>
               <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Statistics</Text>
-
-              {/* Row 1: Miles · CO₂ */}
               <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 10 }}>
                 <StatCard label="Miles Flown"       value={formatNumber(stats.miles)}    icon="globe-outline"  accent={C.accent} />
                 <StatCard label={"CO\u2082 Emitted"} value={`${formatNumber(stats.co2)}kg`} icon="leaf-outline" accent={C.green} />
               </View>
-
-              {/* Row 2: Time in Air · Delay */}
-              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 10 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                 <StatCard label="Time in Air" value={formatHours(stats.flightMin)}                                icon="time-outline"      accent={C.amber} />
                 <StatCard label="Delay Time"  value={stats.delayMin > 0 ? formatHours(stats.delayMin) : "\u2014"} icon="hourglass-outline" accent={C.red} />
               </View>
-
-              {/* Row 3: Airports · Countries */}
-              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 10 }}>
-                <StatCard label="Airports Visited"  value={String(stats.uniqueAirports)}  icon="location-outline" accent={C.accent} />
-                <StatCard label="Countries Visited" value={String(stats.uniqueCountries)} icon="earth-outline"    accent="#F59E0B" />
-              </View>
-
-              {/* Row 4: Avg Duration (full width if present) */}
-              {stats.avgFlightMin !== null && (
-                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 10 }}>
-                  <StatCard label="Avg Duration" value={formatHours(stats.avgFlightMin)} icon="timer-outline" accent={C.textSec} />
-                  {/* spacer to keep card left-aligned */}
-                  <View style={{ width: "48%" }} />
-                </View>
-              )}
-
-              {/* Row 5: Longest flight · Most-flown airline */}
-              {(stats.longestFlight || (stats.topAirline && stats.count > 1)) && (
-                <View style={{ flexDirection: "row", gap: 10, marginBottom: 24 }}>
-                  {stats.longestFlight && (
-                    <HighlightCard
-                      icon="airplane-outline"
-                      accent={C.accent}
-                      title={`${stats.longestFlight.departureAirport} \u2192 ${stats.longestFlight.arrivalAirport}`}
-                      subtitle="Longest flight"
-                      badge={`${formatNumber(stats.longestFlight.distanceMiles)} mi`}
-                    />
-                  )}
-                  {stats.topAirline && stats.count > 1 && (
-                    <HighlightCard
-                      icon="briefcase-outline"
-                      accent="#8B5CF6"
-                      title={stats.topAirline.name}
-                      subtitle="Most-flown airline"
-                      badge={`${stats.topAirline.count}\u00d7`}
-                    />
-                  )}
-                </View>
-              )}
             </Animated.View>
 
             {upcomingFlights.length > 0 && (

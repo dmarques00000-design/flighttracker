@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import { useUser, UserProfile } from "@/context/user";
 import { useFlights } from "@/context/flights";
 import { useTheme, ThemeMode } from "@/context/theme";
 import { FeedbackModal } from "@/components/FeedbackModal";
+import { getAirportInfo } from "@/utils/passport";
 import {
   REMINDER_OFFSETS,
   ReminderOffset,
@@ -44,6 +45,16 @@ const OFFSET_LABELS: Record<ReminderOffset, string> = {
   6:  "6h before",
   3:  "3h before",
 };
+
+function formatHours(minutes: number): string {
+  const h = Math.floor(minutes / 60); const m = minutes % 60;
+  if (h === 0) return `${m}m`; if (m === 0) return `${h}h`; return `${h}h ${m}m`;
+}
+function formatNumber(n: number): string {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000)    return `${(n / 1000).toFixed(1)}K`;
+  return String(n);
+}
 
 function getInitials(name: string): string {
   if (!name.trim()) return "?";
@@ -106,6 +117,41 @@ function Field({
   );
 }
 
+// A single row item for the flight highlights section
+function HighlightRow({ icon, accent, title, subtitle, badge, C }: {
+  icon: string; accent: string; title: string; subtitle: string; badge?: string;
+  C: ReturnType<typeof useColors>;
+}) {
+  return (
+    <View style={{
+      flexDirection: "row", alignItems: "center", gap: 12,
+      paddingVertical: 10,
+      borderBottomWidth: 0,
+    }}>
+      <View style={{
+        width: 34, height: 34, borderRadius: 10,
+        backgroundColor: accent + "1A",
+        alignItems: "center", justifyContent: "center", flexShrink: 0,
+      }}>
+        <Ionicons name={icon as any} size={17} color={accent} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ fontSize: 14, color: C.text, fontFamily: "DMSans_700Bold" }} numberOfLines={1}>{title}</Text>
+        <Text style={{ fontSize: 11, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 1 }}>{subtitle}</Text>
+      </View>
+      {badge ? (
+        <View style={{
+          paddingHorizontal: 9, paddingVertical: 4, borderRadius: 10,
+          backgroundColor: accent + "18", borderWidth: 1, borderColor: accent + "40",
+          flexShrink: 0,
+        }}>
+          <Text style={{ fontSize: 12, color: accent, fontFamily: "DMSans_700Bold" }}>{badge}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function NotLoggedInState({ C }: { C: ReturnType<typeof useColors> }) {
   return (
     <Animated.View entering={FadeIn.delay(80)} style={styles(C).notLoggedIn}>
@@ -124,7 +170,7 @@ function NotLoggedInState({ C }: { C: ReturnType<typeof useColors> }) {
         <Text style={styles(C).notLoggedInBtnText}>Create Account / Log In</Text>
       </Pressable>
       <Pressable onPress={() => router.push("/auth")} style={{ marginTop: 14 }} hitSlop={10}>
-        <Text style={styles(C).notLoggedInLink}>Already have an account? Sign in →</Text>
+        <Text style={styles(C).notLoggedInLink}>Already have an account? Sign in \u2192</Text>
       </Pressable>
     </Animated.View>
   );
@@ -148,6 +194,22 @@ export default function ProfileScreen() {
   const upcomingFlights = flights.filter((f) => f.date >= TODAY).length;
   const uniqueAirports  = new Set(flights.flatMap((f) => [f.departureAirport, f.arrivalAirport])).size;
 
+  // All-time flight highlights for the profile stats section
+  const flightStats = useMemo(() => {
+    const totalMiles   = flights.reduce((s, f) => s + f.distanceMiles, 0);
+    const totalMin     = flights.reduce((s, f) => s + f.durationMinutes, 0);
+    const airportSet   = new Set(flights.flatMap((f) => [f.departureAirport, f.arrivalAirport]));
+    const countrySet   = new Set<string>();
+    for (const code of airportSet) { const info = getAirportInfo(code); if (info) countrySet.add(info.countryCode); }
+    const longest      = flights.length > 0 ? flights.reduce((best, f) => f.distanceMiles > best.distanceMiles ? f : best) : null;
+    const airlineCount = new Map<string, number>();
+    for (const f of flights) { airlineCount.set(f.airline, (airlineCount.get(f.airline) ?? 0) + 1); }
+    let topAirline: { name: string; count: number } | null = null;
+    for (const [name, c] of airlineCount) { if (!topAirline || c > topAirline.count) topAirline = { name, count: c }; }
+    const avgMin = flights.length >= 2 ? Math.round(totalMin / flights.length) : null;
+    return { totalMiles, totalMin, uniqueCountries: countrySet.size, longest, topAirline, avgMin };
+  }, [flights]);
+
   function startEdit() { setDraft({ ...profile }); setEditing(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }
   function cancelEdit() { setEditing(false); setDraft(profile); Haptics.selectionAsync(); }
   async function saveEdit() {
@@ -156,16 +218,12 @@ export default function ProfileScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
-  // Toggle global notification master switch
   async function handleNotifToggle(value: boolean) {
     Haptics.selectionAsync();
     if (value) {
       const granted = await requestNotificationPermission();
       if (!granted) {
-        Alert.alert(
-          "Permission Required",
-          "Please enable notifications for Logbook in your device Settings to receive flight reminders.",
-        );
+        Alert.alert("Permission Required", "Please enable notifications for Logbook in your device Settings to receive flight reminders.");
         return;
       }
     }
@@ -174,17 +232,12 @@ export default function ProfileScreen() {
     await syncGlobalReminders(flights, updated, TODAY);
   }
 
-  // Toggle a specific offset
   async function handleOffsetToggle(offset: ReminderOffset, value: boolean) {
     Haptics.selectionAsync();
-    const newOffsets = value
-      ? [...notifPrefs.offsets, offset]
-      : notifPrefs.offsets.filter((o) => o !== offset);
+    const newOffsets = value ? [...notifPrefs.offsets, offset] : notifPrefs.offsets.filter((o) => o !== offset);
     const updated = { ...notifPrefs, offsets: newOffsets as ReminderOffset[] };
     await updateNotifPrefs(updated);
-    if (notifPrefs.enabled) {
-      await syncGlobalReminders(flights, updated, TODAY);
-    }
+    if (notifPrefs.enabled) await syncGlobalReminders(flights, updated, TODAY);
   }
 
   function confirmLogout() {
@@ -246,7 +299,7 @@ export default function ProfileScreen() {
               </View>
             </Animated.View>
 
-            {/* Stats */}
+            {/* Stats row */}
             <Animated.View entering={FadeInDown.delay(60).springify()} style={S.statsRow}>
               <StatBox label="Flights"   value={totalFlights}    C={C} />
               <View style={S.statDivider} />
@@ -254,6 +307,58 @@ export default function ProfileScreen() {
               <View style={S.statDivider} />
               <StatBox label="Airports"  value={uniqueAirports}  C={C} />
             </Animated.View>
+
+            {/* ─── Flight Highlights (new cards moved from home) ─── */}
+            {flights.length > 0 && (
+              <Animated.View entering={FadeInDown.delay(70).springify()}>
+                <SectionCard title="Flight Highlights" icon="stats-chart-outline" C={C}>
+                  <HighlightRow
+                    icon="location-outline"
+                    accent={C.accent}
+                    title={String(uniqueAirports)}
+                    subtitle="Airports visited (all time)"
+                    badge={`${flightStats.uniqueCountries} countr${flightStats.uniqueCountries === 1 ? "y" : "ies"}`}
+                    C={C}
+                  />
+                  <View style={{ height: 1, backgroundColor: C.border, marginVertical: 2 }} />
+                  {flightStats.avgMin !== null && (
+                    <>
+                      <HighlightRow
+                        icon="timer-outline"
+                        accent={C.amber}
+                        title={formatHours(flightStats.avgMin)}
+                        subtitle="Average flight duration"
+                        C={C}
+                      />
+                      <View style={{ height: 1, backgroundColor: C.border, marginVertical: 2 }} />
+                    </>
+                  )}
+                  {flightStats.longest && (
+                    <>
+                      <HighlightRow
+                        icon="airplane-outline"
+                        accent={C.accent}
+                        title={`${flightStats.longest.departureAirport} \u2192 ${flightStats.longest.arrivalAirport}`}
+                        subtitle="Longest flight"
+                        badge={`${formatNumber(flightStats.longest.distanceMiles)} mi`}
+                        C={C}
+                      />
+                      <View style={{ height: 1, backgroundColor: C.border, marginVertical: 2 }} />
+                    </>
+                  )}
+                  {flightStats.topAirline && flights.length > 1 && (
+                    <HighlightRow
+                      icon="briefcase-outline"
+                      accent="#8B5CF6"
+                      title={flightStats.topAirline.name}
+                      subtitle="Most-flown airline"
+                      badge={`${flightStats.topAirline.count}\u00d7`}
+                      C={C}
+                    />
+                  )}
+                </SectionCard>
+              </Animated.View>
+            )}
 
             {/* Appearance */}
             <Animated.View entering={FadeInDown.delay(80).springify()}>
@@ -276,80 +381,35 @@ export default function ProfileScreen() {
               </SectionCard>
             </Animated.View>
 
-            {/* ─── NOTIFICATIONS ─── */}
+            {/* Notifications */}
             {!editing && (
               <Animated.View entering={FadeInDown.delay(95).springify()}>
                 <SectionCard title="Flight Reminders" icon="notifications-outline" C={C}>
-                  {/* Master toggle */}
                   <View style={[S.field, { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 0 }]}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 14, color: C.text, fontFamily: "DMSans_600SemiBold" }}>Enable reminders</Text>
-                      <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2, lineHeight: 17 }}>
-                        Get notified before all upcoming flights
-                      </Text>
+                      <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2, lineHeight: 17 }}>Get notified before all upcoming flights</Text>
                     </View>
-                    <Switch
-                      value={notifPrefs.enabled}
-                      onValueChange={handleNotifToggle}
-                      trackColor={{ false: C.border, true: C.accent }}
-                      thumbColor={C.white}
-                    />
+                    <Switch value={notifPrefs.enabled} onValueChange={handleNotifToggle} trackColor={{ false: C.border, true: C.accent }} thumbColor={C.white} />
                   </View>
-
-                  {/* Offset toggles — only shown when enabled */}
                   {notifPrefs.enabled && (
                     <Animated.View entering={FadeIn.duration(200)} style={{ marginTop: 16, gap: 2 }}>
                       <Text style={[S.fieldLabel, { marginBottom: 8 }]}>Remind me</Text>
                       {REMINDER_OFFSETS.map((offset) => {
                         const isOn = notifPrefs.offsets.includes(offset);
                         return (
-                          <View
-                            key={offset}
-                            style={[
-                              {
-                                flexDirection: "row", alignItems: "center",
-                                justifyContent: "space-between",
-                                paddingVertical: 11, paddingHorizontal: 14,
-                                borderRadius: 12, marginBottom: 6,
-                                borderWidth: 1,
-                              },
-                              isOn
-                                ? { backgroundColor: C.accentDim, borderColor: C.accent + "55" }
-                                : { backgroundColor: C.surface, borderColor: C.border },
-                            ]}
-                          >
+                          <View key={offset} style={[{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 11, paddingHorizontal: 14, borderRadius: 12, marginBottom: 6, borderWidth: 1 }, isOn ? { backgroundColor: C.accentDim, borderColor: C.accent + "55" } : { backgroundColor: C.surface, borderColor: C.border }]}>
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                              <View style={{
-                                width: 32, height: 32, borderRadius: 8,
-                                backgroundColor: isOn ? C.accent + "22" : C.card,
-                                alignItems: "center", justifyContent: "center",
-                              }}>
-                                <Ionicons
-                                  name="alarm-outline"
-                                  size={16}
-                                  color={isOn ? C.accent : C.textMuted}
-                                />
+                              <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: isOn ? C.accent + "22" : C.card, alignItems: "center", justifyContent: "center" }}>
+                                <Ionicons name="alarm-outline" size={16} color={isOn ? C.accent : C.textMuted} />
                               </View>
-                              <Text style={{
-                                fontSize: 14,
-                                fontFamily: isOn ? "DMSans_600SemiBold" : "DMSans_400Regular",
-                                color: isOn ? C.text : C.textSec,
-                              }}>
-                                {OFFSET_LABELS[offset]}
-                              </Text>
+                              <Text style={{ fontSize: 14, fontFamily: isOn ? "DMSans_600SemiBold" : "DMSans_400Regular", color: isOn ? C.text : C.textSec }}>{OFFSET_LABELS[offset]}</Text>
                             </View>
-                            <Switch
-                              value={isOn}
-                              onValueChange={(v) => handleOffsetToggle(offset, v)}
-                              trackColor={{ false: C.border, true: C.accent }}
-                              thumbColor={C.white}
-                            />
+                            <Switch value={isOn} onValueChange={(v) => handleOffsetToggle(offset, v)} trackColor={{ false: C.border, true: C.accent }} thumbColor={C.white} />
                           </View>
                         );
                       })}
-                      <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 4, lineHeight: 16 }}>
-                        These defaults apply to all upcoming flights. You can also set reminders for individual flights from their detail page.
-                      </Text>
+                      <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 4, lineHeight: 16 }}>These defaults apply to all upcoming flights. You can also set reminders for individual flights from their detail page.</Text>
                     </Animated.View>
                   )}
                 </SectionCard>
@@ -404,19 +464,12 @@ export default function ProfileScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 14, color: C.text, fontFamily: "DMSans_600SemiBold", marginBottom: 3 }}>Share your feedback</Text>
-                      <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_400Regular", lineHeight: 18 }}>
-                        Found a bug or have an idea? Let us know — your feedback shapes the next release.
-                      </Text>
+                      <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_400Regular", lineHeight: 18 }}>Found a bug or have an idea? Let us know \u2014 your feedback shapes the next release.</Text>
                     </View>
                   </View>
                   <Pressable
                     onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setFeedbackVisible(true); }}
-                    style={({ pressed }) => [{
-                      flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-                      backgroundColor: C.accent, borderRadius: 12,
-                      paddingVertical: 13, paddingHorizontal: 20,
-                      opacity: pressed ? 0.85 : 1,
-                    }]}
+                    style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: C.accent, borderRadius: 12, paddingVertical: 13, paddingHorizontal: 20, opacity: pressed ? 0.85 : 1 }]}
                   >
                     <Ionicons name="send-outline" size={15} color={C.white} />
                     <Text style={{ fontSize: 14, color: C.white, fontFamily: "DMSans_700Bold" }}>Send Feedback</Text>
