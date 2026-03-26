@@ -307,9 +307,7 @@ export default function AddFlightScreen() {
   const [arrIATA, setArrIATA]           = useState("");
   const [airportResults, setAirportResults] = useState<FlightLookupResult[]>([]);
 
-  // bottomPad fills the safe-area gap so C.surface extends all the way to the
-  // physical bottom edge — eliminates the black strip on the modal sheet.
-  const bottomPad = insets.bottom > 0 ? insets.bottom : (Platform.OS === "ios" ? 34 : 16);
+  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
   const topPad    = Platform.OS === "web" ? 67 : insets.top + 8;
 
   function switchMode(mode: SearchMode) {
@@ -405,164 +403,153 @@ export default function AddFlightScreen() {
   const activeSearch = searchMode === "code" ? handleCodeLookup : handleAirportSearch;
 
   return (
-    // The outer View fills the entire screen with C.surface so that when iOS
-    // presents this as a modal sheet, the area behind the rounded corners and
-    // below the home indicator never shows as black.
-    <View style={{ flex: 1, backgroundColor: C.surface }}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
-      >
-        <View style={[
-          { flex: 1, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
-          { paddingTop: topPad },
-        ]}>
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ padding: 24, paddingBottom: bottomPad + 24 }}
-          >
-            {/* Header */}
-            <Animated.View entering={FadeInDown.delay(0).springify()}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <Text style={{ fontSize: 24, color: C.text, fontFamily: "DMSans_700Bold" }}>Add Flight</Text>
-                <Pressable onPress={() => router.back()} hitSlop={12}>
-                  <Ionicons name="close" size={24} color={C.textSec} />
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: C.surface }}>
+      <View style={[{ flex: 1, backgroundColor: C.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20 }, { paddingTop: topPad }]}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ padding: 24, paddingBottom: bottomPad + 24 }}
+        >
+          {/* Header */}
+          <Animated.View entering={FadeInDown.delay(0).springify()}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <Text style={{ fontSize: 24, color: C.text, fontFamily: "DMSans_700Bold" }}>Add Flight</Text>
+              <Pressable onPress={() => router.back()} hitSlop={12}>
+                <Ionicons name="close" size={24} color={C.textSec} />
+              </Pressable>
+            </View>
+            <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_400Regular", marginBottom: 24, lineHeight: 20 }}>
+              Search by flight code or browse flights departing / arriving at an airport.
+            </Text>
+          </Animated.View>
+
+          {/* Mode toggle */}
+          <Animated.View entering={FadeInDown.delay(40).springify()} style={{ flexDirection: "row", backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 4, marginBottom: 24, gap: 4 }}>
+            {(["code", "airport"] as SearchMode[]).map((mode) => {
+              const active = searchMode === mode;
+              return (
+                <Pressable key={mode} onPress={() => switchMode(mode)}
+                  style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 11, backgroundColor: active ? C.accent : "transparent" }}>
+                  <Ionicons name={mode === "code" ? "barcode-outline" : "navigate-outline"} size={15} color={active ? C.white : C.textSec} />
+                  <Text style={{ fontSize: 13, fontFamily: "DMSans_600SemiBold", color: active ? C.white : C.textSec }}>
+                    {mode === "code" ? "Flight Code" : "By Airport"}
+                  </Text>
                 </Pressable>
-              </View>
-              <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_400Regular", marginBottom: 24, lineHeight: 20 }}>
-                Search by flight code or browse flights departing / arriving at an airport.
-              </Text>
+              );
+            })}
+          </Animated.View>
+
+          {/* Offline banner */}
+          {!isOnline && (
+            <Animated.View entering={FadeIn} style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.amber + "18", borderWidth: 1, borderColor: C.amber + "44", borderRadius: 12, padding: 12, marginBottom: 20 }}>
+              <Ionicons name="wifi-outline" size={16} color={C.amber} />
+              <Text style={{ fontSize: 13, color: C.amber, fontFamily: "DMSans_500Medium", flex: 1 }}>No internet — flight lookup unavailable</Text>
             </Animated.View>
+          )}
 
-            {/* Mode toggle */}
-            <Animated.View entering={FadeInDown.delay(40).springify()} style={{ flexDirection: "row", backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 4, marginBottom: 24, gap: 4 }}>
-              {(["code", "airport"] as SearchMode[]).map((mode) => {
-                const active = searchMode === mode;
-                return (
-                  <Pressable key={mode} onPress={() => switchMode(mode)}
-                    style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 11, backgroundColor: active ? C.accent : "transparent" }}>
-                    <Ionicons name={mode === "code" ? "barcode-outline" : "navigate-outline"} size={15} color={active ? C.white : C.textSec} />
-                    <Text style={{ fontSize: 13, fontFamily: "DMSans_600SemiBold", color: active ? C.white : C.textSec }}>
-                      {mode === "code" ? "Flight Code" : "By Airport"}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </Animated.View>
-
-            {/* Offline banner */}
-            {!isOnline && (
-              <Animated.View entering={FadeIn} style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.amber + "18", borderWidth: 1, borderColor: C.amber + "44", borderRadius: 12, padding: 12, marginBottom: 20 }}>
-                <Ionicons name="wifi-outline" size={16} color={C.amber} />
-                <Text style={{ fontSize: 13, color: C.amber, fontFamily: "DMSans_500Medium", flex: 1 }}>No internet — flight lookup unavailable</Text>
-              </Animated.View>
-            )}
-
-            {/* Inputs */}
-            <Animated.View entering={FadeInDown.delay(80).springify()} style={{ gap: 16, marginBottom: 24 }}>
-              {searchMode === "code" ? (
-                <View style={{ gap: 8 }}>
-                  <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.3, textTransform: "uppercase" }}>Flight Code</Text>
-                  <TextInput
-                    style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, fontSize: 17, color: C.text, fontFamily: "DMSans_500Medium", borderWidth: 1, borderColor: C.border }}
-                    value={code}
-                    onChangeText={(t) => { setCode(t.toUpperCase()); setPreview(null); setLookupErr(null); }}
-                    placeholder="e.g. LX2819, BA456"
-                    placeholderTextColor={C.textSec}
-                    autoCapitalize="characters"
-                    autoCorrect={false}
-                    returnKeyType="done"
-                    maxLength={8}
-                  />
-                </View>
-              ) : (
-                <View style={{ gap: 14 }}>
-                  <AirportInput
-                    label="Departure Airport"
-                    value={depIATA}
-                    onChange={(v) => { setDepIATA(v); setAirportResults([]); setLookupErr(null); }}
-                    placeholder="e.g. ZRH  (optional)"
-                    icon="airplane-outline"
-                    returnKeyType="next"
-                  />
-                  <AirportInput
-                    label="Arrival Airport"
-                    value={arrIATA}
-                    onChange={(v) => { setArrIATA(v); setAirportResults([]); setLookupErr(null); }}
-                    placeholder="e.g. LHR  (optional)"
-                    icon="location-outline"
-                    returnKeyType="done"
-                  />
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    <Ionicons name="information-circle-outline" size={13} color={C.textMuted} />
-                    <Text style={{ fontSize: 12, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>
-                      Fill one or both airports — at least one is required.
-                    </Text>
-                  </View>
-                </View>
-              )}
-
-              {/* Date (shared) */}
+          {/* Inputs */}
+          <Animated.View entering={FadeInDown.delay(80).springify()} style={{ gap: 16, marginBottom: 24 }}>
+            {searchMode === "code" ? (
               <View style={{ gap: 8 }}>
-                <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.3, textTransform: "uppercase" }}>Date</Text>
-                <DatePicker value={date} onChange={(d) => { setDate(d); setPreview(null); setAirportResults([]); setLookupErr(null); }} />
+                <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.3, textTransform: "uppercase" }}>Flight Code</Text>
+                <TextInput
+                  style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, fontSize: 17, color: C.text, fontFamily: "DMSans_500Medium", borderWidth: 1, borderColor: C.border }}
+                  value={code}
+                  onChangeText={(t) => { setCode(t.toUpperCase()); setPreview(null); setLookupErr(null); }}
+                  placeholder="e.g. LX2819, BA456"
+                  placeholderTextColor={C.textSec}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  maxLength={8}
+                />
               </View>
-            </Animated.View>
-
-            {/* Rate limit warning */}
-            {remainingCalls !== null && remainingCalls <= 2 && !lookupErr && (
-              <Animated.View entering={FadeIn} style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.amberDim, borderRadius: 10, padding: 10, marginBottom: 12 }}>
-                <Ionicons name="warning-outline" size={14} color={C.amber} />
-                <Text style={{ fontSize: 12, color: C.amber, fontFamily: "DMSans_500Medium", flex: 1 }}>
-                  {remainingCalls === 0 ? "No lookups remaining this minute." : `${remainingCalls} lookup${remainingCalls !== 1 ? "s" : ""} remaining this minute`}
-                </Text>
-              </Animated.View>
-            )}
-
-            {/* Error banner */}
-            {lookupErr && <ErrorBanner err={lookupErr} onRetry={activeSearch} C={C} />}
-
-            {/* Search button */}
-            <Pressable onPress={activeSearch} disabled={loading || !isOnline}
-              style={({ pressed }) => [{ backgroundColor: isOnline ? C.accent : C.textMuted, borderRadius: 14, padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 4, opacity: loading || pressed ? 0.7 : 1 }]}>
-              {loading
-                ? <ActivityIndicator color={C.white} size="small" />
-                : <><Ionicons name="search-outline" size={18} color={C.white} /><Text style={{ fontSize: 16, color: C.white, fontFamily: "DMSans_700Bold" }}>{searchMode === "code" ? "Look Up Flight" : "Search Flights"}</Text></>}
-            </Pressable>
-
-            {/* Code-mode: single preview card */}
-            {searchMode === "code" && preview && (
-              <FlightCard flight={preview} C={C} action={() => handleSave(preview)} actionLabel="Add to Logbook" actionLoading={savingId === preview.flightCode} />
-            )}
-
-            {/* Airport-mode: results list */}
-            {searchMode === "airport" && airportResults.length > 0 && (
-              <Animated.View entering={FadeInDown.springify()} style={{ marginTop: 8 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <Ionicons name="list-outline" size={15} color={C.textSec} />
-                  <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium" }}>
-                    {airportResults.length} flight{airportResults.length !== 1 ? "s" : ""} found
+            ) : (
+              <View style={{ gap: 14 }}>
+                <AirportInput
+                  label="Departure Airport"
+                  value={depIATA}
+                  onChange={(v) => { setDepIATA(v); setAirportResults([]); setLookupErr(null); }}
+                  placeholder="e.g. ZRH  (optional)"
+                  icon="airplane-outline"
+                  returnKeyType="next"
+                />
+                <AirportInput
+                  label="Arrival Airport"
+                  value={arrIATA}
+                  onChange={(v) => { setArrIATA(v); setAirportResults([]); setLookupErr(null); }}
+                  placeholder="e.g. LHR  (optional)"
+                  icon="location-outline"
+                  returnKeyType="done"
+                />
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Ionicons name="information-circle-outline" size={13} color={C.textMuted} />
+                  <Text style={{ fontSize: 12, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>
+                    Fill one or both airports — at least one is required.
                   </Text>
                 </View>
-                {airportResults.map((flight) => (
-                  <FlightCard key={`${flight.flightCode}-${flight.date}`} flight={flight} C={C} action={() => handleSave(flight)} actionLabel="Add to Logbook" actionLoading={savingId === flight.flightCode} />
-                ))}
-              </Animated.View>
+              </View>
             )}
 
-            {/* Airport-mode: empty state */}
-            {searchMode === "airport" && !loading && airportResults.length === 0 && !lookupErr && (depIATA || arrIATA) && (
-              <Animated.View entering={FadeIn} style={{ alignItems: "center", paddingVertical: 32, gap: 10 }}>
-                <Ionicons name="airplane-outline" size={36} color={C.textMuted} />
-                <Text style={{ fontSize: 14, color: C.textMuted, fontFamily: "DMSans_400Regular", textAlign: "center" }}>
-                  No results yet — tap Search Flights to look up schedules.
+            {/* Date (shared) */}
+            <View style={{ gap: 8 }}>
+              <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.3, textTransform: "uppercase" }}>Date</Text>
+              <DatePicker value={date} onChange={(d) => { setDate(d); setPreview(null); setAirportResults([]); setLookupErr(null); }} />
+            </View>
+          </Animated.View>
+
+          {/* Rate limit warning */}
+          {remainingCalls !== null && remainingCalls <= 2 && !lookupErr && (
+            <Animated.View entering={FadeIn} style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.amberDim, borderRadius: 10, padding: 10, marginBottom: 12 }}>
+              <Ionicons name="warning-outline" size={14} color={C.amber} />
+              <Text style={{ fontSize: 12, color: C.amber, fontFamily: "DMSans_500Medium", flex: 1 }}>
+                {remainingCalls === 0 ? "No lookups remaining this minute." : `${remainingCalls} lookup${remainingCalls !== 1 ? "s" : ""} remaining this minute`}
+              </Text>
+            </Animated.View>
+          )}
+
+          {/* Error banner */}
+          {lookupErr && <ErrorBanner err={lookupErr} onRetry={activeSearch} C={C} />}
+
+          {/* Search button */}
+          <Pressable onPress={activeSearch} disabled={loading || !isOnline}
+            style={({ pressed }) => [{ backgroundColor: isOnline ? C.accent : C.textMuted, borderRadius: 14, padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 4, opacity: loading || pressed ? 0.7 : 1 }]}>
+            {loading
+              ? <ActivityIndicator color={C.white} size="small" />
+              : <><Ionicons name="search-outline" size={18} color={C.white} /><Text style={{ fontSize: 16, color: C.white, fontFamily: "DMSans_700Bold" }}>{searchMode === "code" ? "Look Up Flight" : "Search Flights"}</Text></>}
+          </Pressable>
+
+          {/* Code-mode: single preview card */}
+          {searchMode === "code" && preview && (
+            <FlightCard flight={preview} C={C} action={() => handleSave(preview)} actionLabel="Add to Logbook" actionLoading={savingId === preview.flightCode} />
+          )}
+
+          {/* Airport-mode: results list */}
+          {searchMode === "airport" && airportResults.length > 0 && (
+            <Animated.View entering={FadeInDown.springify()} style={{ marginTop: 8 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <Ionicons name="list-outline" size={15} color={C.textSec} />
+                <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium" }}>
+                  {airportResults.length} flight{airportResults.length !== 1 ? "s" : ""} found
                 </Text>
-              </Animated.View>
-            )}
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
-    </View>
+              </View>
+              {airportResults.map((flight) => (
+                <FlightCard key={`${flight.flightCode}-${flight.date}`} flight={flight} C={C} action={() => handleSave(flight)} actionLabel="Add to Logbook" actionLoading={savingId === flight.flightCode} />
+              ))}
+            </Animated.View>
+          )}
+
+          {/* Airport-mode: empty state */}
+          {searchMode === "airport" && !loading && airportResults.length === 0 && !lookupErr && (depIATA || arrIATA) && (
+            <Animated.View entering={FadeIn} style={{ alignItems: "center", paddingVertical: 32, gap: 10 }}>
+              <Ionicons name="airplane-outline" size={36} color={C.textMuted} />
+              <Text style={{ fontSize: 14, color: C.textMuted, fontFamily: "DMSans_400Regular", textAlign: "center" }}>
+                No results yet — tap Search Flights to look up schedules.
+              </Text>
+            </Animated.View>
+          )}
+        </ScrollView>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
