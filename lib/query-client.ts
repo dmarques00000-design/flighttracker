@@ -2,19 +2,14 @@ import { fetch } from "expo/fetch";
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 /**
- * Gets the base URL for the Express API server (e.g., "http://localhost:3000")
- * @returns {string} The API base URL
+ * Gets the base URL for the Express API server (e.g., "http://localhost:3000").
+ * Falls back to localhost:3000 when EXPO_PUBLIC_DOMAIN is not set so that the
+ * app can still render — the error will surface naturally when an API call fails,
+ * rather than crashing the whole module at import time.
  */
 export function getApiUrl(): string {
-  let host = process.env.EXPO_PUBLIC_DOMAIN;
-
-  if (!host) {
-    throw new Error("EXPO_PUBLIC_DOMAIN is not set");
-  }
-
-  let url = new URL(`http://${host}`);
-
-  return url.href;
+  const host = process.env.EXPO_PUBLIC_DOMAIN || "localhost:3000";
+  return new URL(`http://${host}`).href;
 }
 
 async function throwIfResNotOk(res: Response) {
