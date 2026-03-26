@@ -15,6 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
+import * as Calendar from "expo-calendar";
 import * as Notifications from "expo-notifications";
 import ViewShot from "react-native-view-shot";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
@@ -27,15 +28,11 @@ import { computeActualBlockMinutes } from "@/utils/airportTimezones";
 import {
   REMINDER_OFFSETS,
   ReminderOffset,
-  OFFSET_LABELS,
   notifId,
   scheduleFlightReminder,
   cancelFlightReminder,
   requestNotificationPermission,
 } from "@/utils/notifications";
-
-// Re-export the labels so the import resolves (defined in notifications.ts)
-declare const OFFSET_LABELS: Record<ReminderOffset, string>;
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
@@ -53,6 +50,13 @@ function formatHours(minutes: number): string {
   if (h === 0) return `${m}m`;
   if (m === 0) return `${h}h`;
   return `${h}h ${m}m`;
+}
+
+/** Parse "HH:MM" and a date string into a JS Date in local time. */
+function parseLocalDateTime(dateStr: string, timeStr: string): Date {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const [hour, minute]     = timeStr.split(":").map(Number);
+  return new Date(year, month - 1, day, hour, minute, 0);
 }
 
 const OFFSET_LABEL_MAP: Record<ReminderOffset, string> = {
@@ -179,6 +183,68 @@ function useScheduledReminders(flightId: string) {
   return { scheduled, refresh };
 }
 
+/** Add the flight as a calendar event. Returns true on success. */
+async function addFlightToCalendar(flight: {
+  flightCode: string;
+  airline: string;
+  departureAirport: string;
+  arrivalAirport: string;
+  departureCity: string;
+  arrivalCity: string;
+  date: string;
+  departureTime: string;
+  arrivalTime: string;
+  departureTerminal?: string;
+  departureGate?: string;
+  arrivalTerminal?: string;
+  aircraft: string;
+}): Promise<boolean> {
+  if (Platform.OS === "web") return false;
+
+  const { status } = await Calendar.requestCalendarPermissionsAsync();
+  if (status !== "granted") return false;
+
+  const startDate = parseLocalDateTime(flight.date, flight.departureTime);
+
+  // Arrival: if arrival time < departure time the flight crosses midnight — add 1 day
+  const rawEnd = parseLocalDateTime(flight.date, flight.arrivalTime);
+  const endDate = rawEnd < startDate
+    ? new Date(rawEnd.getTime() + 24 * 60 * 60 * 1000)
+    : rawEnd;
+
+  const notes = [
+    `✈️  ${flight.airline}  ·  ${flight.flightCode}`,
+    `Aircraft: ${flight.aircraft}`,
+    flight.departureTerminal || flight.departureGate
+      ? `Departure: ${[flight.departureTerminal ? `Terminal ${flight.departureTerminal}` : null, flight.departureGate ? `Gate ${flight.departureGate}` : null].filter(Boolean).join("  ·  ")}`
+      : null,
+    flight.arrivalTerminal || flight.arrivalGate
+      ? `Arrival: ${[flight.arrivalTerminal ? `Terminal ${flight.arrivalTerminal}` : null, flight.arrivalGate ? `Gate ${flight.arrivalGate}` : null].filter(Boolean).join("  ·  ")}`
+      : null,
+    "\nAdded from Logbook ✈️",
+  ].filter(Boolean).join("\n");
+
+  // Find (or create) a default writable calendar
+  const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+  const writable  = calendars.find(
+    (c) => c.allowsModifications && c.source?.isLocalAccount !== false,
+  ) ?? calendars.find((c) => c.allowsModifications);
+
+  if (!writable) return false;
+
+  await Calendar.createEventAsync(writable.id, {
+    title: `${flight.flightCode}  ${flight.departureAirport} → ${flight.arrivalAirport}`,
+    startDate,
+    endDate,
+    location: `${flight.departureCity} (${flight.departureAirport}) → ${flight.arrivalCity} (${flight.arrivalAirport})`,
+    notes,
+    alarms: [{ relativeOffset: -60 }], // 1h reminder as a sensible default
+    timeZone: "local",
+  });
+
+  return true;
+}
+
 export default function FlightDetailScreen() {
   const C = useColors();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -188,18 +254,20 @@ export default function FlightDetailScreen() {
   const flight = flights.find((f) => f.id === id);
   const shareRef = useRef<ViewShot>(null);
   const [sharing, setSharing] = useState(false);
+  const [addingCalendar, setAddingCalendar] = useState(false);
   const [togglingOffset, setTogglingOffset] = useState<ReminderOffset | null>(null);
 
   const topPad    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 20;
 
-  const TODAY = new Date().toISOString().substring(0, 10);
+  const TODAY      = new Date().toISOString().substring(0, 10);
   const isUpcoming = !!flight && flight.date >= TODAY;
 
   const { scheduled, refresh: refreshReminders } = useScheduledReminders(flight?.id ?? "");
 
   if (!flight) return <FlightNotFound topPad={topPad} />;
 
+  // ─── Share ───────────────────────────────────────────────────────────────
   async function handleShare() {
     if (!flight) return;
     setSharing(true);
@@ -228,6 +296,34 @@ export default function FlightDetailScreen() {
     }
   }
 
+  // ─── Add to Calendar ─────────────────────────────────────────────────────
+  async function handleAddToCalendar() {
+    if (!flight) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setAddingCalendar(true);
+    try {
+      const ok = await addFlightToCalendar(flight);
+      if (ok) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert(
+          "Added to Calendar ✓",
+          `${flight.flightCode} · ${flight.departureAirport} → ${flight.arrivalAirport} has been added to your calendar with a 1-hour reminder.`,
+        );
+      } else {
+        Alert.alert(
+          "Permission Required",
+          "Please allow calendar access in your device Settings to add this flight.",
+        );
+      }
+    } catch (e) {
+      console.error("Calendar add failed:", e);
+      Alert.alert("Error", "Could not add to calendar. Please try again.");
+    } finally {
+      setAddingCalendar(false);
+    }
+  }
+
+  // ─── Per-flight reminder toggle ──────────────────────────────────────────
   async function handleReminderToggle(offset: ReminderOffset, currentlyOn: boolean) {
     Haptics.selectionAsync();
     setTogglingOffset(offset);
@@ -243,8 +339,8 @@ export default function FlightDetailScreen() {
           );
           return;
         }
-        const scheduled = await scheduleFlightReminder(flight, offset);
-        if (!scheduled) {
+        const result = await scheduleFlightReminder(flight, offset);
+        if (!result) {
           Alert.alert("Too late", "This reminder time has already passed.");
           return;
         }
@@ -256,14 +352,14 @@ export default function FlightDetailScreen() {
     }
   }
 
-  const isDelayed  = flight.status === "delayed";
-  const co2Trees   = (flight.co2Kg / 21).toFixed(1);
+  const isDelayed   = flight.status === "delayed";
+  const co2Trees    = (flight.co2Kg / 21).toFixed(1);
   const avgSpeedMph = flight.durationMinutes > 0
     ? Math.round((flight.distanceMiles / flight.durationMinutes) * 60)
     : 0;
 
   const scheduledDuration = formatHours(flight.durationMinutes);
-  const actualBlockMins = computeActualBlockMinutes(
+  const actualBlockMins   = computeActualBlockMinutes(
     flight.departureTime,
     flight.arrivalTime,
     flight.departureAirport,
@@ -426,6 +522,47 @@ export default function FlightDetailScreen() {
           </View>
         </Animated.View>
 
+        {/* ─── QUICK ACTION BAR ─── */}
+        <Animated.View entering={FadeInDown.delay(60).springify()} style={{
+          flexDirection: "row", gap: 10, marginBottom: 20,
+        }}>
+          {/* Share */}
+          <Pressable
+            onPress={handleShare}
+            disabled={sharing}
+            style={({ pressed }) => [{
+              flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+              gap: 8, paddingVertical: 14, borderRadius: 14,
+              backgroundColor: C.accent,
+            }, { opacity: sharing || pressed ? 0.78 : 1 }]}
+          >
+            {sharing
+              ? <ActivityIndicator size="small" color={C.white} />
+              : <Ionicons name="share-social-outline" size={18} color={C.white} />}
+            <Text style={{ fontSize: 14, color: C.white, fontFamily: "DMSans_700Bold" }}>Share</Text>
+          </Pressable>
+
+          {/* Add to Calendar — upcoming & native only */}
+          {isUpcoming && Platform.OS !== "web" && (
+            <Pressable
+              onPress={handleAddToCalendar}
+              disabled={addingCalendar}
+              style={({ pressed }) => [{
+                flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+                gap: 8, paddingVertical: 14, borderRadius: 14,
+                backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
+              }, { opacity: addingCalendar || pressed ? 0.78 : 1 }]}
+            >
+              {addingCalendar
+                ? <ActivityIndicator size="small" color={C.accent} />
+                : <Ionicons name="calendar-outline" size={18} color={C.accent} />}
+              <Text style={{ fontSize: 14, color: C.accent, fontFamily: "DMSans_700Bold" }}>
+                {addingCalendar ? "Adding…" : "Add to Calendar"}
+              </Text>
+            </Pressable>
+          )}
+        </Animated.View>
+
         {/* ─── STATS ROW ─── */}
         <Animated.View entering={FadeInDown.delay(80).springify()} style={{
           backgroundColor: C.card, borderRadius: 16, flexDirection: "row",
@@ -458,7 +595,7 @@ export default function FlightDetailScreen() {
           </View>
         </Animated.View>
 
-        {/* ─── REMINDERS (upcoming flights only) ─── */}
+        {/* ─── REMINDERS (upcoming flights only, native only) ─── */}
         {isUpcoming && Platform.OS !== "web" && (
           <Animated.View entering={FadeInDown.delay(120).springify()} style={{ marginBottom: 16 }}>
             <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Reminders</Text>
@@ -564,7 +701,7 @@ export default function FlightDetailScreen() {
           </View>
         </Animated.View>
 
-        {/* ─── SHARE ─── */}
+        {/* ─── SHARE (full section, scroll-to convenience) ─── */}
         <Animated.View entering={FadeInDown.delay(isUpcoming ? 240 : 200).springify()} style={{ marginBottom: 8 }}>
           <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Share This Flight</Text>
           <Pressable
