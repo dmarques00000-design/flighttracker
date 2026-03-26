@@ -403,8 +403,20 @@ export default function AddFlightScreen() {
   const activeSearch = searchMode === "code" ? handleCodeLookup : handleAirportSearch;
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: C.surface }}>
-      <View style={[{ flex: 1, backgroundColor: C.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20 }, { paddingTop: topPad }]}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1, backgroundColor: C.surface }}
+    >
+      {/* Fill the area below the sheet with the surface colour so no black shows through */}
+      <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 300, backgroundColor: C.surface }} />
+      <View style={{
+        flex: 1,
+        backgroundColor: C.surface,
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        overflow: "hidden",
+        paddingTop: topPad,
+      }}>
         <ScrollView
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
