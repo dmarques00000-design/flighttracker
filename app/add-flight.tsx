@@ -412,7 +412,10 @@ export default function AddFlightScreen() {
   const activeSearch = searchMode === "code" ? handleCodeLookup : handleAirportSearch;
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: C.bg }}>
+    // Use C.surface (not C.bg) so the area behind the rounded-top-corner sheet
+    // matches the sheet itself — prevents the black strip visible when the modal
+    // is dragged all the way to the top of the screen.
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: C.surface }}>
       <View style={[{ flex: 1, backgroundColor: C.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20 }, { paddingTop: topPad }]}>
         <ScrollView
           showsVerticalScrollIndicator={false}
