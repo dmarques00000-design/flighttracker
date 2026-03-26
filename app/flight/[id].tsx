@@ -21,6 +21,7 @@ import { useColors } from "@/constants/colors";
 import { useFlights } from "@/context/flights";
 import { getAirlineInfo } from "@/utils/airlineLogos";
 import FlightShareCard from "@/components/FlightShareCard";
+import { computeActualBlockMinutes } from "@/utils/airportTimezones";
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
@@ -35,7 +36,7 @@ function formatDateShort(dateStr: string): string {
 function formatHours(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  if (h === 0) return `${m} min`;
+  if (h === 0) return `${m}m`;
   if (m === 0) return `${h}h`;
   return `${h}h ${m}m`;
 }
@@ -188,10 +189,19 @@ export default function FlightDetailScreen() {
     ? Math.round((flight.distanceMiles / flight.durationMinutes) * 60)
     : 0;
 
-  // Use the stored durationMinutes (from API scheduledMs/actualMs, or haversine estimate
-  // for mock flights) — never derive from HH:MM strings which are airport-local and
-  // would give wrong results across timezone boundaries (e.g. ZRH → JFK).
-  const heroDisplayDuration = formatHours(flight.durationMinutes);
+  // Scheduled duration from API (or haversine estimate for mock flights)
+  const scheduledDuration = formatHours(flight.durationMinutes);
+
+  // Actual block time: convert local HH:MM times to UTC using each airport's
+  // IANA timezone, then diff. Returns null if timezones are unknown.
+  const actualBlockMins = computeActualBlockMinutes(
+    flight.departureTime,
+    flight.arrivalTime,
+    flight.departureAirport,
+    flight.arrivalAirport,
+    flight.date,
+  );
+  const actualDuration = actualBlockMins !== null ? formatHours(actualBlockMins) : null;
 
   const statusColor = isUpcoming ? C.accent : isDelayed ? C.red : C.green;
   const statusLabel = isUpcoming ? "Upcoming" : isDelayed ? `Delayed +${flight.delayMinutes} min` : "Completed";
@@ -310,10 +320,26 @@ export default function FlightDetailScreen() {
                 </Text>
               ) : null}
             </View>
+
+            {/* Duration block — shows actual (tz-corrected) + scheduled from API */}
             <View style={{ flex: 1, alignItems: "center", paddingTop: 2 }}>
-              <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginBottom: 2 }}>{heroDisplayDuration}</Text>
+              {actualDuration !== null ? (
+                <>
+                  <Text style={{ fontSize: 12, color: C.text, fontFamily: "DMSans_600SemiBold", marginBottom: 1 }}>
+                    {actualDuration}
+                  </Text>
+                  <Text style={{ fontSize: 10, color: C.textMuted, fontFamily: "DMSans_400Regular", marginBottom: 1 }}>
+                    {scheduledDuration} scheduled
+                  </Text>
+                </>
+              ) : (
+                <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginBottom: 2 }}>
+                  {scheduledDuration}
+                </Text>
+              )}
               <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>{formatDateShort(flight.date)}</Text>
             </View>
+
             <View style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
               <Text style={{ fontSize: 22, color: C.text, fontFamily: "DMSans_700Bold" }}>{flight.arrivalTime}</Text>
               <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2, letterSpacing: 0.3 }}>local</Text>
@@ -365,7 +391,9 @@ export default function FlightDetailScreen() {
           <View style={{ width: 1, backgroundColor: C.border, marginVertical: 12 }} />
           <View style={{ flex: 1, alignItems: "center", paddingVertical: 18, gap: 4, paddingHorizontal: 4 }}>
             <Ionicons name="time-outline" size={18} color={C.textSec} />
-            <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_700Bold" }} adjustsFontSizeToFit numberOfLines={1}>{formatHours(flight.durationMinutes)}</Text>
+            <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_700Bold" }} adjustsFontSizeToFit numberOfLines={1}>
+              {actualBlockMins !== null ? formatHours(actualBlockMins) : formatHours(flight.durationMinutes)}
+            </Text>
             <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular" }}>duration</Text>
           </View>
         </Animated.View>
@@ -387,6 +415,9 @@ export default function FlightDetailScreen() {
               label="Arrival"
               value={`${flight.arrivalAirport}  \u00b7  ${flight.arrivalTime} (local)${flight.arrivalTerminal ? `  \u00b7  T${flight.arrivalTerminal}` : ""}${flight.arrivalGate ? `  \u00b7  Gate ${flight.arrivalGate}` : ""}`}
             />
+            {actualDuration !== null && (
+              <InfoRow label="Block Time" value={`${actualDuration} (tz-corrected)  \u00b7  ${scheduledDuration} scheduled`} />
+            )}
             <InfoRow
               label="Distance"
               value={`${flight.distanceMiles.toLocaleString()} mi  \u00b7  ${Math.round(flight.distanceMiles * 1.60934).toLocaleString()} km`}
