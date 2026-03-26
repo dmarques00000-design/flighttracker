@@ -2,13 +2,12 @@ import React, { useState, useRef } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   Pressable,
   Modal,
   FlatList,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { Colors } from "@/constants/colors";
+import { useColors } from "@/constants/colors";
 
 interface DatePickerProps {
   value: string; // YYYY-MM-DD
@@ -54,7 +53,10 @@ function formatDisplay(str: string): string {
 
 type PickerMode = "calendar" | "month" | "year";
 
+const CELL_SIZE = 38;
+
 export function DatePicker({ value, onChange }: DatePickerProps) {
+  const C = useColors();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<PickerMode>("calendar");
 
@@ -102,10 +104,25 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
 
   return (
     <>
-      <Pressable style={styles.trigger} onPress={openPicker}>
-        <Ionicons name="calendar-outline" size={18} color={Colors.accent} />
-        <Text style={styles.triggerText}>{formatDisplay(value)}</Text>
-        <Ionicons name="chevron-down" size={16} color={Colors.textSec} />
+      {/* ── Trigger ── */}
+      <Pressable
+        onPress={openPicker}
+        style={{
+          backgroundColor: C.card,
+          borderRadius: 14,
+          padding: 16,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+          borderWidth: 1,
+          borderColor: C.border,
+        }}
+      >
+        <Ionicons name="calendar-outline" size={18} color={C.accent} />
+        <Text style={{ flex: 1, fontSize: 16, color: C.text, fontFamily: "DMSans_500Medium" }}>
+          {formatDisplay(value)}
+        </Text>
+        <Ionicons name="chevron-down" size={16} color={C.textSec} />
       </Pressable>
 
       <Modal
@@ -114,67 +131,91 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
         animationType="fade"
         onRequestClose={() => setOpen(false)}
       >
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "center", alignItems: "center", padding: 24 }}
+          onPress={() => setOpen(false)}
+        >
+          <Pressable
+            style={{
+              backgroundColor: C.surface,
+              borderRadius: 20,
+              padding: 20,
+              width: "100%",
+              maxWidth: 360,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: 0.25,
+              shadowRadius: 20,
+              elevation: 10,
+              borderWidth: 1,
+              borderColor: C.border,
+            }}
+            onPress={(e) => e.stopPropagation()}
+          >
 
-            {/* CALENDAR MODE */}
+            {/* ── CALENDAR MODE ── */}
             {mode === "calendar" && (
               <>
-                <View style={styles.navRow}>
+                {/* Nav row */}
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                   <Pressable
-                    style={styles.navArrow}
                     hitSlop={12}
+                    style={{ padding: 6, borderRadius: 8, backgroundColor: C.card }}
                     onPress={() => {
                       if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
                       else setViewMonth(m => m - 1);
                     }}
                   >
-                    <Ionicons name="chevron-back" size={20} color={Colors.text} />
+                    <Ionicons name="chevron-back" size={20} color={C.text} />
                   </Pressable>
 
-                  <View style={styles.headerCenter}>
-                    <Pressable style={styles.headerChip} onPress={() => setMode("month")}>
-                      <Text style={styles.headerChipText}>{MONTHS[viewMonth]}</Text>
-                      <Ionicons name="chevron-down" size={13} color={Colors.accent} />
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Pressable
+                      style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border }}
+                      onPress={() => setMode("month")}
+                    >
+                      <Text style={{ fontSize: 15, fontFamily: "DMSans_700Bold", color: C.text }}>{MONTHS[viewMonth]}</Text>
+                      <Ionicons name="chevron-down" size={13} color={C.accent} />
                     </Pressable>
                     <Pressable
-                      style={styles.headerChip}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border }}
                       onPress={() => {
                         setMode("year");
                         setTimeout(() => {
-                          yearListRef.current?.scrollToIndex({
-                            index: Math.max(0, selectedYearIndex - 2),
-                            animated: false,
-                          });
+                          yearListRef.current?.scrollToIndex({ index: Math.max(0, selectedYearIndex - 2), animated: false });
                         }, 80);
                       }}
                     >
-                      <Text style={styles.headerChipText}>{viewYear}</Text>
-                      <Ionicons name="chevron-down" size={13} color={Colors.accent} />
+                      <Text style={{ fontSize: 15, fontFamily: "DMSans_700Bold", color: C.text }}>{viewYear}</Text>
+                      <Ionicons name="chevron-down" size={13} color={C.accent} />
                     </Pressable>
                   </View>
 
                   <Pressable
-                    style={styles.navArrow}
                     hitSlop={12}
+                    style={{ padding: 6, borderRadius: 8, backgroundColor: C.card }}
                     onPress={() => {
                       if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); }
                       else setViewMonth(m => m + 1);
                     }}
                   >
-                    <Ionicons name="chevron-forward" size={20} color={Colors.text} />
+                    <Ionicons name="chevron-forward" size={20} color={C.text} />
                   </Pressable>
                 </View>
 
-                <View style={styles.weekRow}>
+                {/* Day headers */}
+                <View style={{ flexDirection: "row", marginBottom: 4 }}>
                   {DAYS_SHORT.map((d) => (
-                    <Text key={d} style={styles.dayHeader}>{d}</Text>
+                    <Text key={d} style={{ width: `${100 / 7}%`, textAlign: "center", fontSize: 12, fontFamily: "DMSans_500Medium", color: C.textSec, paddingVertical: 4 }}>
+                      {d}
+                    </Text>
                   ))}
                 </View>
 
-                <View style={styles.grid}>
+                {/* Day grid */}
+                <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 4 }}>
                   {cells.map((day, idx) => {
-                    if (!day) return <View key={`e-${idx}`} style={styles.cell} />;
+                    if (!day) return <View key={`e-${idx}`} style={{ width: `${100 / 7}%`, aspectRatio: 1 }} />;
 
                     const cellDate = new Date(viewYear, viewMonth, day);
                     const isSelected =
@@ -187,16 +228,20 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
                       cellDate.getDate() === today.getDate();
 
                     return (
-                      <Pressable key={`d-${idx}`} style={styles.cell} onPress={() => selectDay(day)}>
+                      <Pressable
+                        key={`d-${idx}`}
+                        style={{ width: `${100 / 7}%`, aspectRatio: 1, alignItems: "center", justifyContent: "center" }}
+                        onPress={() => selectDay(day)}
+                      >
                         <View style={[
-                          styles.cellInner,
-                          isSelected && styles.cellSelected,
-                          !isSelected && isToday && styles.cellToday,
+                          { width: CELL_SIZE, height: CELL_SIZE, borderRadius: CELL_SIZE / 2, alignItems: "center", justifyContent: "center" },
+                          isSelected && { backgroundColor: C.accent },
+                          !isSelected && isToday && { backgroundColor: C.accent + "22" },
                         ]}>
                           <Text style={[
-                            styles.cellText,
-                            isSelected && styles.cellTextSelected,
-                            !isSelected && isToday && styles.cellTextToday,
+                            { fontSize: 14, color: C.text, fontFamily: "DMSans_400Regular" },
+                            isSelected && { color: C.white, fontFamily: "DMSans_700Bold" },
+                            !isSelected && isToday && { color: C.accent, fontFamily: "DMSans_700Bold" },
                           ]}>
                             {day}
                           </Text>
@@ -206,15 +251,16 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
                   })}
                 </View>
 
-                <View style={styles.shortcuts}>
+                {/* Shortcuts */}
+                <View style={{ flexDirection: "row", gap: 10, marginTop: 12, paddingTop: 14, borderTopWidth: 1, borderTopColor: C.border }}>
                   <Pressable
-                    style={styles.shortcutBtn}
+                    style={{ flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: C.card, alignItems: "center", borderWidth: 1, borderColor: C.border }}
                     onPress={() => { onChange(toDateStr(today)); setOpen(false); }}
                   >
-                    <Text style={styles.shortcutText}>Today</Text>
+                    <Text style={{ fontSize: 14, fontFamily: "DMSans_500Medium", color: C.accent }}>Today</Text>
                   </Pressable>
                   <Pressable
-                    style={styles.shortcutBtn}
+                    style={{ flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: C.card, alignItems: "center", borderWidth: 1, borderColor: C.border }}
                     onPress={() => {
                       const tm = new Date(today);
                       tm.setDate(tm.getDate() + 1);
@@ -222,33 +268,39 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
                       setOpen(false);
                     }}
                   >
-                    <Text style={styles.shortcutText}>Tomorrow</Text>
+                    <Text style={{ fontSize: 14, fontFamily: "DMSans_500Medium", color: C.accent }}>Tomorrow</Text>
                   </Pressable>
                 </View>
               </>
             )}
 
-            {/* MONTH PICKER MODE */}
+            {/* ── MONTH PICKER MODE ── */}
             {mode === "month" && (
               <>
-                <View style={styles.pickerHeader}>
-                  <Pressable onPress={() => setMode("calendar")} hitSlop={12} style={styles.backBtn}>
-                    <Ionicons name="chevron-back" size={18} color={Colors.accent} />
-                    <Text style={styles.backBtnText}>Back</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                  <Pressable onPress={() => setMode("calendar")} hitSlop={12} style={{ flexDirection: "row", alignItems: "center", gap: 2, width: 60 }}>
+                    <Ionicons name="chevron-back" size={18} color={C.accent} />
+                    <Text style={{ fontSize: 14, fontFamily: "DMSans_500Medium", color: C.accent }}>Back</Text>
                   </Pressable>
-                  <Text style={styles.pickerTitle}>Select Month</Text>
+                  <Text style={{ fontSize: 17, fontFamily: "DMSans_700Bold", color: C.text }}>Select Month</Text>
                   <View style={{ width: 60 }} />
                 </View>
-                <View style={styles.monthGrid}>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
                   {MONTHS.map((m, idx) => {
                     const isSel = idx === viewMonth;
                     return (
                       <Pressable
                         key={m}
-                        style={[styles.monthItem, isSel && styles.monthItemSelected]}
+                        style={[
+                          { width: "22%", paddingVertical: 12, borderRadius: 12, alignItems: "center", backgroundColor: C.card, borderWidth: 1, borderColor: C.border, flexGrow: 1 },
+                          isSel && { backgroundColor: C.accent, borderColor: C.accent },
+                        ]}
                         onPress={() => { setViewMonth(idx); setMode("calendar"); }}
                       >
-                        <Text style={[styles.monthItemText, isSel && styles.monthItemTextSelected]}>
+                        <Text style={[
+                          { fontSize: 14, fontFamily: "DMSans_500Medium", color: C.text },
+                          isSel && { color: C.white, fontFamily: "DMSans_700Bold" },
+                        ]}>
                           {MONTHS_SHORT[idx]}
                         </Text>
                       </Pressable>
@@ -258,22 +310,22 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
               </>
             )}
 
-            {/* YEAR PICKER MODE */}
+            {/* ── YEAR PICKER MODE ── */}
             {mode === "year" && (
               <>
-                <View style={styles.pickerHeader}>
-                  <Pressable onPress={() => setMode("calendar")} hitSlop={12} style={styles.backBtn}>
-                    <Ionicons name="chevron-back" size={18} color={Colors.accent} />
-                    <Text style={styles.backBtnText}>Back</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                  <Pressable onPress={() => setMode("calendar")} hitSlop={12} style={{ flexDirection: "row", alignItems: "center", gap: 2, width: 60 }}>
+                    <Ionicons name="chevron-back" size={18} color={C.accent} />
+                    <Text style={{ fontSize: 14, fontFamily: "DMSans_500Medium", color: C.accent }}>Back</Text>
                   </Pressable>
-                  <Text style={styles.pickerTitle}>Select Year</Text>
+                  <Text style={{ fontSize: 17, fontFamily: "DMSans_700Bold", color: C.text }}>Select Year</Text>
                   <View style={{ width: 60 }} />
                 </View>
                 <FlatList
                   ref={yearListRef}
                   data={YEARS}
                   keyExtractor={(item) => String(item)}
-                  style={styles.yearList}
+                  style={{ maxHeight: 260 }}
                   getItemLayout={(_, index) => ({ length: 52, offset: 52 * index, index })}
                   initialScrollIndex={Math.max(0, selectedYearIndex - 3)}
                   showsVerticalScrollIndicator={false}
@@ -281,10 +333,16 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
                     const isSel = item === viewYear;
                     return (
                       <Pressable
-                        style={[styles.yearItem, isSel && styles.yearItemSelected]}
+                        style={[
+                          { height: 52, justifyContent: "center", alignItems: "center", borderRadius: 12, marginVertical: 2 },
+                          isSel && { backgroundColor: C.accent },
+                        ]}
                         onPress={() => { setViewYear(item); setMode("calendar"); }}
                       >
-                        <Text style={[styles.yearItemText, isSel && styles.yearItemTextSelected]}>
+                        <Text style={[
+                          { fontSize: 17, fontFamily: "DMSans_400Regular", color: C.text },
+                          isSel && { color: C.white, fontFamily: "DMSans_700Bold" },
+                        ]}>
                           {item}
                         </Text>
                       </Pressable>
@@ -300,205 +358,3 @@ export function DatePicker({ value, onChange }: DatePickerProps) {
     </>
   );
 }
-
-const CELL_SIZE = 38;
-
-const styles = StyleSheet.create({
-  trigger: {
-    backgroundColor: Colors.card,
-    borderRadius: 14,
-    padding: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  triggerText: {
-    flex: 1,
-    fontSize: 16,
-    color: Colors.text,
-    fontFamily: "DMSans_500Medium",
-  },
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  sheet: {
-    backgroundColor: Colors.surface,
-    borderRadius: 20,
-    padding: 20,
-    width: "100%",
-    maxWidth: 360,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  navRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  navArrow: {
-    padding: 6,
-    borderRadius: 8,
-    backgroundColor: Colors.card,
-  },
-  headerCenter: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  headerChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    backgroundColor: Colors.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  headerChipText: {
-    fontSize: 15,
-    fontFamily: "DMSans_700Bold",
-    color: Colors.text,
-  },
-  weekRow: {
-    flexDirection: "row",
-    marginBottom: 4,
-  },
-  dayHeader: {
-    width: `${100 / 7}%`,
-    textAlign: "center",
-    fontSize: 12,
-    fontFamily: "DMSans_500Medium",
-    color: Colors.textSec,
-    paddingVertical: 4,
-  },
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginBottom: 4,
-  },
-  cell: {
-    width: `${100 / 7}%`,
-    aspectRatio: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cellInner: {
-    width: CELL_SIZE,
-    height: CELL_SIZE,
-    borderRadius: CELL_SIZE / 2,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cellSelected: { backgroundColor: Colors.accent },
-  cellToday: { backgroundColor: Colors.accent + "22" },
-  cellText: {
-    fontSize: 14,
-    color: Colors.text,
-    fontFamily: "DMSans_400Regular",
-  },
-  cellTextSelected: { color: Colors.white, fontFamily: "DMSans_700Bold" },
-  cellTextToday: { color: Colors.accent, fontFamily: "DMSans_700Bold" },
-  shortcuts: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 12,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
-  shortcutBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: Colors.card,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  shortcutText: {
-    fontSize: 14,
-    fontFamily: "DMSans_500Medium",
-    color: Colors.accent,
-  },
-  pickerHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  pickerTitle: {
-    fontSize: 17,
-    fontFamily: "DMSans_700Bold",
-    color: Colors.text,
-  },
-  backBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-    width: 60,
-  },
-  backBtnText: {
-    fontSize: 14,
-    fontFamily: "DMSans_500Medium",
-    color: Colors.accent,
-  },
-  monthGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 8,
-  },
-  monthItem: {
-    width: "22%",
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-    backgroundColor: Colors.card,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    flexGrow: 1,
-  },
-  monthItemSelected: {
-    backgroundColor: Colors.accent,
-    borderColor: Colors.accent,
-  },
-  monthItemText: {
-    fontSize: 14,
-    fontFamily: "DMSans_500Medium",
-    color: Colors.text,
-  },
-  monthItemTextSelected: {
-    color: Colors.white,
-    fontFamily: "DMSans_700Bold",
-  },
-  yearList: { maxHeight: 260 },
-  yearItem: {
-    height: 52,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 12,
-    marginVertical: 2,
-  },
-  yearItemSelected: { backgroundColor: Colors.accent },
-  yearItemText: {
-    fontSize: 17,
-    fontFamily: "DMSans_400Regular",
-    color: Colors.text,
-  },
-  yearItemTextSelected: {
-    color: Colors.white,
-    fontFamily: "DMSans_700Bold",
-  },
-});
