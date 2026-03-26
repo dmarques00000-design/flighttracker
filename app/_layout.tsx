@@ -34,7 +34,8 @@ function RootLayoutNav() {
             sheetAllowedDetents: [0.6, 1],
             sheetGrabberVisible: true,
             headerShown: false,
-            contentStyle: { backgroundColor: "transparent" },
+            // No contentStyle override — let the sheet use its natural background
+            // so the area below the sheet content is never exposed as black.
           }}
         />
         <Stack.Screen
