@@ -15,8 +15,6 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
-import * as Calendar from "expo-calendar";
-import * as Notifications from "expo-notifications";
 import ViewShot from "react-native-view-shot";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { useColors } from "@/constants/colors";
@@ -33,6 +31,27 @@ import {
   cancelFlightReminder,
   requestNotificationPermission,
 } from "@/utils/notifications";
+
+// ---------------------------------------------------------------------------
+// Lazy loaders for optional native packages
+// ---------------------------------------------------------------------------
+type CalendarModule = typeof import("expo-calendar");
+let _cal: CalendarModule | null | undefined = undefined;
+function getCal(): CalendarModule | null {
+  if (_cal !== undefined) return _cal;
+  try { _cal = require("expo-calendar") as CalendarModule; } catch { _cal = null; }
+  return _cal;
+}
+
+type NotificationsModule = typeof import("expo-notifications");
+let _notif: NotificationsModule | null | undefined = undefined;
+function getNotif(): NotificationsModule | null {
+  if (_notif !== undefined) return _notif;
+  try { _notif = require("expo-notifications") as NotificationsModule; } catch { _notif = null; }
+  return _notif;
+}
+
+// ---------------------------------------------------------------------------
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
@@ -169,7 +188,9 @@ function useScheduledReminders(flightId: string) {
 
   async function refresh() {
     if (Platform.OS === "web") return;
-    const all = await Notifications.getAllScheduledNotificationsAsync();
+    const N = getNotif();
+    if (!N) return;
+    const all = await N.getAllScheduledNotificationsAsync();
     const ids = new Set(all.map((n) => n.identifier));
     const active = new Set<ReminderOffset>();
     for (const offset of REMINDER_OFFSETS) {
@@ -178,7 +199,7 @@ function useScheduledReminders(flightId: string) {
     setScheduled(active);
   }
 
-  useEffect(() => { refresh(); }, [flightId]);
+  useEffect(() => { refresh(); }, [flightId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { scheduled, refresh };
 }
@@ -197,48 +218,48 @@ async function addFlightToCalendar(flight: {
   departureTerminal?: string;
   departureGate?: string;
   arrivalTerminal?: string;
+  arrivalGate?: string;
   aircraft: string;
 }): Promise<boolean> {
   if (Platform.OS === "web") return false;
+  const Cal = getCal();
+  if (!Cal) return false;
 
-  const { status } = await Calendar.requestCalendarPermissionsAsync();
+  const { status } = await Cal.requestCalendarPermissionsAsync();
   if (status !== "granted") return false;
 
   const startDate = parseLocalDateTime(flight.date, flight.departureTime);
-
-  // Arrival: if arrival time < departure time the flight crosses midnight — add 1 day
-  const rawEnd = parseLocalDateTime(flight.date, flight.arrivalTime);
-  const endDate = rawEnd < startDate
+  const rawEnd    = parseLocalDateTime(flight.date, flight.arrivalTime);
+  const endDate   = rawEnd < startDate
     ? new Date(rawEnd.getTime() + 24 * 60 * 60 * 1000)
     : rawEnd;
 
   const notes = [
-    `✈️  ${flight.airline}  ·  ${flight.flightCode}`,
+    `\u2708\uFE0F  ${flight.airline}  \u00b7  ${flight.flightCode}`,
     `Aircraft: ${flight.aircraft}`,
     flight.departureTerminal || flight.departureGate
-      ? `Departure: ${[flight.departureTerminal ? `Terminal ${flight.departureTerminal}` : null, flight.departureGate ? `Gate ${flight.departureGate}` : null].filter(Boolean).join("  ·  ")}`
+      ? `Departure: ${[flight.departureTerminal ? `Terminal ${flight.departureTerminal}` : null, flight.departureGate ? `Gate ${flight.departureGate}` : null].filter(Boolean).join("  \u00b7  ")}`
       : null,
     flight.arrivalTerminal || flight.arrivalGate
-      ? `Arrival: ${[flight.arrivalTerminal ? `Terminal ${flight.arrivalTerminal}` : null, flight.arrivalGate ? `Gate ${flight.arrivalGate}` : null].filter(Boolean).join("  ·  ")}`
+      ? `Arrival: ${[flight.arrivalTerminal ? `Terminal ${flight.arrivalTerminal}` : null, flight.arrivalGate ? `Gate ${flight.arrivalGate}` : null].filter(Boolean).join("  \u00b7  ")}`
       : null,
-    "\nAdded from Logbook ✈️",
+    "\nAdded from Logbook \u2708\uFE0F",
   ].filter(Boolean).join("\n");
 
-  // Find (or create) a default writable calendar
-  const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+  const calendars = await Cal.getCalendarsAsync(Cal.EntityTypes.EVENT);
   const writable  = calendars.find(
     (c) => c.allowsModifications && c.source?.isLocalAccount !== false,
   ) ?? calendars.find((c) => c.allowsModifications);
 
   if (!writable) return false;
 
-  await Calendar.createEventAsync(writable.id, {
-    title: `${flight.flightCode}  ${flight.departureAirport} → ${flight.arrivalAirport}`,
+  await Cal.createEventAsync(writable.id, {
+    title: `${flight.flightCode}  ${flight.departureAirport} \u2192 ${flight.arrivalAirport}`,
     startDate,
     endDate,
-    location: `${flight.departureCity} (${flight.departureAirport}) → ${flight.arrivalCity} (${flight.arrivalAirport})`,
+    location: `${flight.departureCity} (${flight.departureAirport}) \u2192 ${flight.arrivalCity} (${flight.arrivalAirport})`,
     notes,
-    alarms: [{ relativeOffset: -60 }], // 1h reminder as a sensible default
+    alarms: [{ relativeOffset: -60 }],
     timeZone: "local",
   });
 
@@ -278,7 +299,7 @@ export default function FlightDetailScreen() {
       if (available) {
         await Sharing.shareAsync(uri, {
           mimeType: "image/png",
-          dialogTitle: `Share ${flight.flightCode} — ${flight.departureAirport} to ${flight.arrivalAirport}`,
+          dialogTitle: `Share ${flight.flightCode} \u2014 ${flight.departureAirport} to ${flight.arrivalAirport}`,
         });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
@@ -306,8 +327,8 @@ export default function FlightDetailScreen() {
       if (ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert(
-          "Added to Calendar ✓",
-          `${flight.flightCode} · ${flight.departureAirport} → ${flight.arrivalAirport} has been added to your calendar with a 1-hour reminder.`,
+          "Added to Calendar \u2713",
+          `${flight.flightCode} \u00b7 ${flight.departureAirport} \u2192 ${flight.arrivalAirport} has been added to your calendar with a 1-hour reminder.`,
         );
       } else {
         Alert.alert(
@@ -372,6 +393,9 @@ export default function FlightDetailScreen() {
   const statusLabel = isUpcoming ? "Upcoming" : isDelayed ? `Delayed +${flight.delayMinutes} min` : "Completed";
   const airlineInfo = getAirlineInfo(flight.airlineCode);
 
+  // Calendar button is only useful when expo-calendar is installed
+  const calendarAvailable = Platform.OS !== "web" && getCal() !== null;
+
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPad }}>
       <ViewShot ref={shareRef} options={{ format: "png", quality: 1.0 }} style={{ position: "absolute", left: -9999, top: 0 }}>
@@ -396,7 +420,7 @@ export default function FlightDetailScreen() {
             <Text style={{ fontSize: 11, color: C.textSec, fontFamily: "DMSans_400Regular", letterSpacing: 0.5, textTransform: "uppercase" }}>{flight.airline}</Text>
           </View>
           <Text style={{ fontSize: 16, color: C.text, fontFamily: "DMSans_700Bold" }}>
-            {flight.departureAirport}{" → "}{flight.arrivalAirport}
+            {flight.departureAirport}{" \u2192 "}{flight.arrivalAirport}
           </Text>
         </View>
         <Pressable
@@ -481,7 +505,7 @@ export default function FlightDetailScreen() {
               <Text style={{ fontSize: 22, color: C.text, fontFamily: "DMSans_700Bold" }}>{flight.departureTime}</Text>
               {(flight.departureTerminal || flight.departureGate) ? (
                 <Text style={{ fontSize: 10, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 3 }} numberOfLines={1}>
-                  {[flight.departureTerminal ? `T${flight.departureTerminal}` : null, flight.departureGate ? `Gate ${flight.departureGate}` : null].filter(Boolean).join(" · ")}
+                  {[flight.departureTerminal ? `T${flight.departureTerminal}` : null, flight.departureGate ? `Gate ${flight.departureGate}` : null].filter(Boolean).join(" \u00b7 ")}
                 </Text>
               ) : null}
             </View>
@@ -501,7 +525,7 @@ export default function FlightDetailScreen() {
               <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2, letterSpacing: 0.3 }}>local time</Text>
               {(flight.arrivalTerminal || flight.arrivalGate) ? (
                 <Text style={{ fontSize: 10, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 3 }} numberOfLines={1}>
-                  {[flight.arrivalTerminal ? `T${flight.arrivalTerminal}` : null, flight.arrivalGate ? `Gate ${flight.arrivalGate}` : null].filter(Boolean).join(" · ")}
+                  {[flight.arrivalTerminal ? `T${flight.arrivalTerminal}` : null, flight.arrivalGate ? `Gate ${flight.arrivalGate}` : null].filter(Boolean).join(" \u00b7 ")}
                 </Text>
               ) : null}
             </View>
@@ -523,9 +547,7 @@ export default function FlightDetailScreen() {
         </Animated.View>
 
         {/* ─── QUICK ACTION BAR ─── */}
-        <Animated.View entering={FadeInDown.delay(60).springify()} style={{
-          flexDirection: "row", gap: 10, marginBottom: 20,
-        }}>
+        <Animated.View entering={FadeInDown.delay(60).springify()} style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
           {/* Share */}
           <Pressable
             onPress={handleShare}
@@ -542,8 +564,8 @@ export default function FlightDetailScreen() {
             <Text style={{ fontSize: 14, color: C.white, fontFamily: "DMSans_700Bold" }}>Share</Text>
           </Pressable>
 
-          {/* Add to Calendar — upcoming & native only */}
-          {isUpcoming && Platform.OS !== "web" && (
+          {/* Add to Calendar — upcoming & native & package installed */}
+          {isUpcoming && calendarAvailable && (
             <Pressable
               onPress={handleAddToCalendar}
               disabled={addingCalendar}
@@ -557,7 +579,7 @@ export default function FlightDetailScreen() {
                 ? <ActivityIndicator size="small" color={C.accent} />
                 : <Ionicons name="calendar-outline" size={18} color={C.accent} />}
               <Text style={{ fontSize: 14, color: C.accent, fontFamily: "DMSans_700Bold" }}>
-                {addingCalendar ? "Adding…" : "Add to Calendar"}
+                {addingCalendar ? "Adding\u2026" : "Add to Calendar"}
               </Text>
             </Pressable>
           )}
@@ -583,7 +605,7 @@ export default function FlightDetailScreen() {
           <View style={{ flex: 1, alignItems: "center", paddingVertical: 18, gap: 4, paddingHorizontal: 4 }}>
             <Ionicons name="leaf-outline" size={18} color={C.green} />
             <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_700Bold" }} adjustsFontSizeToFit numberOfLines={1}>{flight.co2Kg}</Text>
-            <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular" }}>kg CO₂</Text>
+            <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular" }}>kg CO\u2082</Text>
           </View>
           <View style={{ width: 1, backgroundColor: C.border, marginVertical: 12 }} />
           <View style={{ flex: 1, alignItems: "center", paddingVertical: 18, gap: 4, paddingHorizontal: 4 }}>
@@ -595,8 +617,8 @@ export default function FlightDetailScreen() {
           </View>
         </Animated.View>
 
-        {/* ─── REMINDERS (upcoming flights only, native only) ─── */}
-        {isUpcoming && Platform.OS !== "web" && (
+        {/* ─── REMINDERS (upcoming, native, expo-notifications installed) ─── */}
+        {isUpcoming && Platform.OS !== "web" && getNotif() !== null && (
           <Animated.View entering={FadeInDown.delay(120).springify()} style={{ marginBottom: 16 }}>
             <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Reminders</Text>
             <View style={{ backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, overflow: "hidden" }}>
@@ -611,8 +633,7 @@ export default function FlightDetailScreen() {
                     onPress={() => !toggling && handleReminderToggle(offset, isOn)}
                     style={({ pressed }) => [{
                       flexDirection: "row", alignItems: "center",
-                      paddingHorizontal: 16, paddingVertical: 14,
-                      gap: 12,
+                      paddingHorizontal: 16, paddingVertical: 14, gap: 12,
                       backgroundColor: pressed ? C.surface : C.card,
                     },
                     !isLast && { borderBottomWidth: 1, borderBottomColor: C.border },
@@ -633,7 +654,7 @@ export default function FlightDetailScreen() {
                       </Text>
                       {isDefault && !isOn && (
                         <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 1 }}>
-                          Default — not yet scheduled
+                          Default \u2014 not yet scheduled
                         </Text>
                       )}
                     </View>
@@ -645,10 +666,7 @@ export default function FlightDetailScreen() {
                       ? { backgroundColor: C.accentDim, borderColor: C.accent + "55" }
                       : { backgroundColor: C.surface,   borderColor: C.border },
                     ]}>
-                      <Text style={{
-                        fontSize: 11, fontFamily: "DMSans_600SemiBold",
-                        color: isOn ? C.accent : C.textMuted,
-                      }}>
+                      <Text style={{ fontSize: 11, fontFamily: "DMSans_600SemiBold", color: isOn ? C.accent : C.textMuted }}>
                         {isOn ? "On" : "Off"}
                       </Text>
                     </View>
@@ -666,28 +684,28 @@ export default function FlightDetailScreen() {
         <Animated.View entering={FadeInDown.delay(isUpcoming ? 160 : 120).springify()} style={{ marginBottom: 16 }}>
           <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Flight Info</Text>
           <View style={{ backgroundColor: C.card, borderRadius: 16, paddingHorizontal: 16, borderWidth: 1, borderColor: C.border }}>
-            <InfoRow label="Airline" value={flight.airline} />
-            <InfoRow label="Flight" value={flight.flightCode} />
+            <InfoRow label="Airline"  value={flight.airline} />
+            <InfoRow label="Flight"   value={flight.flightCode} />
             <InfoRow label="Aircraft" value={flight.aircraft} />
             {flight.tailNumber ? <InfoRow label="Tail Number" value={flight.tailNumber} /> : null}
             <InfoRow label="Date" value={formatDate(flight.date)} />
             <InfoRow
               label="Departure"
-              value={`${flight.departureAirport}  ·  ${flight.departureTime}${flight.departureTerminal ? `  ·  T${flight.departureTerminal}` : ""}${flight.departureGate ? `  ·  Gate ${flight.departureGate}` : ""}`}
+              value={`${flight.departureAirport}  \u00b7  ${flight.departureTime}${flight.departureTerminal ? `  \u00b7  T${flight.departureTerminal}` : ""}${flight.departureGate ? `  \u00b7  Gate ${flight.departureGate}` : ""}`}
             />
             <InfoRow
               label="Arrival"
-              value={`${flight.arrivalAirport}  ·  ${flight.arrivalTime} (local)${flight.arrivalTerminal ? `  ·  T${flight.arrivalTerminal}` : ""}${flight.arrivalGate ? `  ·  Gate ${flight.arrivalGate}` : ""}`}
+              value={`${flight.arrivalAirport}  \u00b7  ${flight.arrivalTime} (local)${flight.arrivalTerminal ? `  \u00b7  T${flight.arrivalTerminal}` : ""}${flight.arrivalGate ? `  \u00b7  Gate ${flight.arrivalGate}` : ""}`}
             />
             {actualDuration !== null && (
-              <InfoRow label="Block Time" value={`${actualDuration} (tz-corrected)  ·  ${scheduledDuration} scheduled`} />
+              <InfoRow label="Block Time" value={`${actualDuration} (tz-corrected)  \u00b7  ${scheduledDuration} scheduled`} />
             )}
             <InfoRow
               label="Distance"
-              value={`${flight.distanceMiles.toLocaleString()} mi  ·  ${Math.round(flight.distanceMiles * 1.60934).toLocaleString()} km`}
+              value={`${flight.distanceMiles.toLocaleString()} mi  \u00b7  ${Math.round(flight.distanceMiles * 1.60934).toLocaleString()} km`}
             />
             {avgSpeedMph > 0 && (
-              <InfoRow label="Avg Speed" value={`${avgSpeedMph} mph  ·  ${Math.round(avgSpeedMph * 1.60934)} km/h`} />
+              <InfoRow label="Avg Speed" value={`${avgSpeedMph} mph  \u00b7  ${Math.round(avgSpeedMph * 1.60934)} km/h`} />
             )}
           </View>
         </Animated.View>
@@ -696,12 +714,12 @@ export default function FlightDetailScreen() {
         <Animated.View entering={FadeInDown.delay(isUpcoming ? 200 : 160).springify()} style={{ marginBottom: 16 }}>
           <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Environmental Impact</Text>
           <View style={{ backgroundColor: C.card, borderRadius: 16, paddingHorizontal: 16, borderWidth: 1, borderColor: C.border }}>
-            <InfoRow label="CO₂ Emitted" value={`${flight.co2Kg} kg`} accent={C.green} />
+            <InfoRow label="CO\u2082 Emitted"   value={`${flight.co2Kg} kg`} accent={C.green} />
             <InfoRow label="Tree equivalent" value={`${co2Trees} trees / year to offset`} />
           </View>
         </Animated.View>
 
-        {/* ─── SHARE (full section, scroll-to convenience) ─── */}
+        {/* ─── SHARE ─── */}
         <Animated.View entering={FadeInDown.delay(isUpcoming ? 240 : 200).springify()} style={{ marginBottom: 8 }}>
           <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Share This Flight</Text>
           <Pressable
@@ -723,7 +741,7 @@ export default function FlightDetailScreen() {
               )}
           </Pressable>
           <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 17 }}>
-            Generates a boarding-pass style card — share to Instagram, WhatsApp, and more.
+            Generates a boarding-pass style card \u2014 share to Instagram, WhatsApp, and more.
           </Text>
         </Animated.View>
       </ScrollView>
