@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from "react";
+import React, { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import {
   View, Text, Image, SectionList,
   Pressable, Platform, Modal, TouchableWithoutFeedback,
@@ -26,7 +26,6 @@ function daysUntil(dateStr: string): number {
   return Math.ceil((new Date(dateStr + "T00:00:00").getTime() - new Date(TODAY + "T00:00:00").getTime()) / (1000 * 60 * 60 * 24));
 }
 
-/** Returns true if the flight matches the query string. */
 function matchesFlight(f: Flight, q: string): boolean {
   const term = q.toLowerCase().trim();
   if (!term) return true;
@@ -43,9 +42,9 @@ function matchesFlight(f: Flight, q: string): boolean {
 
 function groupFlights(flights: Flight[], groupBy: GroupBy, timeFilter: TimeFilter): { title: string; data: Flight[] }[] {
   let filtered: Flight[];
-  if (timeFilter === "upcoming")     filtered = flights.filter((f) => f.date >= TODAY).sort((a, b) => a.date.localeCompare(b.date));
-  else if (timeFilter === "past")    filtered = flights.filter((f) => f.date < TODAY).sort((a, b) => b.date.localeCompare(a.date));
-  else if (timeFilter === "all")     filtered = [...flights].sort((a, b) => b.date.localeCompare(a.date));
+  if (timeFilter === "upcoming")  filtered = flights.filter((f) => f.date >= TODAY).sort((a, b) => a.date.localeCompare(b.date));
+  else if (timeFilter === "past") filtered = flights.filter((f) => f.date < TODAY).sort((a, b) => b.date.localeCompare(a.date));
+  else if (timeFilter === "all")  filtered = [...flights].sort((a, b) => b.date.localeCompare(a.date));
   else filtered = flights.filter((f) => f.date.startsWith(String(timeFilter))).sort((a, b) => b.date.localeCompare(a.date));
 
   if (groupBy === "all") return filtered.length > 0 ? [{ title: "All Flights", data: filtered }] : [];
@@ -140,7 +139,6 @@ function FlightItem({ flight, onDelete, index, query }: { flight: Flight; onDele
     pillText  = flight.status === "delayed" ? "Delayed" : flight.status === "cancelled" ? "Cancelled" : "Completed";
   }
 
-  /** Wrap a string with highlighted spans where the query matches. */
   function Highlight({ text, style }: { text: string; style: object }) {
     const term = query.toLowerCase().trim();
     if (!term) return <Text style={style}>{text}</Text>;
@@ -221,6 +219,122 @@ function FlightItem({ flight, onDelete, index, query }: { flight: Flight; onDele
   );
 }
 
+// ---------------------------------------------------------------------------
+// ListHeader extracted as a stable named component so SectionList never
+// unmounts/remounts it when the parent re-renders (which would kill focus).
+// ---------------------------------------------------------------------------
+type ListHeaderProps = {
+  query: string;
+  onQueryChange: (q: string) => void;
+  searchFocused: boolean;
+  onSearchFocus: () => void;
+  onSearchBlur: () => void;
+  onClearSearch: () => void;
+  searchRef: React.RefObject<TextInput>;
+  isSearching: boolean;
+  totalShown: number;
+  timeFilter: TimeFilter;
+  setTimeFilter: (v: TimeFilter) => void;
+  dropdownOptions: { key: TimeFilter; label: string }[];
+  groupBy: GroupBy;
+  setGroupBy: (v: GroupBy) => void;
+};
+
+const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
+  { key: "month", label: "By Month" },
+  { key: "year",  label: "By Year" },
+  { key: "all",   label: "All" },
+];
+
+function FlightsListHeader({
+  query, onQueryChange, searchFocused, onSearchFocus, onSearchBlur, onClearSearch,
+  searchRef, isSearching, totalShown, timeFilter, setTimeFilter,
+  dropdownOptions, groupBy, setGroupBy,
+}: ListHeaderProps) {
+  const C = useColors();
+  return (
+    <View style={{ paddingTop: 16, paddingBottom: 8 }}>
+      {/* Title row */}
+      <View style={{ marginBottom: 16 }}>
+        <Text style={{ fontSize: 30, color: C.text, fontFamily: "DMSans_700Bold" }}>All Flights</Text>
+        <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 }}>
+          {isSearching
+            ? `${totalShown} result${totalShown !== 1 ? "s" : ""} for "${query.trim()}"`
+            : `${totalShown} flight${totalShown !== 1 ? "s" : ""}`
+          }
+        </Text>
+      </View>
+
+      {/* Search bar */}
+      <Animated.View
+        layout={Layout.springify()}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor: C.card,
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: searchFocused ? C.accent : C.border,
+          paddingHorizontal: 12,
+          marginBottom: 12,
+          gap: 8,
+        }}
+      >
+        <Ionicons name="search-outline" size={18} color={searchFocused ? C.accent : C.textMuted} />
+        <TextInput
+          ref={searchRef}
+          value={query}
+          onChangeText={onQueryChange}
+          onFocus={onSearchFocus}
+          onBlur={onSearchBlur}
+          placeholder="Search by flight, airport, city\u2026"
+          placeholderTextColor={C.textMuted}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+          autoCorrect={false}
+          autoCapitalize="characters"
+          style={{
+            flex: 1,
+            height: 46,
+            fontSize: 15,
+            color: C.text,
+            fontFamily: "DMSans_400Regular",
+          }}
+        />
+        {isSearching && (
+          <Animated.View entering={FadeIn.duration(120)} exiting={FadeOut.duration(100)}>
+            <Pressable
+              hitSlop={10}
+              onPress={onClearSearch}
+            >
+              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: C.textMuted, alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="close" size={12} color={C.white} />
+              </View>
+            </Pressable>
+          </Animated.View>
+        )}
+      </Animated.View>
+
+      {/* Period + group controls — hidden while searching */}
+      {!isSearching && (
+        <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(100)} layout={Layout.springify()}>
+          <View style={{ marginBottom: 12 }}>
+            <PeriodDropdown value={timeFilter} options={dropdownOptions} onChange={setTimeFilter} />
+          </View>
+          <View style={{ flexDirection: "row", backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 3, marginBottom: 14 }}>
+            {GROUP_OPTIONS.map((opt) => (
+              <Pressable key={opt.key} onPress={() => { Haptics.selectionAsync(); setGroupBy(opt.key); }}
+                style={{ flex: 1, paddingVertical: 8, alignItems: "center", borderRadius: 10, backgroundColor: groupBy === opt.key ? C.accent : "transparent" }}>
+                <Text style={{ fontSize: 13, fontFamily: groupBy === opt.key ? "DMSans_700Bold" : "DMSans_500Medium", color: groupBy === opt.key ? C.white : C.textSec }}>{opt.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </Animated.View>
+      )}
+    </View>
+  );
+}
+
 export default function FlightsScreen() {
   const C = useColors();
   const insets = useSafeAreaInsets();
@@ -229,9 +343,9 @@ export default function FlightsScreen() {
   const topPadding    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
-  const [groupBy, setGroupBy]       = useState<GroupBy>("month");
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>(new Date().getFullYear());
-  const [query, setQuery]           = useState("");
+  const [groupBy, setGroupBy]             = useState<GroupBy>("month");
+  const [timeFilter, setTimeFilter]       = useState<TimeFilter>(new Date().getFullYear());
+  const [query, setQuery]                 = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const searchRef = useRef<TextInput>(null);
 
@@ -257,7 +371,6 @@ export default function FlightsScreen() {
     ...years.map((y) => ({ key: y as TimeFilter, label: String(y) })),
   ], [hasUpcoming, hasPast, years]);
 
-  // When searching, bypass time/group filters and search across all flights.
   const sections = useMemo(() => {
     if (isSearching) {
       const results = flights
@@ -269,11 +382,39 @@ export default function FlightsScreen() {
   }, [flights, groupBy, timeFilter, query, isSearching]);
 
   const totalShown = sections.reduce((s, sec) => s + sec.data.length, 0);
-  const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
-    { key: "month", label: "By Month" },
-    { key: "year",  label: "By Year" },
-    { key: "all",   label: "All" },
-  ];
+
+  // Stable callbacks — no new references on each render.
+  const handleQueryChange  = useCallback((q: string) => setQuery(q), []);
+  const handleSearchFocus  = useCallback(() => setSearchFocused(true), []);
+  const handleSearchBlur   = useCallback(() => setSearchFocused(false), []);
+  const handleClearSearch  = useCallback(() => { setQuery(""); searchRef.current?.blur(); Haptics.selectionAsync(); }, []);
+  const handleSetTimeFilter = useCallback((v: TimeFilter) => setTimeFilter(v), []);
+  const handleSetGroupBy   = useCallback((v: GroupBy) => setGroupBy(v), []);
+
+  // Build a stable ListHeaderComponent using useCallback so SectionList
+  // gets the same function reference between renders and never remounts the header.
+  const renderListHeader = useCallback(() => (
+    <FlightsListHeader
+      query={query}
+      onQueryChange={handleQueryChange}
+      searchFocused={searchFocused}
+      onSearchFocus={handleSearchFocus}
+      onSearchBlur={handleSearchBlur}
+      onClearSearch={handleClearSearch}
+      searchRef={searchRef}
+      isSearching={isSearching}
+      totalShown={totalShown}
+      timeFilter={timeFilter}
+      setTimeFilter={handleSetTimeFilter}
+      dropdownOptions={dropdownOptions}
+      groupBy={groupBy}
+      setGroupBy={handleSetGroupBy}
+    />
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [
+    query, searchFocused, isSearching, totalShown,
+    timeFilter, dropdownOptions, groupBy,
+  ]);
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPadding }}>
@@ -285,87 +426,7 @@ export default function FlightsScreen() {
         stickySectionHeadersEnabled={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: bottomPadding + 100 }}
-        ListHeaderComponent={() => (
-          <View style={{ paddingTop: 16, paddingBottom: 8 }}>
-            {/* Title row */}
-            <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: 30, color: C.text, fontFamily: "DMSans_700Bold" }}>All Flights</Text>
-              <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 }}>
-                {isSearching
-                  ? `${totalShown} result${totalShown !== 1 ? "s" : ""} for "${query.trim()}"`
-                  : `${totalShown} flight${totalShown !== 1 ? "s" : ""}`
-                }
-              </Text>
-            </View>
-
-            {/* Search bar */}
-            <Animated.View
-              layout={Layout.springify()}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                backgroundColor: C.card,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: searchFocused ? C.accent : C.border,
-                paddingHorizontal: 12,
-                marginBottom: 12,
-                gap: 8,
-              }}
-            >
-              <Ionicons name="search-outline" size={18} color={searchFocused ? C.accent : C.textMuted} />
-              <TextInput
-                ref={searchRef}
-                value={query}
-                onChangeText={setQuery}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setSearchFocused(false)}
-                placeholder="Search by flight, airport, city…"
-                placeholderTextColor={C.textMuted}
-                returnKeyType="search"
-                clearButtonMode="while-editing"
-                autoCorrect={false}
-                autoCapitalize="characters"
-                style={{
-                  flex: 1,
-                  height: 46,
-                  fontSize: 15,
-                  color: C.text,
-                  fontFamily: "DMSans_400Regular",
-                }}
-              />
-              {isSearching && (
-                <Animated.View entering={FadeIn.duration(120)} exiting={FadeOut.duration(100)}>
-                  <Pressable
-                    hitSlop={10}
-                    onPress={() => { setQuery(""); searchRef.current?.blur(); Haptics.selectionAsync(); }}
-                  >
-                    <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: C.textMuted, alignItems: "center", justifyContent: "center" }}>
-                      <Ionicons name="close" size={12} color={C.white} />
-                    </View>
-                  </Pressable>
-                </Animated.View>
-              )}
-            </Animated.View>
-
-            {/* Period + group controls — hidden while searching */}
-            {!isSearching && (
-              <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(100)} layout={Layout.springify()}>
-                <View style={{ marginBottom: 12 }}>
-                  <PeriodDropdown value={timeFilter} options={dropdownOptions} onChange={setTimeFilter} />
-                </View>
-                <View style={{ flexDirection: "row", backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 3, marginBottom: 14 }}>
-                  {GROUP_OPTIONS.map((opt) => (
-                    <Pressable key={opt.key} onPress={() => { Haptics.selectionAsync(); setGroupBy(opt.key); }}
-                      style={{ flex: 1, paddingVertical: 8, alignItems: "center", borderRadius: 10, backgroundColor: groupBy === opt.key ? C.accent : "transparent" }}>
-                      <Text style={{ fontSize: 13, fontFamily: groupBy === opt.key ? "DMSans_700Bold" : "DMSans_500Medium", color: groupBy === opt.key ? C.white : C.textSec }}>{opt.label}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </Animated.View>
-            )}
-          </View>
-        )}
+        ListHeaderComponent={renderListHeader}
         renderSectionHeader={({ section }) => (!isSearching && groupBy !== "all") ? (
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 8 }}>
             <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_700Bold" }}>{section.title}</Text>
