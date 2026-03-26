@@ -3,7 +3,6 @@ import {
   View,
   Text,
   Image,
-  StyleSheet,
   ScrollView,
   Pressable,
   Platform,
@@ -18,7 +17,7 @@ import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
 import ViewShot from "react-native-view-shot";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
-import { Colors } from "@/constants/colors";
+import { useColors } from "@/constants/colors";
 import { useFlights } from "@/context/flights";
 import { getAirlineInfo } from "@/utils/airlineLogos";
 import FlightShareCard from "@/components/FlightShareCard";
@@ -40,7 +39,6 @@ function formatHours(minutes: number): string {
   if (m === 0) return `${h}h`;
   return `${h}h ${m}m`;
 }
-
 function deriveDurationMins(depTime: string, arrTime: string): number | null {
   if (!depTime || !arrTime) return null;
   const [dh, dm] = depTime.split(":").map(Number);
@@ -52,41 +50,42 @@ function deriveDurationMins(depTime: string, arrTime: string): number | null {
 }
 
 function InfoRow({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  const C = useColors();
   return (
-    <View style={infoStyles.row}>
-      <Text style={infoStyles.label}>{label}</Text>
-      <Text style={[infoStyles.value, accent ? { color: accent } : undefined]}>{value}</Text>
+    <View style={{
+      flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+      paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.border,
+    }}>
+      <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_400Regular", flexShrink: 0 }}>{label}</Text>
+      <Text style={[
+        { fontSize: 14, color: C.text, fontFamily: "DMSans_500Medium", textAlign: "right", flex: 1, marginLeft: 16 },
+        accent ? { color: accent } : undefined,
+      ]}>{value}</Text>
     </View>
   );
 }
 
-const infoStyles = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  label: { fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular", flexShrink: 0 },
-  value: {
-    fontSize: 14, color: Colors.text, fontFamily: "DMSans_500Medium",
-    textAlign: "right", flex: 1, marginLeft: 16, flexWrap: "wrap",
-  },
-});
-
 function AirlineLogo({ logoUrl, color, size = 32 }: { logoUrl: string; color: string; size?: number }) {
+  const C = useColors();
   const [errored, setErrored] = useState(false);
   if (errored) {
     return (
-      <View style={[logoStyles.fallback, { width: size, height: size, borderRadius: size / 4, backgroundColor: color + "18", borderColor: color + "40" }]}>
+      <View style={{
+        width: size, height: size, borderRadius: size / 4,
+        backgroundColor: color + "18", borderColor: color + "40",
+        borderWidth: 1, alignItems: "center", justifyContent: "center",
+      }}>
         <Ionicons name="airplane" size={size * 0.5} color={color} />
       </View>
     );
   }
   return (
-    <View style={[logoStyles.wrap, { width: size, height: size, borderRadius: size / 4, borderColor: Colors.border }]}>
+    <View style={{
+      width: size, height: size, borderRadius: size / 4,
+      borderColor: C.border, borderWidth: 1,
+      alignItems: "center", justifyContent: "center",
+      backgroundColor: "#FFFFFF", overflow: "hidden",
+    }}>
       <Image
         source={{ uri: logoUrl }}
         style={{ width: size - 4, height: size - 4 }}
@@ -96,31 +95,37 @@ function AirlineLogo({ logoUrl, color, size = 32 }: { logoUrl: string; color: st
     </View>
   );
 }
-const logoStyles = StyleSheet.create({
-  wrap: {
-    alignItems: "center", justifyContent: "center",
-    backgroundColor: Colors.white, borderWidth: 1, overflow: "hidden",
-  },
-  fallback: {
-    alignItems: "center", justifyContent: "center", borderWidth: 1,
-  },
-});
 
 function FlightNotFound({ topPad }: { topPad: number }) {
+  const C = useColors();
   return (
-    <View style={[styles.container, { paddingTop: topPad }]}>
-      <View style={styles.navBar}>
-        <Pressable onPress={() => router.back()} style={styles.navBtn} hitSlop={8}>
-          <Ionicons name="chevron-back" size={22} color={Colors.text} />
+    <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPad }}>
+      <View style={{
+        flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+        paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10,
+        borderBottomWidth: 1, borderBottomColor: C.border,
+      }}>
+        <Pressable onPress={() => router.back()} style={{
+          width: 40, height: 40, alignItems: "center", justifyContent: "center",
+          borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
+        }} hitSlop={8}>
+          <Ionicons name="chevron-back" size={22} color={C.text} />
         </Pressable>
         <View style={{ flex: 1 }} />
       </View>
-      <Animated.View entering={FadeIn.delay(60)} style={styles.notFoundWrap}>
-        <View style={styles.notFoundIconCircle}>
-          <Ionicons name="airplane-outline" size={40} color={Colors.accent} />
+      <Animated.View entering={FadeIn.delay(60)} style={{
+        flex: 1, alignItems: "center", justifyContent: "center",
+        paddingHorizontal: 36, paddingBottom: 60,
+      }}>
+        <View style={{
+          width: 80, height: 80, borderRadius: 40,
+          backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent + "30",
+          alignItems: "center", justifyContent: "center", marginBottom: 20,
+        }}>
+          <Ionicons name="airplane-outline" size={40} color={C.accent} />
         </View>
-        <Text style={styles.notFoundTitle}>Flight not found</Text>
-        <Text style={styles.notFoundSub}>
+        <Text style={{ fontSize: 20, color: C.text, fontFamily: "DMSans_700Bold", marginBottom: 10, textAlign: "center" }}>Flight not found</Text>
+        <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 21, marginBottom: 28 }}>
           This flight may have been deleted or the link is no longer valid.
         </Text>
         <Pressable
@@ -129,10 +134,13 @@ function FlightNotFound({ topPad }: { topPad: number }) {
             if (router.canGoBack()) router.back();
             else router.replace("/(tabs)");
           }}
-          style={({ pressed }) => [styles.notFoundBtn, { opacity: pressed ? 0.85 : 1 }]}
+          style={({ pressed }) => [{
+            flexDirection: "row", alignItems: "center", gap: 8,
+            backgroundColor: C.accent, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 30,
+          }, { opacity: pressed ? 0.85 : 1 }]}
         >
-          <Ionicons name="arrow-back-outline" size={16} color={Colors.white} />
-          <Text style={styles.notFoundBtnText}>Go Back</Text>
+          <Ionicons name="arrow-back-outline" size={16} color={C.white} />
+          <Text style={{ fontSize: 15, color: C.white, fontFamily: "DMSans_700Bold" }}>Go Back</Text>
         </Pressable>
       </Animated.View>
     </View>
@@ -140,6 +148,7 @@ function FlightNotFound({ topPad }: { topPad: number }) {
 }
 
 export default function FlightDetailScreen() {
+  const C = useColors();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { flights } = useFlights();
   const insets = useSafeAreaInsets();
@@ -191,153 +200,187 @@ export default function FlightDetailScreen() {
   const derivedMins = deriveDurationMins(flight.departureTime, flight.arrivalTime);
   const heroDisplayDuration = formatHours(derivedMins ?? flight.durationMinutes);
 
-  const statusColor = isUpcoming ? Colors.accent : isDelayed ? Colors.red : Colors.green;
+  const statusColor = isUpcoming ? C.accent : isDelayed ? C.red : C.green;
   const statusLabel = isUpcoming ? "Upcoming" : isDelayed ? `Delayed +${flight.delayMinutes} min` : "Completed";
   const airlineInfo = getAirlineInfo(flight.airlineCode);
 
   return (
-    <View style={[styles.container, { paddingTop: topPad }]}>
-      <ViewShot ref={shareRef} options={{ format: "png", quality: 1.0 }} style={styles.hiddenCapture}>
+    <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPad }}>
+      <ViewShot ref={shareRef} options={{ format: "png", quality: 1.0 }} style={{ position: "absolute", left: -9999, top: 0 }}>
         <FlightShareCard flight={flight} />
       </ViewShot>
 
       {/* ─── Nav bar ─── */}
-      <View style={styles.navBar}>
-        <Pressable onPress={() => router.back()} style={styles.navBtn} hitSlop={8}>
-          <Ionicons name="chevron-back" size={22} color={Colors.text} />
+      <View style={{
+        flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+        paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10,
+        borderBottomWidth: 1, borderBottomColor: C.border,
+      }}>
+        <Pressable onPress={() => router.back()} style={{
+          width: 40, height: 40, alignItems: "center", justifyContent: "center",
+          borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
+        }} hitSlop={8}>
+          <Ionicons name="chevron-back" size={22} color={C.text} />
         </Pressable>
-        <View style={styles.navCenter}>
-          <View style={styles.navAirlineRow}>
+        <View style={{ flex: 1, alignItems: "center", paddingHorizontal: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 2 }}>
             <AirlineLogo logoUrl={airlineInfo.logoUrl} color={airlineInfo.color} size={18} />
-            <Text style={styles.navLabel}>{flight.airline}</Text>
+            <Text style={{ fontSize: 11, color: C.textSec, fontFamily: "DMSans_400Regular", letterSpacing: 0.5, textTransform: "uppercase" }}>{flight.airline}</Text>
           </View>
-          {/* Use proper unicode arrow \u2192 (→) instead of ASCII " -> " */}
-          <Text style={styles.navTitle}>
+          <Text style={{ fontSize: 16, color: C.text, fontFamily: "DMSans_700Bold" }}>
             {flight.departureAirport}{" \u2192 "}{flight.arrivalAirport}
           </Text>
         </View>
         <Pressable
           onPress={handleShare}
           disabled={sharing}
-          style={({ pressed }) => [styles.navBtn, { opacity: sharing || pressed ? 0.7 : 1 }]}
+          style={({ pressed }) => [{
+            width: 40, height: 40, alignItems: "center", justifyContent: "center",
+            borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
+          }, { opacity: sharing || pressed ? 0.7 : 1 }]}
           hitSlop={8}
         >
           {sharing
-            ? <ActivityIndicator size="small" color={Colors.accent} />
-            : <Ionicons name="share-outline" size={20} color={Colors.accent} />}
+            ? <ActivityIndicator size="small" color={C.accent} />
+            : <Ionicons name="share-outline" size={20} color={C.accent} />}
         </Pressable>
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scroll, { paddingBottom: bottomPad }]}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: bottomPad }}
         contentInsetAdjustmentBehavior="automatic"
       >
         {/* ─── HERO CARD ─── */}
-        <Animated.View entering={FadeInDown.delay(0).springify()} style={styles.heroCard}>
-
-          <View style={styles.heroTopRow}>
-            <Text style={styles.heroFlightCode}>{flight.flightCode}</Text>
-            <View style={styles.heroTopRight}>
-              <View style={[styles.statusPill, { backgroundColor: statusColor + "18", borderColor: statusColor + "50" }]}>
-                <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-                <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
+        <Animated.View entering={FadeInDown.delay(0).springify()} style={{
+          backgroundColor: C.card, borderRadius: 20,
+          borderWidth: 1, borderColor: C.border,
+          padding: 20, marginBottom: 14,
+        }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+            <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_700Bold", letterSpacing: 1.2, textTransform: "uppercase" }}>{flight.flightCode}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 }}>
+              <View style={[{
+                flexDirection: "row", alignItems: "center", gap: 5,
+                paddingHorizontal: 10, paddingVertical: 5,
+                borderRadius: 20, borderWidth: 1,
+              }, { backgroundColor: statusColor + "18", borderColor: statusColor + "50" }]}>
+                <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: statusColor }} />
+                <Text style={{ fontSize: 11, fontFamily: "DMSans_500Medium", color: statusColor }}>{statusLabel}</Text>
               </View>
               {flight.verified && (
-                <View style={styles.verifiedBadge}>
-                  <Ionicons name="checkmark-circle" size={13} color={Colors.accent} />
-                  <Text style={styles.verifiedText}>Verified</Text>
+                <View style={{
+                  flexDirection: "row", alignItems: "center", gap: 3,
+                  backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent + "40",
+                  paddingHorizontal: 7, paddingVertical: 4, borderRadius: 10,
+                }}>
+                  <Ionicons name="checkmark-circle" size={13} color={C.accent} />
+                  <Text style={{ fontSize: 10, color: C.accent, fontFamily: "DMSans_500Medium" }}>Verified</Text>
                 </View>
               )}
             </View>
           </View>
 
-          <View style={styles.routeRow}>
-            <View style={styles.routeEnd}>
-              <Text style={styles.iata}>{flight.departureAirport}</Text>
-              <Text style={styles.cityName} numberOfLines={1}>{flight.departureCity}</Text>
+          {/* Route */}
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 18 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ fontSize: 38, color: C.text, fontFamily: "DMSans_700Bold", lineHeight: 44 }}>{flight.departureAirport}</Text>
+              <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 4 }} numberOfLines={1}>{flight.departureCity}</Text>
             </View>
-            <View style={styles.routeMid}>
-              <View style={styles.flightLine} />
-              <View style={[styles.planeCircle, { backgroundColor: Colors.accentDim }]}>
-                <Ionicons name="airplane" size={18} color={Colors.accent} />
+            <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 6 }}>
+              <View style={{ width: 20, height: 1.5, backgroundColor: C.border }} />
+              <View style={{
+                width: 38, height: 38, borderRadius: 19,
+                alignItems: "center", justifyContent: "center", marginHorizontal: 4,
+                backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.border,
+              }}>
+                <Ionicons name="airplane" size={18} color={C.accent} />
               </View>
-              <View style={styles.flightLine} />
+              <View style={{ width: 20, height: 1.5, backgroundColor: C.border }} />
             </View>
-            <View style={[styles.routeEnd, { alignItems: "flex-end" }]}>
-              <Text style={styles.iata}>{flight.arrivalAirport}</Text>
-              <Text style={[styles.cityName, { textAlign: "right" }]} numberOfLines={1}>{flight.arrivalCity}</Text>
+            <View style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
+              <Text style={{ fontSize: 38, color: C.text, fontFamily: "DMSans_700Bold", lineHeight: 44 }}>{flight.arrivalAirport}</Text>
+              <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 4, textAlign: "right" }} numberOfLines={1}>{flight.arrivalCity}</Text>
             </View>
           </View>
 
-          <View style={styles.timesRow}>
-            <View style={styles.timesBlock}>
-              <Text style={styles.timeText}>{flight.departureTime}</Text>
+          {/* Times */}
+          <View style={{
+            flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start",
+            paddingTop: 16, borderTopWidth: 1, borderTopColor: C.border, marginBottom: 16,
+          }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ fontSize: 22, color: C.text, fontFamily: "DMSans_700Bold" }}>{flight.departureTime}</Text>
               {(flight.departureTerminal || flight.departureGate) ? (
-                <Text style={styles.timeSubText} numberOfLines={1}>
+                <Text style={{ fontSize: 10, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 3 }} numberOfLines={1}>
                   {[flight.departureTerminal ? `T${flight.departureTerminal}` : null, flight.departureGate ? `Gate ${flight.departureGate}` : null].filter(Boolean).join(" \u00b7 ")}
                 </Text>
               ) : null}
             </View>
-
-            <View style={styles.timesMid}>
-              <Text style={styles.durationText}>{heroDisplayDuration}</Text>
-              <Text style={styles.dateText}>{formatDateShort(flight.date)}</Text>
+            <View style={{ flex: 1, alignItems: "center", paddingTop: 2 }}>
+              <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginBottom: 2 }}>{heroDisplayDuration}</Text>
+              <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>{formatDateShort(flight.date)}</Text>
             </View>
-
-            <View style={[styles.timesBlock, { alignItems: "flex-end" }]}>
-              <Text style={styles.timeText}>{flight.arrivalTime}</Text>
-              <Text style={styles.localTimeLabel}>local</Text>
+            <View style={{ flex: 1, minWidth: 0, alignItems: "flex-end" }}>
+              <Text style={{ fontSize: 22, color: C.text, fontFamily: "DMSans_700Bold" }}>{flight.arrivalTime}</Text>
+              <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2, letterSpacing: 0.3 }}>local</Text>
               {(flight.arrivalTerminal || flight.arrivalGate) ? (
-                <Text style={styles.timeSubText} numberOfLines={1}>
+                <Text style={{ fontSize: 10, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 3 }} numberOfLines={1}>
                   {[flight.arrivalTerminal ? `T${flight.arrivalTerminal}` : null, flight.arrivalGate ? `Gate ${flight.arrivalGate}` : null].filter(Boolean).join(" \u00b7 ")}
                 </Text>
               ) : null}
             </View>
           </View>
 
-          <View style={styles.heroBottomRow}>
-            <View style={styles.airlineRow}>
+          {/* Airline row */}
+          <View style={{
+            flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+            paddingTop: 14, borderTopWidth: 1, borderTopColor: C.border, gap: 12,
+          }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
               <AirlineLogo logoUrl={airlineInfo.logoUrl} color={airlineInfo.color} size={32} />
-              <Text style={styles.airlineName} numberOfLines={1}>{flight.airline}</Text>
+              <Text style={{ fontSize: 13, color: C.text, fontFamily: "DMSans_500Medium", flexShrink: 1 }} numberOfLines={1}>{flight.airline}</Text>
             </View>
-            <Text style={styles.aircraftText} numberOfLines={1} ellipsizeMode="tail">
+            <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", flexShrink: 1, textAlign: "right" }} numberOfLines={1} ellipsizeMode="tail">
               {flight.aircraft}
             </Text>
           </View>
         </Animated.View>
 
         {/* ─── STATS ROW ─── */}
-        <Animated.View entering={FadeInDown.delay(80).springify()} style={styles.statsRow}>
-          <View style={styles.statBox}>
-            <Ionicons name="navigate-outline" size={18} color={Colors.accent} />
-            <Text style={styles.statNum} adjustsFontSizeToFit numberOfLines={1}>{flight.distanceMiles.toLocaleString()}</Text>
-            <Text style={styles.statLbl}>miles</Text>
+        <Animated.View entering={FadeInDown.delay(80).springify()} style={{
+          backgroundColor: C.card, borderRadius: 16, flexDirection: "row",
+          marginBottom: 24, borderWidth: 1, borderColor: C.border, overflow: "hidden",
+        }}>
+          <View style={{ flex: 1, alignItems: "center", paddingVertical: 18, gap: 4, paddingHorizontal: 4 }}>
+            <Ionicons name="navigate-outline" size={18} color={C.accent} />
+            <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_700Bold" }} adjustsFontSizeToFit numberOfLines={1}>{flight.distanceMiles.toLocaleString()}</Text>
+            <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular" }}>miles</Text>
           </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statBox}>
-            <Ionicons name="speedometer-outline" size={18} color={Colors.amber} />
-            <Text style={styles.statNum}>{avgSpeedMph}</Text>
-            <Text style={styles.statLbl}>mph avg</Text>
+          <View style={{ width: 1, backgroundColor: C.border, marginVertical: 12 }} />
+          <View style={{ flex: 1, alignItems: "center", paddingVertical: 18, gap: 4, paddingHorizontal: 4 }}>
+            <Ionicons name="speedometer-outline" size={18} color={C.amber} />
+            <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_700Bold" }}>{avgSpeedMph}</Text>
+            <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular" }}>mph avg</Text>
           </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statBox}>
-            <Ionicons name="leaf-outline" size={18} color={Colors.green} />
-            <Text style={styles.statNum} adjustsFontSizeToFit numberOfLines={1}>{flight.co2Kg}</Text>
-            <Text style={styles.statLbl}>kg CO\u2082</Text>
+          <View style={{ width: 1, backgroundColor: C.border, marginVertical: 12 }} />
+          <View style={{ flex: 1, alignItems: "center", paddingVertical: 18, gap: 4, paddingHorizontal: 4 }}>
+            <Ionicons name="leaf-outline" size={18} color={C.green} />
+            <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_700Bold" }} adjustsFontSizeToFit numberOfLines={1}>{flight.co2Kg}</Text>
+            <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular" }}>kg CO\u2082</Text>
           </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statBox}>
-            <Ionicons name="time-outline" size={18} color={Colors.textSec} />
-            <Text style={styles.statNum} adjustsFontSizeToFit numberOfLines={1}>{formatHours(flight.durationMinutes)}</Text>
-            <Text style={styles.statLbl}>duration</Text>
+          <View style={{ width: 1, backgroundColor: C.border, marginVertical: 12 }} />
+          <View style={{ flex: 1, alignItems: "center", paddingVertical: 18, gap: 4, paddingHorizontal: 4 }}>
+            <Ionicons name="time-outline" size={18} color={C.textSec} />
+            <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_700Bold" }} adjustsFontSizeToFit numberOfLines={1}>{formatHours(flight.durationMinutes)}</Text>
+            <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular" }}>duration</Text>
           </View>
         </Animated.View>
 
         {/* ─── FLIGHT INFO ─── */}
-        <Animated.View entering={FadeInDown.delay(160).springify()} style={styles.section}>
-          <Text style={styles.sectionTitle}>Flight Info</Text>
-          <View style={styles.card}>
+        <Animated.View entering={FadeInDown.delay(160).springify()} style={{ marginBottom: 16 }}>
+          <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Flight Info</Text>
+          <View style={{ backgroundColor: C.card, borderRadius: 16, paddingHorizontal: 16, borderWidth: 1, borderColor: C.border }}>
             <InfoRow label="Airline" value={flight.airline} />
             <InfoRow label="Flight" value={flight.flightCode} />
             <InfoRow label="Aircraft" value={flight.aircraft} />
@@ -362,32 +405,36 @@ export default function FlightDetailScreen() {
         </Animated.View>
 
         {/* ─── ENV IMPACT ─── */}
-        <Animated.View entering={FadeInDown.delay(220).springify()} style={styles.section}>
-          <Text style={styles.sectionTitle}>Environmental Impact</Text>
-          <View style={styles.card}>
-            <InfoRow label="CO\u2082 Emitted" value={`${flight.co2Kg} kg`} accent={Colors.green} />
+        <Animated.View entering={FadeInDown.delay(220).springify()} style={{ marginBottom: 16 }}>
+          <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Environmental Impact</Text>
+          <View style={{ backgroundColor: C.card, borderRadius: 16, paddingHorizontal: 16, borderWidth: 1, borderColor: C.border }}>
+            <InfoRow label="CO\u2082 Emitted" value={`${flight.co2Kg} kg`} accent={C.green} />
             <InfoRow label="Tree equivalent" value={`${co2Trees} trees / year to offset`} />
           </View>
         </Animated.View>
 
         {/* ─── SHARE ─── */}
-        <Animated.View entering={FadeInDown.delay(280).springify()} style={styles.shareSection}>
-          <Text style={styles.sectionTitle}>Share This Flight</Text>
+        <Animated.View entering={FadeInDown.delay(280).springify()} style={{ marginBottom: 8 }}>
+          <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Share This Flight</Text>
           <Pressable
             onPress={handleShare}
             disabled={sharing}
-            style={({ pressed }) => [styles.shareBtn, { opacity: sharing || pressed ? 0.75 : 1 }]}
+            style={({ pressed }) => [{
+              backgroundColor: C.accent, borderRadius: 14, padding: 17,
+              flexDirection: "row", alignItems: "center", justifyContent: "center",
+              gap: 10, marginBottom: 10,
+            }, { opacity: sharing || pressed ? 0.75 : 1 }]}
           >
             {sharing
-              ? <ActivityIndicator size="small" color={Colors.white} />
+              ? <ActivityIndicator size="small" color={C.white} />
               : (
                 <>
-                  <Ionicons name="share-social-outline" size={20} color={Colors.white} />
-                  <Text style={styles.shareBtnText}>Share with friends</Text>
+                  <Ionicons name="share-social-outline" size={20} color={C.white} />
+                  <Text style={{ fontSize: 16, color: C.white, fontFamily: "DMSans_700Bold" }}>Share with friends</Text>
                 </>
               )}
           </Pressable>
-          <Text style={styles.shareHint}>
+          <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 17 }}>
             Generates a boarding-pass style card \u2014 share to Instagram, WhatsApp, and more.
           </Text>
         </Animated.View>
@@ -395,146 +442,3 @@ export default function FlightDetailScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container:     { flex: 1, backgroundColor: Colors.bg },
-  hiddenCapture: { position: "absolute", left: -9999, top: 0 },
-
-  navBar: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  navBtn: {
-    width: 40, height: 40, alignItems: "center", justifyContent: "center",
-    borderRadius: 20, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border,
-  },
-  navCenter:     { flex: 1, alignItems: "center", paddingHorizontal: 12 },
-  navAirlineRow: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 2 },
-  navLabel: {
-    fontSize: 11, color: Colors.textSec, fontFamily: "DMSans_400Regular",
-    letterSpacing: 0.5, textTransform: "uppercase",
-  },
-  navTitle: { fontSize: 16, color: Colors.text, fontFamily: "DMSans_700Bold" },
-
-  scroll:   { paddingHorizontal: 20, paddingTop: 16 },
-
-  notFoundWrap: {
-    flex: 1, alignItems: "center", justifyContent: "center",
-    paddingHorizontal: 36, paddingBottom: 60,
-  },
-  notFoundIconCircle: {
-    width: 80, height: 80, borderRadius: 40,
-    backgroundColor: Colors.accentDim,
-    borderWidth: 1, borderColor: Colors.accent + "30",
-    alignItems: "center", justifyContent: "center",
-    marginBottom: 20,
-  },
-  notFoundTitle: {
-    fontSize: 20, color: Colors.text, fontFamily: "DMSans_700Bold",
-    marginBottom: 10, textAlign: "center",
-  },
-  notFoundSub: {
-    fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_400Regular",
-    textAlign: "center", lineHeight: 21, marginBottom: 28,
-  },
-  notFoundBtn: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: Colors.accent, paddingHorizontal: 24, paddingVertical: 14,
-    borderRadius: 30,
-  },
-  notFoundBtnText: { fontSize: 15, color: Colors.white, fontFamily: "DMSans_700Bold" },
-
-  heroCard: {
-    backgroundColor: Colors.card, borderRadius: 20,
-    borderWidth: 1, borderColor: Colors.border,
-    padding: 20, marginBottom: 14,
-  },
-  heroTopRow: {
-    flexDirection: "row", justifyContent: "space-between",
-    alignItems: "center", marginBottom: 20,
-  },
-  heroFlightCode: {
-    fontSize: 14, color: Colors.textSec, fontFamily: "DMSans_700Bold",
-    letterSpacing: 1.2, textTransform: "uppercase",
-  },
-  heroTopRight: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 },
-  statusPill: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 20, borderWidth: 1,
-  },
-  statusDot:  { width: 5, height: 5, borderRadius: 2.5 },
-  statusText: { fontSize: 11, fontFamily: "DMSans_500Medium" },
-  verifiedBadge: {
-    flexDirection: "row", alignItems: "center", gap: 3,
-    backgroundColor: Colors.accentDim, borderWidth: 1, borderColor: Colors.accent + "40",
-    paddingHorizontal: 7, paddingVertical: 4, borderRadius: 10,
-  },
-  verifiedText: { fontSize: 10, color: Colors.accent, fontFamily: "DMSans_500Medium" },
-
-  routeRow: { flexDirection: "row", alignItems: "center", marginBottom: 18 },
-  routeEnd: { flex: 1, minWidth: 0 },
-  routeMid: { flexDirection: "row", alignItems: "center", paddingHorizontal: 6 },
-  flightLine: { width: 20, height: 1.5, backgroundColor: Colors.border },
-  planeCircle: {
-    width: 38, height: 38, borderRadius: 19, alignItems: "center",
-    justifyContent: "center", marginHorizontal: 4,
-    borderWidth: 1, borderColor: Colors.border,
-  },
-  iata:     { fontSize: 38, color: Colors.text, fontFamily: "DMSans_700Bold", lineHeight: 44 },
-  cityName: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 4 },
-
-  timesRow: {
-    flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start",
-    paddingTop: 16, borderTopWidth: 1, borderTopColor: Colors.border, marginBottom: 16,
-  },
-  timesBlock:      { flex: 1, minWidth: 0 },
-  timesMid:        { flex: 1, alignItems: "center", paddingTop: 2 },
-  timeText:        { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold" },
-  timeSubText:     { fontSize: 10, color: Colors.textMuted, fontFamily: "DMSans_400Regular", marginTop: 3 },
-  localTimeLabel:  { fontSize: 10, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 2, letterSpacing: 0.3 },
-  durationText:    { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginBottom: 2 },
-  dateText:        { fontSize: 11, color: Colors.textMuted, fontFamily: "DMSans_400Regular" },
-
-  heroBottomRow: {
-    flexDirection: "row", alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 14, borderTopWidth: 1, borderTopColor: Colors.border,
-    gap: 12,
-  },
-  airlineRow:  { flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0 },
-  airlineName: { fontSize: 13, color: Colors.text, fontFamily: "DMSans_500Medium", flexShrink: 1 },
-  aircraftText:{ fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", flexShrink: 1, textAlign: "right" },
-
-  statsRow: {
-    backgroundColor: Colors.card, borderRadius: 16, flexDirection: "row",
-    marginBottom: 24, borderWidth: 1, borderColor: Colors.border, overflow: "hidden",
-  },
-  statBox:     { flex: 1, alignItems: "center", paddingVertical: 18, gap: 4, paddingHorizontal: 4 },
-  statDivider: { width: 1, backgroundColor: Colors.border, marginVertical: 12 },
-  statNum:     { fontSize: 15, color: Colors.text, fontFamily: "DMSans_700Bold" },
-  statLbl:     { fontSize: 10, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
-
-  section: { marginBottom: 16 },
-  sectionTitle: {
-    fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_500Medium",
-    letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10,
-  },
-  card: {
-    backgroundColor: Colors.card, borderRadius: 16,
-    paddingHorizontal: 16, borderWidth: 1, borderColor: Colors.border,
-  },
-
-  shareSection: { marginBottom: 8 },
-  shareBtn: {
-    backgroundColor: Colors.accent, borderRadius: 14, padding: 17,
-    flexDirection: "row", alignItems: "center", justifyContent: "center",
-    gap: 10, marginBottom: 10,
-  },
-  shareBtnText: { fontSize: 16, color: Colors.white, fontFamily: "DMSans_700Bold" },
-  shareHint: {
-    fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular",
-    textAlign: "center", lineHeight: 17,
-  },
-});
