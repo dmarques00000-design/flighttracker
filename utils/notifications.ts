@@ -129,6 +129,38 @@ export async function cancelFlightReminder(
 }
 
 /**
+ * Returns the set of ReminderOffset values that are currently scheduled
+ * for the given flight. Returns an empty Set on web or if expo-notifications
+ * is not installed.
+ */
+export async function getScheduledOffsetsForFlight(
+  flightId: string,
+): Promise<Set<ReminderOffset>> {
+  const result = new Set<ReminderOffset>();
+  if (Platform.OS === "web") return result;
+  const N = getNotif();
+  if (!N) return result;
+  const all = await N.getAllScheduledNotificationsAsync();
+  const ids = new Set(all.map((n) => n.identifier));
+  for (const offset of REMINDER_OFFSETS) {
+    if (ids.has(notifId(flightId, offset))) result.add(offset);
+  }
+  return result;
+}
+
+/**
+ * Returns true if the given flight has at least one reminder scheduled.
+ */
+export async function hasAnyReminderForFlight(flightId: string): Promise<boolean> {
+  if (Platform.OS === "web") return false;
+  const N = getNotif();
+  if (!N) return false;
+  const all = await N.getAllScheduledNotificationsAsync();
+  const ids = new Set(all.map((n) => n.identifier));
+  return REMINDER_OFFSETS.some((offset) => ids.has(notifId(flightId, offset)));
+}
+
+/**
  * Sync global default reminders for all upcoming flights.
  * Called when the user changes their global notification preferences.
  */

@@ -2,7 +2,7 @@ import React, { useMemo, useState, useCallback, useEffect, useRef } from "react"
 import {
   View, Text, Image, SectionList,
   Pressable, Platform, Modal, TouchableWithoutFeedback,
-  TextInput, Keyboard,
+  TextInput, Keyboard, AppState, AppStateStatus,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,6 +12,7 @@ import Animated, { FadeInDown, FadeIn, FadeOut, Layout } from "react-native-rean
 import { useColors } from "@/constants/colors";
 import { useFlights, Flight } from "@/context/flights";
 import { getAirlineInfo } from "@/utils/airlineLogos";
+import { hasAnyReminderForFlight } from "@/utils/notifications";
 
 const TODAY = new Date().toISOString().substring(0, 10);
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -122,6 +123,44 @@ function PeriodDropdown({ value, options, onChange }: { value: TimeFilter; optio
   );
 }
 
+/**
+ * Bell badge shown on upcoming flight cards that have at least one reminder scheduled.
+ * Checks the OS notification scheduler once on mount and refreshes when the
+ * app comes back to the foreground (e.g. after visiting the detail page).
+ */
+function ReminderBell({ flightId }: { flightId: string }) {
+  const C = useColors();
+  const [hasReminder, setHasReminder] = useState(false);
+
+  async function check() {
+    const result = await hasAnyReminderForFlight(flightId);
+    setHasReminder(result);
+  }
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    check();
+    const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
+      if (state === "active") check();
+    });
+    return () => sub.remove();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flightId]);
+
+  if (!hasReminder) return null;
+
+  return (
+    <Animated.View entering={FadeIn.duration(200)} style={{
+      width: 20, height: 20, borderRadius: 10,
+      backgroundColor: C.accentDim,
+      borderWidth: 1, borderColor: C.accent + "55",
+      alignItems: "center", justifyContent: "center",
+    }}>
+      <Ionicons name="notifications" size={11} color={C.accent} />
+    </Animated.View>
+  );
+}
+
 function FlightItem({ flight, onDelete, index, query }: { flight: Flight; onDelete: () => void; index: number; query: string }) {
   const C = useColors();
   const [confirming, setConfirming] = useState(false);
@@ -190,7 +229,11 @@ function FlightItem({ flight, onDelete, index, query }: { flight: Flight; onDele
                 )}
               </View>
             </View>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginLeft: 8 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginLeft: 8 }}>
+              {/* Bell badge — only shows for upcoming flights with an active reminder */}
+              {isUpcoming && Platform.OS !== "web" && (
+                <ReminderBell flightId={flight.id} />
+              )}
               <View style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8, backgroundColor: pillBg }}>
                 <Text style={{ fontSize: 11, fontFamily: "DMSans_700Bold", color: pillColor }}>{pillText}</Text>
               </View>
@@ -280,11 +323,8 @@ export default function FlightsScreen() {
   const handleSetTimeFilter = useCallback((v: TimeFilter) => setTimeFilter(v), []);
   const handleSetGroupBy   = useCallback((v: GroupBy) => setGroupBy(v), []);
 
-  // Stable list header — only title row + filter/group controls, NO TextInput.
-  // TextInput lives outside SectionList so it is never remounted on re-render.
   const renderListHeader = useCallback(() => (
     <View style={{ paddingTop: 8, paddingBottom: 8 }}>
-      {/* Title row */}
       <View style={{ marginBottom: 12 }}>
         <Text style={{ fontSize: 30, color: C.text, fontFamily: "DMSans_700Bold" }}>All Flights</Text>
         <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 }}>
@@ -294,8 +334,6 @@ export default function FlightsScreen() {
           }
         </Text>
       </View>
-
-      {/* Period + group controls — hidden while searching */}
       {!isSearching && (
         <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(100)} layout={Layout.springify()}>
           <View style={{ marginBottom: 12 }}>
@@ -317,26 +355,10 @@ export default function FlightsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPadding }}>
-
-      {/* ── Search bar — lives here, OUTSIDE SectionList, never remounted ── */}
-      <View style={{
-        paddingHorizontal: 20,
-        paddingTop: 12,
-        paddingBottom: 4,
-        backgroundColor: C.bg,
-      }}>
+      <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4, backgroundColor: C.bg }}>
         <Animated.View
           layout={Layout.springify()}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            backgroundColor: C.card,
-            borderRadius: 14,
-            borderWidth: 1,
-            borderColor: searchFocused ? C.accent : C.border,
-            paddingHorizontal: 12,
-            gap: 8,
-          }}
+          style={{ flexDirection: "row", alignItems: "center", backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: searchFocused ? C.accent : C.border, paddingHorizontal: 12, gap: 8 }}
         >
           <Ionicons name="search-outline" size={18} color={searchFocused ? C.accent : C.textMuted} />
           <TextInput
@@ -351,13 +373,7 @@ export default function FlightsScreen() {
             clearButtonMode="while-editing"
             autoCorrect={false}
             autoCapitalize="characters"
-            style={{
-              flex: 1,
-              height: 46,
-              fontSize: 15,
-              color: C.text,
-              fontFamily: "DMSans_400Regular",
-            }}
+            style={{ flex: 1, height: 46, fontSize: 15, color: C.text, fontFamily: "DMSans_400Regular" }}
           />
           {isSearching && (
             <Animated.View entering={FadeIn.duration(120)} exiting={FadeOut.duration(100)}>
@@ -408,10 +424,8 @@ export default function FlightsScreen() {
               }
             </Text>
             {isSearching && (
-              <Pressable
-                onPress={() => { setQuery(""); searchRef.current?.focus(); Haptics.selectionAsync(); }}
-                style={({ pressed }) => [{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, opacity: pressed ? 0.8 : 1 }]}
-              >
+              <Pressable onPress={() => { setQuery(""); searchRef.current?.focus(); Haptics.selectionAsync(); }}
+                style={({ pressed }) => [{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, opacity: pressed ? 0.8 : 1 }]}>
                 <Text style={{ fontSize: 15, color: C.accent, fontFamily: "DMSans_700Bold" }}>Clear Search</Text>
               </Pressable>
             )}

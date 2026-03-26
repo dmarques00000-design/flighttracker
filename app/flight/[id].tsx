@@ -79,9 +79,15 @@ function parseLocalDateTime(dateStr: string, timeStr: string): Date {
 }
 
 const OFFSET_LABEL_MAP: Record<ReminderOffset, string> = {
-  24: "24h before",
-  6:  "6h before",
-  3:  "3h before",
+  24: "24h before departure",
+  6:  "6h before departure",
+  3:  "3h before departure",
+};
+
+const OFFSET_SUBLABEL_MAP: Record<ReminderOffset, string> = {
+  24: "Day before — great for packing",
+  6:  "Same day — time to head to the airport",
+  3:  "Final call — check in & gate ready",
 };
 
 function InfoRow({ label, value, accent }: { label: string; value: string; accent?: string }) {
@@ -351,6 +357,7 @@ export default function FlightDetailScreen() {
     try {
       if (currentlyOn) {
         await cancelFlightReminder(flight.id, offset);
+        Haptics.selectionAsync();
       } else {
         const granted = await requestNotificationPermission();
         if (!granted) {
@@ -362,7 +369,7 @@ export default function FlightDetailScreen() {
         }
         const result = await scheduleFlightReminder(flight, offset);
         if (!result) {
-          Alert.alert("Too late", "This reminder time has already passed.");
+          Alert.alert("Too late", "This reminder time has already passed for this flight.");
           return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -393,8 +400,10 @@ export default function FlightDetailScreen() {
   const statusLabel = isUpcoming ? "Upcoming" : isDelayed ? `Delayed +${flight.delayMinutes} min` : "Completed";
   const airlineInfo = getAirlineInfo(flight.airlineCode);
 
-  // Calendar button is only useful when expo-calendar is installed
   const calendarAvailable = Platform.OS !== "web" && getCal() !== null;
+
+  // Count active reminders for the header badge
+  const activeReminderCount = scheduled.size;
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPad }}>
@@ -548,7 +557,6 @@ export default function FlightDetailScreen() {
 
         {/* ─── QUICK ACTION BAR ─── */}
         <Animated.View entering={FadeInDown.delay(60).springify()} style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
-          {/* Share */}
           <Pressable
             onPress={handleShare}
             disabled={sharing}
@@ -564,7 +572,6 @@ export default function FlightDetailScreen() {
             <Text style={{ fontSize: 14, color: C.white, fontFamily: "DMSans_700Bold" }}>Share</Text>
           </Pressable>
 
-          {/* Add to Calendar — upcoming & native & package installed */}
           {isUpcoming && calendarAvailable && (
             <Pressable
               onPress={handleAddToCalendar}
@@ -617,14 +624,46 @@ export default function FlightDetailScreen() {
           </View>
         </Animated.View>
 
-        {/* ─── REMINDERS (upcoming, native, expo-notifications installed) ─── */}
+        {/* ─── PER-FLIGHT REMINDERS ─── */}
         {isUpcoming && Platform.OS !== "web" && getNotif() !== null && (
           <Animated.View entering={FadeInDown.delay(120).springify()} style={{ marginBottom: 16 }}>
-            <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Reminders</Text>
+            {/* Header row with active count badge */}
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase" }}>Flight Reminders</Text>
+                {activeReminderCount > 0 && (
+                  <View style={{
+                    paddingHorizontal: 7, paddingVertical: 2,
+                    borderRadius: 10, backgroundColor: C.accentDim,
+                    borderWidth: 1, borderColor: C.accent + "44",
+                  }}>
+                    <Text style={{ fontSize: 11, color: C.accent, fontFamily: "DMSans_700Bold" }}>
+                      {activeReminderCount} active
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* Context note */}
+            <View style={{
+              flexDirection: "row", alignItems: "flex-start", gap: 8,
+              backgroundColor: C.surface, borderRadius: 12,
+              borderWidth: 1, borderColor: C.border,
+              padding: 12, marginBottom: 10,
+            }}>
+              <Ionicons name="information-circle-outline" size={16} color={C.textSec} style={{ marginTop: 1 }} />
+              <Text style={{ flex: 1, fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", lineHeight: 17 }}>
+                These are reminders just for this flight, set independently of your global settings in Profile.
+                {notifPrefs.enabled && notifPrefs.offsets.length > 0
+                  ? ` Your global setting also fires ${notifPrefs.offsets.map((o) => `${o}h`).join(" & ")} before all upcoming flights.`
+                  : " You currently have no global reminders enabled (Profile \u2192 Flight Reminders)."}
+              </Text>
+            </View>
+
             <View style={{ backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, overflow: "hidden" }}>
               {REMINDER_OFFSETS.map((offset, i) => {
                 const isOn      = scheduled.has(offset);
-                const isDefault = notifPrefs.enabled && notifPrefs.offsets.includes(offset);
                 const isLast    = i === REMINDER_OFFSETS.length - 1;
                 const toggling  = togglingOffset === offset;
                 return (
@@ -634,39 +673,46 @@ export default function FlightDetailScreen() {
                     style={({ pressed }) => [{
                       flexDirection: "row", alignItems: "center",
                       paddingHorizontal: 16, paddingVertical: 14, gap: 12,
-                      backgroundColor: pressed ? C.surface : C.card,
+                      backgroundColor: isOn ? C.accentDim : pressed ? C.surface : C.card,
                     },
                     !isLast && { borderBottomWidth: 1, borderBottomColor: C.border },
                     ]}
                   >
+                    {/* Icon */}
                     <View style={{
-                      width: 34, height: 34, borderRadius: 9,
-                      backgroundColor: isOn ? C.accentDim : C.surface,
-                      alignItems: "center", justifyContent: "center",
+                      width: 36, height: 36, borderRadius: 10,
+                      backgroundColor: isOn ? C.accent + "22" : C.surface,
+                      alignItems: "center", justifyContent: "center", flexShrink: 0,
                     }}>
                       {toggling
                         ? <ActivityIndicator size="small" color={C.accent} />
                         : <Ionicons name={isOn ? "notifications" : "notifications-outline"} size={18} color={isOn ? C.accent : C.textMuted} />}
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, color: C.text, fontFamily: isOn ? "DMSans_600SemiBold" : "DMSans_400Regular" }}>
+
+                    {/* Labels */}
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 14, color: C.text, fontFamily: isOn ? "DMSans_700Bold" : "DMSans_500Medium" }}>
                         {OFFSET_LABEL_MAP[offset]}
                       </Text>
-                      {isDefault && !isOn && (
-                        <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 1 }}>
-                          Default \u2014 not yet scheduled
-                        </Text>
-                      )}
+                      <Text style={{ fontSize: 11, color: isOn ? C.accent : C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 2 }}>
+                        {isOn ? "\u2713 Reminder set" : OFFSET_SUBLABEL_MAP[offset]}
+                      </Text>
                     </View>
+
+                    {/* On/Off badge */}
                     <View style={[{
-                      paddingHorizontal: 10, paddingVertical: 4,
-                      borderRadius: 20, borderWidth: 1,
+                      paddingHorizontal: 12, paddingVertical: 5,
+                      borderRadius: 20, borderWidth: 1, flexShrink: 0,
                     },
                     isOn
-                      ? { backgroundColor: C.accentDim, borderColor: C.accent + "55" }
-                      : { backgroundColor: C.surface,   borderColor: C.border },
+                      ? { backgroundColor: C.accent, borderColor: C.accent }
+                      : { backgroundColor: C.surface, borderColor: C.border },
                     ]}>
-                      <Text style={{ fontSize: 11, fontFamily: "DMSans_600SemiBold", color: isOn ? C.accent : C.textMuted }}>
+                      <Text style={{
+                        fontSize: 12,
+                        fontFamily: "DMSans_700Bold",
+                        color: isOn ? C.white : C.textMuted,
+                      }}>
                         {isOn ? "On" : "Off"}
                       </Text>
                     </View>
@@ -674,9 +720,6 @@ export default function FlightDetailScreen() {
                 );
               })}
             </View>
-            <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 8, lineHeight: 16, paddingHorizontal: 2 }}>
-              Reminders are local to this device. Manage default settings in your Profile.
-            </Text>
           </Animated.View>
         )}
 
