@@ -1,11 +1,6 @@
 /**
  * StoryCard — Yearly Recap
  * 9:16 portrait card for Instagram / WhatsApp story sharing.
- *
- * Language: "You've taken X flights [this year / all time]"
- * Fun facts: CO₂ comparison + time-in-air comparison
- * Branding: LogoMark + "Logbook" wordmark top-left, iOS App Store badge bottom-right
- * CTA: "Track yours at logbook.app"
  */
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
@@ -13,7 +8,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import Svg, {
   G, Path, Circle, Rect, Defs, LinearGradient as SvgLG, Stop, ClipPath,
 } from "react-native-svg";
-import { Ionicons } from "@expo/vector-icons";
 import { Flight } from "@/context/flights";
 import { getCO2FunFact } from "@/utils/co2FunFact";
 import { getTimeFunFact } from "@/utils/timeFunFact";
@@ -39,16 +33,6 @@ function computeRank(n: number): number {
   if (n <= 6) return 55;  if (n <= 10) return 70;
   if (n <= 15) return 82; if (n <= 25) return 91;
   if (n <= 40) return 96; return 99;
-}
-function getTopRoutes(flights: Flight[]): { dep: string; arr: string }[] {
-  const freq: Record<string, number> = {};
-  flights.forEach((f) => {
-    const key = `${f.departureAirport}\u2192${f.arrivalAirport}`;
-    freq[key] = (freq[key] || 0) + 1;
-  });
-  return Object.entries(freq)
-    .sort((a, b) => b[1] - a[1]).slice(0, 3)
-    .map(([k]) => { const [dep, arr] = k.split("\u2192"); return { dep, arr }; });
 }
 
 // ── Inline LogoMark ───────────────────────────────────────────────────────────────────
@@ -85,20 +69,58 @@ function LogoMark({ size = 28 }: { size?: number }) {
   );
 }
 
-// ── iOS App Store Badge ─────────────────────────────────────────────────────────────────
-function AppStoreBadge({ width = 120 }: { width?: number }) {
-  const h=width*0.33, r=h*0.28;
+// ── Official-style App Store Badge (Apple logo + text) ──────────────────────────────
+function AppStoreBadge({ width = 140 }: { width?: number }) {
+  const h = width * 0.31;
+  const r = h * 0.26;
+  // Apple logo path scaled to badge height. The canonical Apple SVG viewBox is ~814x1000.
+  // We render it at ~h*0.55 tall, centred left of the text block.
+  const appleH = h * 0.58;
+  const appleW = appleH * 0.814;
+  const appleX = width * 0.07;
+  const appleY = (h - appleH) / 2;
+  const aS = appleH / 1000; // scale factor from 1000-unit viewBox
+
   return (
     <Svg width={width} height={h} viewBox={`0 0 ${width} ${h}`}>
       <Defs>
-        <SvgLG id="badge_bg" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0%" stopColor="#2A2A35" stopOpacity="1" />
-          <Stop offset="100%" stopColor="#1A1A25" stopOpacity="1" />
+        <SvgLG id="as_bg" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0%" stopColor="#1C1C1E" stopOpacity="1" />
+          <Stop offset="100%" stopColor="#0A0A0C" stopOpacity="1" />
         </SvgLG>
       </Defs>
-      <Rect x={0} y={0} width={width} height={h} rx={r} ry={r} fill="url(#badge_bg)" stroke="rgba(255,255,255,0.15)" strokeWidth={0.8} />
-      <Text x={width*0.5} y={h*0.40} fontSize={h*0.28} fill="rgba(255,255,255,0.65)" fontFamily="DMSans_400Regular" textAnchor="middle" letterSpacing={0.3}>Available on the</Text>
-      <Text x={width*0.5} y={h*0.80} fontSize={h*0.42} fill="#FFFFFF" fontFamily="DMSans_700Bold" textAnchor="middle" letterSpacing={-0.2}>App Store</Text>
+
+      {/* Badge background */}
+      <Rect x={0} y={0} width={width} height={h} rx={r} ry={r}
+        fill="url(#as_bg)" stroke="rgba(255,255,255,0.22)" strokeWidth={0.9} />
+
+      {/* Apple logo — simplified silhouette path, normalised to 814x1000 */}
+      <G transform={`translate(${appleX}, ${appleY}) scale(${aS})`}>
+        {/* Main apple body */}
+        <Path
+          d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-57.8-155.5-127.4C46 790.8 0 663.5 0 541.8c0-207.4 135.4-317 269-317 71 0 130.3 46.9 174.9 46.9 42.8 0 109.8-49.5 190.5-49.5 30.5 0 110.8 2.6 173 66.3zm-180.9-157.4c32.1-38.1 55.3-91 55.3-143.9 0-7.4-.6-14.8-1.9-20.8-52.3 1.9-114.5 34.7-151.7 75.8-28.8 32.7-56.5 85-56.5 138.6 0 8.3 1.3 16.6 1.9 19.2 3.2.6 8.3 1.3 13.4 1.3 46.9 0 105.8-31.4 139.5-70.2z"
+          fill="#FFFFFF"
+          opacity={0.95}
+        />
+      </G>
+
+      {/* Text block */}
+      <Text
+        x={appleX + appleW + width * 0.06}
+        y={h * 0.38}
+        fontSize={h * 0.26}
+        fill="rgba(255,255,255,0.60)"
+        fontFamily="DMSans_400Regular"
+        letterSpacing={0.4}
+      >Download on the</Text>
+      <Text
+        x={appleX + appleW + width * 0.06}
+        y={h * 0.76}
+        fontSize={h * 0.40}
+        fill="#FFFFFF"
+        fontFamily="DMSans_700Bold"
+        letterSpacing={-0.3}
+      >App Store</Text>
     </Svg>
   );
 }
@@ -122,11 +144,9 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
   const flightMin = flights.reduce((s,f)=>s+f.durationMinutes, 0);
   const delayMin  = flights.reduce((s,f)=>s+f.delayMinutes, 0);
   const rank      = computeRank(count);
-  const topRoutes = getTopRoutes(flights);
   const co2Fact   = co2 > 0 ? getCO2FunFact(co2) : null;
   const timeFact  = flightMin > 0 ? getTimeFunFact(flightMin) : null;
 
-  // Context-aware headline
   const isAllTime = periodLabel.toLowerCase() === "all time";
   const headline  = isAllTime
     ? `You\u2019ve taken ${count} flight${count !== 1 ? "s" : ""} \u2014 all time`
@@ -146,7 +166,7 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
 
         {/* ── TOP BRANDING ROW ── */}
         <View style={c.topRow}>
-          <LogoMark size={36} />
+          <LogoMark size={52} />
           <View style={c.topBrand}>
             <Text style={c.brandName}>Logbook</Text>
             <Text style={c.brandSub}>Flight Journal</Text>
@@ -205,31 +225,13 @@ export default function StoryCard({ flights, periodLabel }: StoryCardProps) {
           )}
         </View>
 
-        {/* ── TOP ROUTES ── */}
-        {topRoutes.length > 0 && (
-          <View style={c.routesBlock}>
-            <Text style={c.sectionLabel}>{"✈️ TOP ROUTES"}</Text>
-            {topRoutes.map((r,i)=>(
-              <View key={i} style={c.routeRow}>
-                <Text style={c.routeIata}>{r.dep}</Text>
-                <View style={c.routeLine}>
-                  <View style={c.routeDash} />
-                  <Ionicons name="airplane" size={13} color="#4F8EF0" />
-                  <View style={c.routeDash} />
-                </View>
-                <Text style={[c.routeIata,{textAlign:"right"}]}>{r.arr}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
         {/* ── FOOTER ── */}
         <View style={c.footer}>
           <View style={c.footerLeft}>
             <Text style={c.ctaLine}>Track yours at</Text>
             <Text style={c.ctaUrl}>logbook.app</Text>
           </View>
-          <AppStoreBadge width={120} />
+          <AppStoreBadge width={148} />
         </View>
 
       </View>
@@ -241,7 +243,15 @@ function StatItem({ icon, color, value, label }: { icon:string;color:string;valu
   return (
     <View style={c.statItem}>
       <View style={[c.statIcon,{backgroundColor:color+"22"}]}>
-        <Ionicons name={icon as never} size={15} color={color} />
+        <Svg width={15} height={15} viewBox="0 0 24 24">
+          <Path d={
+            icon === "navigate"  ? "M12 2L19 21 12 17 5 21 12 2Z" :
+            icon === "time"      ? "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z" :
+            icon === "leaf"      ? "M17 8C8 10 5.9 16.17 3.82 21.34L5.71 22l1-2.3A4.49 4.49 0 008 20C19 20 22 3 22 3c-1 2-8 2-8 2 2-2.5 4.72-3.5 7-3.5-4 0-7 1.5-7 1.5C14 5 16.5 6 17 8z" :
+            icon === "hourglass" ? "M6 2v6l4 4-4 4v6h12v-6l-4-4 4-4V2H6zm10 14.5V20H8v-3.5l4-4 4 4zM8 7.5V4h8v3.5l-4 4-4-4z" :
+            ""
+          } fill={color} />
+        </Svg>
       </View>
       <Text style={c.statVal}>{value}</Text>
       <Text style={c.statLbl}>{label}</Text>
@@ -260,10 +270,10 @@ const c = StyleSheet.create({
 
   inner: {flex:1,paddingHorizontal:32,paddingTop:38,paddingBottom:30,justifyContent:"space-between"},
 
-  topRow:    {flexDirection:"row",alignItems:"center",gap:10},
-  topBrand:  {flex:1,gap:1},
-  brandName: {fontSize:20,color:"#F0F6FF",fontFamily:"DMSans_700Bold",letterSpacing:-0.3,lineHeight:22},
-  brandSub:  {fontSize:10,color:"rgba(79,142,240,0.7)",fontFamily:"DMSans_400Regular",letterSpacing:0.8},
+  topRow:    {flexDirection:"row",alignItems:"center",gap:12},
+  topBrand:  {flex:1,gap:2},
+  brandName: {fontSize:26,color:"#F0F6FF",fontFamily:"DMSans_700Bold",letterSpacing:-0.5,lineHeight:28},
+  brandSub:  {fontSize:12,color:"rgba(79,142,240,0.7)",fontFamily:"DMSans_400Regular",letterSpacing:0.6},
   rankPill:  {backgroundColor:"rgba(79,142,240,0.15)",borderWidth:1,borderColor:"rgba(79,142,240,0.4)",paddingHorizontal:12,paddingVertical:5,borderRadius:20},
   rankPillText:{fontSize:11,color:"#4F8EF0",fontFamily:"DMSans_700Bold",letterSpacing:1.5},
 
@@ -288,13 +298,6 @@ const c = StyleSheet.create({
   factEmoji:  {fontSize:14,lineHeight:20},
   factText:   {flex:1,fontSize:12,color:"rgba(240,246,255,0.65)",fontFamily:"DMSans_400Regular",lineHeight:18},
   factHighlight:{fontFamily:"DMSans_700Bold",color:"rgba(240,246,255,0.9)"},
-
-  routesBlock:  {gap:8},
-  sectionLabel: {fontSize:9,color:"rgba(79,142,240,0.55)",fontFamily:"DMSans_700Bold",letterSpacing:2.5,marginBottom:2},
-  routeRow:  {flexDirection:"row",alignItems:"center"},
-  routeIata: {fontSize:19,color:"#F0F6FF",fontFamily:"DMSans_700Bold",width:44,letterSpacing:-0.5},
-  routeLine: {flex:1,flexDirection:"row",alignItems:"center",gap:4,paddingHorizontal:6},
-  routeDash: {flex:1,height:1,backgroundColor:"rgba(79,142,240,0.25)"},
 
   footer:     {flexDirection:"row",alignItems:"center",justifyContent:"space-between"},
   footerLeft: {gap:2},
