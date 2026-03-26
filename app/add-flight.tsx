@@ -8,7 +8,6 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import * as Network from "expo-network";
 import Animated, { FadeInDown, FadeIn, Layout } from "react-native-reanimated";
 import { useColors } from "@/constants/colors";
 import { useFlights } from "@/context/flights";
@@ -41,21 +40,34 @@ function classifyError(err: unknown, isOnline: boolean): LookupError {
     return { kind: "not_found", message: "No flights found. Double-check the airports and date.", retryable: false };
   if (msg.startsWith("5") || msg.includes("Failed to fetch") || msg.includes("Network request failed") || msg.includes("ERR_CONNECTION_REFUSED"))
     return { kind: "server",   message: "Our server is unreachable right now. Please try again shortly.", retryable: true };
-  return { kind: "unknown",   message: "Could not look up that flight. Please check the details and date.", retryable: true };
+  return { kind: "unknown",   message:"Could not look up that flight. Please check the details and date.", retryable: true };
 }
 
-// ─── Network hook ─────────────────────────────────────────────────────────────
+// ─── Network hook (no expo-network needed) ────────────────────────────────────
+// Uses a lightweight fetch HEAD against a reliable public URL.
+// Falls back to true (optimistic) on any error so we never block the user.
 function useIsOnline(): boolean {
   const [online, setOnline] = useState(true);
   const check = useCallback(async () => {
     try {
-      const state = await Network.getNetworkStateAsync();
-      setOnline(state.isInternetReachable !== false);
-    } catch { setOnline(true); }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      await fetch("https://www.gstatic.com/generate_204", {
+        method: "HEAD",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      setOnline(true);
+    } catch {
+      setOnline(false);
+    }
   }, []);
   useEffect(() => {
     check();
-    const sub = AppState.addEventListener("change", (s: AppStateStatus) => { if (s === "active") check(); });
+    const sub = AppState.addEventListener("change", (s: AppStateStatus) => {
+      if (s === "active") check();
+    });
     return () => sub.remove();
   }, [check]);
   return online;
