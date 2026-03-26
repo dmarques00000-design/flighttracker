@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
-import { Colors } from "@/constants/colors";
+import { useColors } from "@/constants/colors";
 import { useFlights } from "@/context/flights";
 import {
   requestWalletPermission,
@@ -24,8 +24,6 @@ import {
 import { apiRequest } from "@/lib/query-client";
 
 type ImportState = "idle" | "requesting" | "loading" | "ready" | "importing" | "done";
-
-// Per-pass enrichment state shown during import
 type EnrichState = "pending" | "fetching" | "done" | "failed";
 
 function PassCard({
@@ -41,6 +39,7 @@ function PassCard({
   onToggle: () => void;
   index: number;
 }) {
+  const C = useColors();
   const isUpcoming = pass.date >= new Date().toISOString().substring(0, 10);
 
   return (
@@ -48,57 +47,71 @@ function PassCard({
       <Pressable
         onPress={alreadyAdded ? undefined : onToggle}
         style={({ pressed }) => [
-          styles.passCard,
-          selected && !alreadyAdded && styles.passCardSelected,
-          alreadyAdded && styles.passCardDimmed,
-          { opacity: pressed && !alreadyAdded ? 0.85 : 1 },
+          {
+            flexDirection: "row",
+            backgroundColor: C.card,
+            borderRadius: 14,
+            marginBottom: 10,
+            borderWidth: 1,
+            borderColor: selected && !alreadyAdded ? C.accent : C.border,
+            overflow: "hidden",
+            opacity: alreadyAdded ? 0.55 : pressed ? 0.85 : 1,
+            ...(selected && !alreadyAdded ? { backgroundColor: C.accentDim + "55" } : {}),
+          },
         ]}
       >
         {/* Left bar */}
-        <View style={[styles.passBar, { backgroundColor: alreadyAdded ? Colors.border : selected ? Colors.accent : Colors.border }]} />
+        <View style={{ width: 3, backgroundColor: alreadyAdded ? C.border : selected ? C.accent : C.border }} />
 
-        <View style={styles.passInner}>
+        <View style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 14 }}>
           {/* Route */}
-          <View style={styles.passRouteRow}>
-            <Text style={styles.passAirport}>{pass.departureAirport}</Text>
-            <View style={styles.passArrowWrap}>
-              <View style={styles.passArrowLine} />
-              <Ionicons name="airplane" size={13} color={alreadyAdded ? Colors.textMuted : selected ? Colors.accent : Colors.textSec} />
-              <View style={styles.passArrowLine} />
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 5 }}>
+            <Text style={{ fontSize: 20, color: C.text, fontFamily: "DMSans_700Bold" }}>{pass.departureAirport}</Text>
+            <View style={{ flex: 1, flexDirection: "row", alignItems: "center", marginHorizontal: 8, gap: 3 }}>
+              <View style={{ flex: 1, height: 1, backgroundColor: C.border }} />
+              <Ionicons name="airplane" size={13} color={alreadyAdded ? C.textMuted : selected ? C.accent : C.textSec} />
+              <View style={{ flex: 1, height: 1, backgroundColor: C.border }} />
             </View>
-            <Text style={styles.passAirport}>{pass.arrivalAirport}</Text>
+            <Text style={{ fontSize: 20, color: C.text, fontFamily: "DMSans_700Bold" }}>{pass.arrivalAirport}</Text>
           </View>
 
           {/* Cities */}
-          <Text style={styles.passCities}>{pass.departureCity} \u2192 {pass.arrivalCity}</Text>
+          <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginBottom: 8 }}>
+            {pass.departureCity} \u2192 {pass.arrivalCity}
+          </Text>
 
           {/* Meta */}
-          <View style={styles.passMetaRow}>
-            <Text style={styles.passMeta}>{pass.flightCode}</Text>
-            <View style={styles.passDot} />
-            <Text style={styles.passMeta}>{pass.airline}</Text>
-            <View style={styles.passDot} />
-            <Text style={styles.passMeta}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular" }}>{pass.flightCode}</Text>
+            <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: C.textMuted }} />
+            <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular" }}>{pass.airline}</Text>
+            <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: C.textMuted }} />
+            <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular" }}>
               {new Date(pass.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
             </Text>
           </View>
         </View>
 
         {/* Right: checkbox or already-added badge */}
-        <View style={styles.passRight}>
+        <View style={{ paddingHorizontal: 14, paddingVertical: 14, alignItems: "center", justifyContent: "center", gap: 8 }}>
           {alreadyAdded ? (
-            <View style={styles.addedBadge}>
-              <Ionicons name="checkmark" size={12} color={Colors.green} />
-              <Text style={styles.addedText}>Added</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.green + "18", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+              <Ionicons name="checkmark" size={12} color={C.green} />
+              <Text style={{ fontSize: 11, color: C.green, fontFamily: "DMSans_700Bold" }}>Added</Text>
             </View>
           ) : (
-            <View style={[styles.checkbox, selected && styles.checkboxActive]}>
-              {selected && <Ionicons name="checkmark" size={14} color={Colors.white} />}
+            <View style={[
+              { width: 24, height: 24, borderRadius: 12, borderWidth: 2, alignItems: "center", justifyContent: "center" },
+              selected
+                ? { backgroundColor: C.accent, borderColor: C.accent }
+                : { borderColor: C.border },
+            ]}>
+              {selected && <Ionicons name="checkmark" size={14} color={C.white} />}
             </View>
           )}
           {isUpcoming && !alreadyAdded && (
-            <View style={styles.upcomingBadge}>
-              <Text style={styles.upcomingText}>Upcoming</Text>
+            <View style={{ backgroundColor: C.accentDim, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+              <Text style={{ fontSize: 10, color: C.accent, fontFamily: "DMSans_700Bold" }}>Upcoming</Text>
             </View>
           )}
         </View>
@@ -108,6 +121,7 @@ function PassCard({
 }
 
 export default function WalletImportScreen() {
+  const C = useColors();
   const insets = useSafeAreaInsets();
   const { flights, addFlight } = useFlights();
   const [state, setState] = useState<ImportState>("idle");
@@ -115,7 +129,6 @@ export default function WalletImportScreen() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isMock, setIsMock] = useState(false);
 
-  // Per-pass enrichment progress
   const [enrichProgress, setEnrichProgress] = useState<Record<string, EnrichState>>({});
   const [enrichLabel, setEnrichLabel] = useState("");
 
@@ -153,7 +166,6 @@ export default function WalletImportScreen() {
     const { passes: fetched, isMock: mock } = await fetchBoardingPasses();
     setIsMock(mock);
 
-    // Sort: most recent first
     const sorted = [...fetched].sort((a, b) => b.date.localeCompare(a.date));
     setPasses(sorted);
 
@@ -252,17 +264,21 @@ export default function WalletImportScreen() {
   const newPassCount = passes.filter((p) => !alreadyAddedKeys.has(`${p.flightCode}-${p.date}`)).length;
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: insets.top }}>
       {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={10}>
-          <Ionicons name="chevron-back" size={22} color={Colors.text} />
+      <View style={{
+        flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+        paddingHorizontal: 16, paddingVertical: 12,
+        borderBottomWidth: 1, borderBottomColor: C.border,
+      }}>
+        <Pressable onPress={() => router.back()} style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }} hitSlop={10}>
+          <Ionicons name="chevron-back" size={22} color={C.text} />
         </Pressable>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Apple Wallet</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Text style={{ fontSize: 17, color: C.text, fontFamily: "DMSans_700Bold" }}>Apple Wallet</Text>
           {isMock && (
-            <View style={styles.mockBadge}>
-              <Text style={styles.mockBadgeText}>Preview</Text>
+            <View style={{ backgroundColor: C.amber + "22", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+              <Text style={{ fontSize: 11, color: C.amber, fontFamily: "DMSans_700Bold" }}>Preview</Text>
             </View>
           )}
         </View>
@@ -271,58 +287,58 @@ export default function WalletImportScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: insets.bottom + 120 }}
       >
         {/* Idle */}
         {state === "idle" && (
-          <Animated.View entering={FadeIn.duration(300)} style={styles.connectWrap}>
-            <View style={styles.walletIconWrap}>
-              <Ionicons name="wallet" size={48} color={Colors.accent} />
+          <Animated.View entering={FadeIn.duration(300)} style={{ alignItems: "center", paddingTop: 40 }}>
+            <View style={{ width: 90, height: 90, borderRadius: 26, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
+              <Ionicons name="wallet" size={48} color={C.accent} />
             </View>
-            <Text style={styles.connectTitle}>Import from Apple Wallet</Text>
-            <Text style={styles.connectBody}>
+            <Text style={{ fontSize: 22, color: C.text, fontFamily: "DMSans_700Bold", textAlign: "center", marginBottom: 12 }}>Import from Apple Wallet</Text>
+            <Text style={{ fontSize: 15, color: C.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 22, marginBottom: 28 }}>
               Connect your iPhone Wallet to pull in boarding passes \u2014 including expired ones \u2014 and quickly add past and upcoming flights to your logbook.
               No account needed \u2014 everything stays on your device.
             </Text>
 
-            <View style={styles.featureList}>
+            <View style={{ width: "100%", gap: 12, marginBottom: 28 }}>
               {[
                 { icon: "shield-checkmark-outline", text: "Private \u2014 data never leaves your phone" },
                 { icon: "time-outline", text: "Includes expired passes \u2014 log your full history" },
                 { icon: "flash-outline", text: "Real flight data fetched automatically via API" },
                 { icon: "checkmark-circle-outline", text: "Review each pass before adding" },
               ].map((item) => (
-                <View key={item.icon} style={styles.featureRow}>
-                  <View style={styles.featureIcon}>
-                    <Ionicons name={item.icon as never} size={16} color={Colors.accent} />
+                <View key={item.icon} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name={item.icon as never} size={16} color={C.accent} />
                   </View>
-                  <Text style={styles.featureText}>{item.text}</Text>
+                  <Text style={{ flex: 1, fontSize: 14, color: C.text, fontFamily: "DMSans_400Regular" }}>{item.text}</Text>
                 </View>
               ))}
             </View>
 
             {Platform.OS !== "ios" && (
-              <View style={styles.noticeBanner}>
-                <Ionicons name="information-circle-outline" size={16} color={Colors.amber} />
-                <Text style={styles.noticeText}>Apple Wallet is only available on iPhone. On other platforms a preview with sample passes is shown.</Text>
+              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: C.amber + "18", borderRadius: 12, padding: 12, marginBottom: 24, width: "100%" }}>
+                <Ionicons name="information-circle-outline" size={16} color={C.amber} />
+                <Text style={{ flex: 1, fontSize: 13, color: C.amber, fontFamily: "DMSans_400Regular", lineHeight: 18 }}>Apple Wallet is only available on iPhone. On other platforms a preview with sample passes is shown.</Text>
               </View>
             )}
 
             <Pressable
               onPress={handleConnect}
-              style={({ pressed }) => [styles.connectBtn, { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
+              style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", backgroundColor: C.accent, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30 }, { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
             >
-              <Ionicons name="wallet-outline" size={18} color={Colors.white} style={{ marginRight: 8 }} />
-              <Text style={styles.connectBtnText}>Connect Wallet</Text>
+              <Ionicons name="wallet-outline" size={18} color={C.white} style={{ marginRight: 8 }} />
+              <Text style={{ fontSize: 16, color: C.white, fontFamily: "DMSans_700Bold" }}>Connect Wallet</Text>
             </Pressable>
           </Animated.View>
         )}
 
         {/* Requesting / loading */}
         {(state === "requesting" || state === "loading") && (
-          <Animated.View entering={FadeIn.duration(200)} style={styles.loadingWrap}>
-            <ActivityIndicator size="large" color={Colors.accent} />
-            <Text style={styles.loadingText}>
+          <Animated.View entering={FadeIn.duration(200)} style={{ alignItems: "center", paddingTop: 80, gap: 16 }}>
+            <ActivityIndicator size="large" color={C.accent} />
+            <Text style={{ fontSize: 15, color: C.textSec, fontFamily: "DMSans_400Regular" }}>
               {state === "requesting" ? "Requesting access..." : "Reading boarding passes..."}
             </Text>
           </Animated.View>
@@ -330,22 +346,22 @@ export default function WalletImportScreen() {
 
         {/* Importing — per-pass progress */}
         {state === "importing" && (
-          <Animated.View entering={FadeIn.duration(200)} style={styles.loadingWrap}>
-            <ActivityIndicator size="large" color={Colors.accent} />
-            <Text style={styles.loadingText}>{enrichLabel || "Importing flights..."}</Text>
-            <View style={styles.enrichList}>
+          <Animated.View entering={FadeIn.duration(200)} style={{ alignItems: "center", paddingTop: 80, gap: 16 }}>
+            <ActivityIndicator size="large" color={C.accent} />
+            <Text style={{ fontSize: 15, color: C.textSec, fontFamily: "DMSans_400Regular" }}>{enrichLabel || "Importing flights..."}</Text>
+            <View style={{ width: "100%", gap: 8, marginTop: 8 }}>
               {passes
                 .filter((p) => selected.has(p.serialNumber))
                 .map((p) => {
                   const s = enrichProgress[p.serialNumber] ?? "pending";
                   return (
-                    <View key={p.serialNumber} style={styles.enrichRow}>
+                    <View key={p.serialNumber} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                       <Ionicons
                         name={s === "done" ? "checkmark-circle" : s === "fetching" ? "radio-button-on" : "ellipse-outline"}
                         size={15}
-                        color={s === "done" ? Colors.green : s === "fetching" ? Colors.accent : Colors.textMuted}
+                        color={s === "done" ? C.green : s === "fetching" ? C.accent : C.textMuted}
                       />
-                      <Text style={styles.enrichText}>{p.flightCode} \u00b7 {p.date}</Text>
+                      <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_400Regular" }}>{p.flightCode} \u00b7 {p.date}</Text>
                     </View>
                   );
                 })}
@@ -357,28 +373,28 @@ export default function WalletImportScreen() {
         {state === "ready" && (
           <Animated.View entering={FadeIn.duration(250)}>
             {isMock && (
-              <View style={styles.mockBanner}>
-                <Ionicons name="flask-outline" size={15} color={Colors.amber} />
-                <Text style={styles.mockBannerText}>
+              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: C.amber + "18", borderRadius: 12, padding: 12, marginBottom: 16 }}>
+                <Ionicons name="flask-outline" size={15} color={C.amber} />
+                <Text style={{ flex: 1, fontSize: 12, color: C.amber, fontFamily: "DMSans_400Regular", lineHeight: 18 }}>
                   Preview mode \u2014 showing sample boarding passes including expired ones. On a real device with a custom build, your actual Wallet passes will appear here.
                 </Text>
               </View>
             )}
 
-            <View style={styles.passesHeader}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
               <View>
-                <Text style={styles.passesTitle}>{passes.length} boarding pass{passes.length !== 1 ? "es" : ""} found</Text>
+                <Text style={{ fontSize: 17, color: C.text, fontFamily: "DMSans_700Bold" }}>{passes.length} boarding pass{passes.length !== 1 ? "es" : ""} found</Text>
                 {newPassCount > 0 && (
-                  <Text style={styles.passesSub}>{newPassCount} new \u00b7 {passes.length - newPassCount} already added</Text>
+                  <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 }}>{newPassCount} new \u00b7 {passes.length - newPassCount} already added</Text>
                 )}
               </View>
-              <View style={styles.selectActions}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
                 <Pressable onPress={selectAll} hitSlop={8}>
-                  <Text style={styles.selectActionText}>All</Text>
+                  <Text style={{ fontSize: 13, color: C.accent, fontFamily: "DMSans_500Medium" }}>All</Text>
                 </Pressable>
-                <Text style={styles.selectSep}>\u00b7</Text>
+                <Text style={{ fontSize: 13, color: C.textMuted }}>\u00b7</Text>
                 <Pressable onPress={deselectAll} hitSlop={8}>
-                  <Text style={styles.selectActionText}>None</Text>
+                  <Text style={{ fontSize: 13, color: C.accent, fontFamily: "DMSans_500Medium" }}>None</Text>
                 </Pressable>
               </View>
             </View>
@@ -398,19 +414,19 @@ export default function WalletImportScreen() {
 
         {/* Done */}
         {state === "done" && (
-          <Animated.View entering={FadeInDown.springify()} style={styles.doneWrap}>
-            <View style={styles.doneIconWrap}>
-              <Ionicons name="checkmark-circle" size={56} color={Colors.green} />
+          <Animated.View entering={FadeInDown.springify()} style={{ alignItems: "center", paddingTop: 60 }}>
+            <View style={{ marginBottom: 20 }}>
+              <Ionicons name="checkmark-circle" size={56} color={C.green} />
             </View>
-            <Text style={styles.doneTitle}>Flights added!</Text>
-            <Text style={styles.doneSub}>
+            <Text style={{ fontSize: 24, color: C.text, fontFamily: "DMSans_700Bold", marginBottom: 10 }}>Flights added!</Text>
+            <Text style={{ fontSize: 15, color: C.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", marginBottom: 32 }}>
               {selectedCount} flight{selectedCount !== 1 ? "s" : ""} {selectedCount === 1 ? "has" : "have"} been added to your logbook.
             </Text>
             <Pressable
               onPress={() => router.replace("/(tabs)")}
-              style={({ pressed }) => [styles.doneBtn, { opacity: pressed ? 0.85 : 1 }]}
+              style={({ pressed }) => [{ backgroundColor: C.accent, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30 }, { opacity: pressed ? 0.85 : 1 }]}
             >
-              <Text style={styles.doneBtnText}>Back to Logbook</Text>
+              <Text style={{ fontSize: 16, color: C.white, fontFamily: "DMSans_700Bold" }}>Back to Logbook</Text>
             </Pressable>
           </Animated.View>
         )}
@@ -420,101 +436,30 @@ export default function WalletImportScreen() {
       {state === "ready" && selectedCount > 0 && (
         <Animated.View
           entering={FadeInDown.springify()}
-          style={[styles.importBar, { paddingBottom: insets.bottom + 12 }]}
+          style={{
+            position: "absolute", bottom: 0, left: 0, right: 0,
+            backgroundColor: C.card,
+            borderTopWidth: 1, borderTopColor: C.border,
+            paddingTop: 12, paddingBottom: insets.bottom + 12, paddingHorizontal: 20,
+            flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+          }}
         >
-          <View style={styles.importBarLeft}>
-            <Text style={styles.importBarCount}>{selectedCount} selected</Text>
-            <Text style={styles.importBarSub}>flight{selectedCount !== 1 ? "s" : ""} to add</Text>
+          <View style={{ gap: 1 }}>
+            <Text style={{ fontSize: 17, color: C.text, fontFamily: "DMSans_700Bold" }}>{selectedCount} selected</Text>
+            <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular" }}>flight{selectedCount !== 1 ? "s" : ""} to add</Text>
           </View>
           <Pressable
             onPress={handleImport}
             style={({ pressed }) => [
-              styles.importBtn,
+              { flexDirection: "row", alignItems: "center", backgroundColor: C.accent, paddingHorizontal: 20, paddingVertical: 14, borderRadius: 14 },
               { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
             ]}
           >
-            <Ionicons name="add-circle-outline" size={18} color={Colors.white} style={{ marginRight: 6 }} />
-            <Text style={styles.importBtnText}>Add to Logbook</Text>
+            <Ionicons name="add-circle-outline" size={18} color={C.white} style={{ marginRight: 6 }} />
+            <Text style={{ fontSize: 15, color: C.white, fontFamily: "DMSans_700Bold" }}>Add to Logbook</Text>
           </Pressable>
         </Animated.View>
       )}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  backBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  headerCenter: { flexDirection: "row", alignItems: "center", gap: 8 },
-  headerTitle: { fontSize: 17, color: Colors.text, fontFamily: "DMSans_700Bold" },
-  mockBadge: { backgroundColor: Colors.amber + "22", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  mockBadgeText: { fontSize: 11, color: Colors.amber, fontFamily: "DMSans_700Bold" },
-
-  scroll: { paddingHorizontal: 20, paddingTop: 8 },
-
-  connectWrap: { alignItems: "center", paddingTop: 40 },
-  walletIconWrap: { width: 90, height: 90, borderRadius: 26, backgroundColor: Colors.accentDim, alignItems: "center", justifyContent: "center", marginBottom: 24 },
-  connectTitle: { fontSize: 22, color: Colors.text, fontFamily: "DMSans_700Bold", textAlign: "center", marginBottom: 12 },
-  connectBody: { fontSize: 15, color: Colors.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 22, marginBottom: 28 },
-  featureList: { width: "100%", gap: 12, marginBottom: 28 },
-  featureRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  featureIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: Colors.accentDim, alignItems: "center", justifyContent: "center" },
-  featureText: { flex: 1, fontSize: 14, color: Colors.text, fontFamily: "DMSans_400Regular" },
-  noticeBanner: { flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: Colors.amber + "18", borderRadius: 12, padding: 12, marginBottom: 24, width: "100%" },
-  noticeText: { flex: 1, fontSize: 13, color: Colors.amber, fontFamily: "DMSans_400Regular", lineHeight: 18 },
-  connectBtn: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.accent, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30 },
-  connectBtnText: { fontSize: 16, color: Colors.white, fontFamily: "DMSans_700Bold" },
-
-  loadingWrap: { alignItems: "center", paddingTop: 80, gap: 16 },
-  loadingText: { fontSize: 15, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
-
-  enrichList: { width: "100%", gap: 8, marginTop: 8 },
-  enrichRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  enrichText: { fontSize: 13, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
-
-  mockBanner: { flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: Colors.amber + "18", borderRadius: 12, padding: 12, marginBottom: 16 },
-  mockBannerText: { flex: 1, fontSize: 12, color: Colors.amber, fontFamily: "DMSans_400Regular", lineHeight: 18 },
-
-  passesHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 },
-  passesTitle: { fontSize: 17, color: Colors.text, fontFamily: "DMSans_700Bold" },
-  passesSub: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 },
-  selectActions: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
-  selectActionText: { fontSize: 13, color: Colors.accent, fontFamily: "DMSans_500Medium" },
-  selectSep: { fontSize: 13, color: Colors.textMuted },
-
-  passCard: { flexDirection: "row", backgroundColor: Colors.card, borderRadius: 14, marginBottom: 10, borderWidth: 1, borderColor: Colors.border, overflow: "hidden" },
-  passCardSelected: { borderColor: Colors.accent, backgroundColor: Colors.accentDim + "55" },
-  passCardDimmed: { opacity: 0.55 },
-  passBar: { width: 3 },
-  passInner: { flex: 1, paddingHorizontal: 14, paddingVertical: 14 },
-  passRouteRow: { flexDirection: "row", alignItems: "center", marginBottom: 5 },
-  passAirport: { fontSize: 20, color: Colors.text, fontFamily: "DMSans_700Bold" },
-  passArrowWrap: { flex: 1, flexDirection: "row", alignItems: "center", marginHorizontal: 8, gap: 3 },
-  passArrowLine: { flex: 1, height: 1, backgroundColor: Colors.border },
-  passCities: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular", marginBottom: 8 },
-  passMetaRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
-  passMeta: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
-  passDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: Colors.textMuted },
-  passRight: { paddingHorizontal: 14, paddingVertical: 14, alignItems: "center", justifyContent: "center", gap: 8 },
-  checkbox: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: Colors.border, alignItems: "center", justifyContent: "center" },
-  checkboxActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  addedBadge: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: Colors.green + "18", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  addedText: { fontSize: 11, color: Colors.green, fontFamily: "DMSans_700Bold" },
-  upcomingBadge: { backgroundColor: Colors.accentDim, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  upcomingText: { fontSize: 10, color: Colors.accent, fontFamily: "DMSans_700Bold" },
-
-  importBar: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: Colors.card, borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: 12, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  importBarLeft: { gap: 1 },
-  importBarCount: { fontSize: 17, color: Colors.text, fontFamily: "DMSans_700Bold" },
-  importBarSub: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
-  importBtn: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.accent, paddingHorizontal: 20, paddingVertical: 14, borderRadius: 14 },
-  importBtnText: { fontSize: 15, color: Colors.white, fontFamily: "DMSans_700Bold" },
-
-  doneWrap: { alignItems: "center", paddingTop: 60 },
-  doneIconWrap: { marginBottom: 20 },
-  doneTitle: { fontSize: 24, color: Colors.text, fontFamily: "DMSans_700Bold", marginBottom: 10 },
-  doneSub: { fontSize: 15, color: Colors.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", marginBottom: 32 },
-  doneBtn: { backgroundColor: Colors.accent, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30 },
-  doneBtnText: { fontSize: 16, color: Colors.white, fontFamily: "DMSans_700Bold" },
-});

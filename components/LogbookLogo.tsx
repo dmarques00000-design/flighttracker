@@ -9,7 +9,7 @@
  */
 import React from "react";
 import { View, Text, Image, StyleSheet } from "react-native";
-import { Colors } from "@/constants/colors";
+import { useColors } from "@/constants/colors";
 
 interface Props {
   size?: number;
@@ -18,9 +18,10 @@ interface Props {
 }
 
 export function LogbookLogo({ size = 40, showName = false, textColor }: Props) {
+  const C = useColors();
   const radius = size * 0.22;
-  const textCol    = textColor ?? Colors.text;
-  const textSecCol = Colors.textSec;
+  const textCol    = textColor ?? C.text;
+  const textSecCol = C.textSec;
 
   return (
     <View style={styles.root}>
