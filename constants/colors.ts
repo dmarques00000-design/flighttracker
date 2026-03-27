@@ -1,6 +1,10 @@
 import { useTheme } from "@/context/theme";
 
+// ─── Primary accent — use ONLY for primary CTAs and confirmed actions ─────────
 const accent = "#4F8EF0";
+
+// ─── Secondary accent — use for ghost actions, filters, toggles, edit buttons ─
+const secondary = "#6B5CF6";
 
 export const LightColors = {
   bg: "#FFFFFF",
@@ -9,10 +13,18 @@ export const LightColors = {
   cardElevated: "#F0F4FF",
   border: "#E8EDF5",
   borderSubtle: "#F0F4FF",
+
+  // Primary — CTAs, confirm buttons, avatar, hero elements
   accent,
   accentDim: "rgba(79,142,240,0.12)",
   accentGlow: "rgba(79,142,240,0.20)",
   gradient: ["#4F8EF0", "#7AB4FF"] as const,
+
+  // Secondary — filters, dropdowns, segmented controls, ghost actions, edit
+  secondary,
+  secondaryDim: "rgba(107,92,246,0.10)",
+  secondaryGlow: "rgba(107,92,246,0.18)",
+
   text: "#0F172A",
   textSec: "#64748B",
   textMuted: "#94A3B8",
@@ -33,10 +45,18 @@ export const DarkColors = {
   cardElevated: "#1C1C28",
   border: "#2A2A3A",
   borderSubtle: "#1E1E2C",
+
+  // Primary
   accent,
   accentDim: "rgba(79,142,240,0.15)",
   accentGlow: "rgba(79,142,240,0.25)",
   gradient: ["#4F8EF0", "#7AB4FF"] as const,
+
+  // Secondary
+  secondary,
+  secondaryDim: "rgba(107,92,246,0.13)",
+  secondaryGlow: "rgba(107,92,246,0.22)",
+
   text: "#F0F0FA",
   textSec: "#8A8AA8",
   textMuted: "#55556A",
