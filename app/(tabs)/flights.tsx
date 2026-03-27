@@ -306,7 +306,7 @@ function ReminderSheet({ flight, visible, onClose }: {
 }
 
 // ---------------------------------------------------------------------------
-// Bell badge
+// Bell badge (shows when a reminder is active — read-only indicator)
 // ---------------------------------------------------------------------------
 function ReminderBell({ flightId }: { flightId: string }) {
   const C = useColors();
@@ -327,16 +327,18 @@ function ReminderBell({ flightId }: { flightId: string }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flightId]);
 
-  if (!hasReminder) return null;
-
   return (
     <Animated.View entering={FadeIn.duration(200)} style={{
       width: 20, height: 20, borderRadius: 10,
-      backgroundColor: C.accentDim,
-      borderWidth: 1, borderColor: C.accent + "55",
+      backgroundColor: hasReminder ? C.accentDim : C.surface,
+      borderWidth: 1, borderColor: hasReminder ? C.accent + "55" : C.border,
       alignItems: "center", justifyContent: "center",
     }}>
-      <Ionicons name="notifications" size={11} color={C.accent} />
+      <Ionicons
+        name={hasReminder ? "notifications" : "notifications-outline"}
+        size={11}
+        color={hasReminder ? C.accent : C.textMuted}
+      />
     </Animated.View>
   );
 }
@@ -349,7 +351,8 @@ function FlightItem({ flight, onDelete, index, query }: { flight: Flight; onDele
   const [confirming, setConfirming] = useState(false);
   const [reminderSheetOpen, setReminderSheetOpen] = useState(false);
   const isUpcoming = flight.date >= TODAY;
-  const remindersAvailable = isUpcoming && Platform.OS !== "web" && getNotif() !== null;
+  // Show bell button for all upcoming flights on device (no getNotif guard)
+  const showReminderButton = isUpcoming && Platform.OS !== "web";
 
   const accentColor = isUpcoming ? C.accent : flight.status === "delayed" ? C.red : C.green;
   let pillBg: string, pillText: string, pillColor: string;
@@ -380,16 +383,9 @@ function FlightItem({ flight, onDelete, index, query }: { flight: Flight; onDele
     );
   }
 
-  function handleLongPress() {
-    if (remindersAvailable) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      setReminderSheetOpen(true);
-    }
-  }
-
   return (
     <>
-      {remindersAvailable && (
+      {showReminderButton && (
         <ReminderSheet
           flight={flight}
           visible={reminderSheetOpen}
@@ -401,8 +397,6 @@ function FlightItem({ flight, onDelete, index, query }: { flight: Flight; onDele
           if (confirming) { setConfirming(false); return; }
           router.push({ pathname: "/flight/[id]", params: { id: flight.id } });
         }}
-        onLongPress={handleLongPress}
-        delayLongPress={400}
       >
         <Animated.View
           entering={FadeInDown.delay(index * 30).springify()}
@@ -437,13 +431,24 @@ function FlightItem({ flight, onDelete, index, query }: { flight: Flight; onDele
                   )}
                 </View>
               </View>
+
+              {/* Right side action row */}
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginLeft: 8 }}>
-                {isUpcoming && Platform.OS !== "web" && (
-                  <ReminderBell flightId={flight.id} />
-                )}
                 <View style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8, backgroundColor: pillBg }}>
                   <Text style={{ fontSize: 11, fontFamily: "DMSans_700Bold", color: pillColor }}>{pillText}</Text>
                 </View>
+
+                {/* Bell tap button — always visible for upcoming flights on device */}
+                {showReminderButton && (
+                  <Pressable
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setReminderSheetOpen(true); }}
+                    hitSlop={14}
+                  >
+                    <ReminderBell flightId={flight.id} />
+                  </Pressable>
+                )}
+
+                {/* Trash */}
                 {!confirming && (
                   <Pressable
                     onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setConfirming(true); }}
@@ -454,6 +459,7 @@ function FlightItem({ flight, onDelete, index, query }: { flight: Flight; onDele
                 )}
               </View>
             </View>
+
             {confirming && (
               <Animated.View entering={FadeIn.duration(150)} style={{ flexDirection: "row", gap: 8, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.border }}>
                 <Pressable onPress={() => setConfirming(false)} style={{ flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: C.surface, alignItems: "center" }}>
