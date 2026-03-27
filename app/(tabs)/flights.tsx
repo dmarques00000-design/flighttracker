@@ -9,11 +9,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import Animated, {
-  FadeInDown, FadeIn, FadeOut, Layout,
-  useSharedValue, useAnimatedStyle, interpolate, Extrapolation,
-} from "react-native-reanimated";
-import { Swipeable } from "react-native-gesture-handler";
+import Animated, { FadeInDown, FadeIn, FadeOut, Layout } from "react-native-reanimated";
 import { useColors } from "@/constants/colors";
 import { useFlights, Flight } from "@/context/flights";
 import { getAirlineInfo } from "@/utils/airlineLogos";
@@ -346,40 +342,11 @@ function ReminderBell({ flightId }: { flightId: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Swipe-to-delete action panel
-// ---------------------------------------------------------------------------
-function DeleteAction({ dragX, onDelete }: { dragX: Animated.SharedValue<number>; onDelete: () => void }) {
-  const C = useColors();
-  const animStyle = useAnimatedStyle(() => {
-    const scale = interpolate(dragX.value, [-80, -40, 0], [1, 0.85, 0.7], Extrapolation.CLAMP);
-    const opacity = interpolate(dragX.value, [-80, -20, 0], [1, 0.8, 0], Extrapolation.CLAMP);
-    return { transform: [{ scale }], opacity };
-  });
-  return (
-    <Pressable
-      onPress={onDelete}
-      style={{
-        width: 80, marginBottom: 8, borderRadius: 14,
-        backgroundColor: C.red,
-        alignItems: "center", justifyContent: "center",
-        overflow: "hidden",
-      }}
-    >
-      <Animated.View style={[{ alignItems: "center", gap: 4 }, animStyle]}>
-        <Ionicons name="trash" size={20} color="#fff" />
-        <Text style={{ fontSize: 11, color: "#fff", fontFamily: "DMSans_700Bold" }}>Delete</Text>
-      </Animated.View>
-    </Pressable>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Flight card
 // ---------------------------------------------------------------------------
 function FlightItem({ flight, onDelete, index, query }: { flight: Flight; onDelete: () => void; index: number; query: string }) {
   const C = useColors();
-  const swipeableRef = useRef<Swipeable>(null);
-  const dragX = useSharedValue(0);
+  const [confirming, setConfirming] = useState(false);
   const [reminderSheetOpen, setReminderSheetOpen] = useState(false);
   const isUpcoming = flight.date >= TODAY;
   const remindersAvailable = isUpcoming && Platform.OS !== "web" && getNotif() !== null;
@@ -413,41 +380,12 @@ function FlightItem({ flight, onDelete, index, query }: { flight: Flight; onDele
     );
   }
 
-  function handleConfirmedDelete() {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    swipeableRef.current?.close();
-    onDelete();
-  }
-
-  function handleSwipeDelete() {
-    // Full swipe past threshold — ask once then delete
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    Alert.alert(
-      "Remove flight?",
-      `${flight.flightCode}  \u00b7  ${flight.departureAirport} \u2192 ${flight.arrivalAirport}`,
-      [
-        { text: "Cancel", style: "cancel", onPress: () => swipeableRef.current?.close() },
-        { text: "Remove", style: "destructive", onPress: () => { swipeableRef.current?.close(); onDelete(); } },
-      ],
-    );
-  }
-
   function handleLongPress() {
-    if (!remindersAvailable) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setReminderSheetOpen(true);
+    if (remindersAvailable) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setReminderSheetOpen(true);
+    }
   }
-
-  const renderRightActions = (_progress: unknown, drag: Animated.SharedValue<number>) => {
-    // sync shared value so DeleteAction can animate
-    dragX.value = drag.value ?? 0;
-    return (
-      <DeleteAction
-        dragX={dragX}
-        onDelete={handleConfirmedDelete}
-      />
-    );
-  };
 
   return (
     <>
@@ -458,77 +396,81 @@ function FlightItem({ flight, onDelete, index, query }: { flight: Flight; onDele
           onClose={() => setReminderSheetOpen(false)}
         />
       )}
-      <Swipeable
-        ref={swipeableRef}
-        friction={2}
-        rightThreshold={60}
-        overshootRight={false}
-        renderRightActions={Platform.OS !== "web" ? renderRightActions : undefined}
-        onSwipeableWillOpen={Platform.OS !== "web" ? handleSwipeDelete : undefined}
+      <Pressable
+        onPress={() => {
+          if (confirming) { setConfirming(false); return; }
+          router.push({ pathname: "/flight/[id]", params: { id: flight.id } });
+        }}
+        onLongPress={handleLongPress}
+        delayLongPress={400}
       >
-        <Pressable
-          onPress={() => router.push({ pathname: "/flight/[id]", params: { id: flight.id } })}
-          onLongPress={remindersAvailable ? handleLongPress : undefined}
-          delayLongPress={400}
+        <Animated.View
+          entering={FadeInDown.delay(index * 30).springify()}
+          layout={Layout.springify()}
+          style={{ flexDirection: "row", backgroundColor: C.card, borderRadius: 14, marginBottom: 8, borderWidth: 1, borderColor: C.border, overflow: "hidden" }}
         >
-          <Animated.View
-            entering={FadeInDown.delay(index * 30).springify()}
-            layout={Layout.springify()}
-            style={{ flexDirection: "row", backgroundColor: C.card, borderRadius: 14, marginBottom: 8, borderWidth: 1, borderColor: C.border, overflow: "hidden" }}
-          >
-            <View style={{ width: 3, backgroundColor: accentColor }} />
-            <View style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 13 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <View style={{ flex: 1, gap: 5 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Highlight text={flight.departureAirport} style={{ fontSize: 18, color: C.text, fontFamily: "DMSans_700Bold" }} />
-                    <View style={{ flex: 0, flexDirection: "row", alignItems: "center", marginHorizontal: 8, gap: 3, maxWidth: 48 }}>
-                      <View style={{ flex: 1, height: 1, backgroundColor: C.border }} />
-                      <Ionicons name="airplane" size={11} color={accentColor} />
-                      <View style={{ flex: 1, height: 1, backgroundColor: C.border }} />
-                    </View>
-                    <Highlight text={flight.arrivalAirport} style={{ fontSize: 18, color: C.text, fontFamily: "DMSans_700Bold" }} />
-                    {flight.verified && <View style={{ marginLeft: 6 }}><Ionicons name="checkmark-circle" size={13} color={C.accent} /></View>}
+          <View style={{ width: 3, backgroundColor: accentColor }} />
+          <View style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 13 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flex: 1, gap: 5 }}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Highlight text={flight.departureAirport} style={{ fontSize: 18, color: C.text, fontFamily: "DMSans_700Bold" }} />
+                  <View style={{ flex: 0, flexDirection: "row", alignItems: "center", marginHorizontal: 8, gap: 3, maxWidth: 48 }}>
+                    <View style={{ flex: 1, height: 1, backgroundColor: C.border }} />
+                    <Ionicons name="airplane" size={11} color={accentColor} />
+                    <View style={{ flex: 1, height: 1, backgroundColor: C.border }} />
                   </View>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <AirlineLogoSmall airlineCode={flight.airlineCode} />
-                    <Highlight
-                      text={`${flight.flightCode}  \u00b7  ${formatDate(flight.date)}`}
-                      style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular" }}
-                    />
-                    {flight.isMock && (
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: C.amberDim, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-                        <Ionicons name="sparkles-outline" size={9} color={C.amber} />
-                        <Text style={{ fontSize: 10, color: C.amber, fontFamily: "DMSans_700Bold" }}>Estimated</Text>
-                      </View>
-                    )}
-                  </View>
+                  <Highlight text={flight.arrivalAirport} style={{ fontSize: 18, color: C.text, fontFamily: "DMSans_700Bold" }} />
+                  {flight.verified && <View style={{ marginLeft: 6 }}><Ionicons name="checkmark-circle" size={13} color={C.accent} /></View>}
                 </View>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginLeft: 8 }}>
-                  {isUpcoming && Platform.OS !== "web" && (
-                    <ReminderBell flightId={flight.id} />
-                  )}
-                  <View style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8, backgroundColor: pillBg }}>
-                    <Text style={{ fontSize: 11, fontFamily: "DMSans_700Bold", color: pillColor }}>{pillText}</Text>
-                  </View>
-                  {/* Trash icon kept for web and as a secondary affordance */}
-                  {Platform.OS === "web" && (
-                    <Pressable
-                      onPress={() => {
-                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                        onDelete();
-                      }}
-                      hitSlop={14}
-                    >
-                      <Ionicons name="trash-outline" size={16} color={C.textSec} />
-                    </Pressable>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <AirlineLogoSmall airlineCode={flight.airlineCode} />
+                  <Highlight
+                    text={`${flight.flightCode}  \u00b7  ${formatDate(flight.date)}`}
+                    style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular" }}
+                  />
+                  {flight.isMock && (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: C.amberDim, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                      <Ionicons name="sparkles-outline" size={9} color={C.amber} />
+                      <Text style={{ fontSize: 10, color: C.amber, fontFamily: "DMSans_700Bold" }}>Estimated</Text>
+                    </View>
                   )}
                 </View>
               </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginLeft: 8 }}>
+                {isUpcoming && Platform.OS !== "web" && (
+                  <ReminderBell flightId={flight.id} />
+                )}
+                <View style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8, backgroundColor: pillBg }}>
+                  <Text style={{ fontSize: 11, fontFamily: "DMSans_700Bold", color: pillColor }}>{pillText}</Text>
+                </View>
+                {!confirming && (
+                  <Pressable
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setConfirming(true); }}
+                    hitSlop={14}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={C.textSec} />
+                  </Pressable>
+                )}
+              </View>
             </View>
-          </Animated.View>
-        </Pressable>
-      </Swipeable>
+            {confirming && (
+              <Animated.View entering={FadeIn.duration(150)} style={{ flexDirection: "row", gap: 8, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.border }}>
+                <Pressable onPress={() => setConfirming(false)} style={{ flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: C.surface, alignItems: "center" }}>
+                  <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium" }}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); setConfirming(false); onDelete(); }}
+                  style={{ flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: C.red, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5 }}
+                >
+                  <Ionicons name="trash" size={14} color={C.white} />
+                  <Text style={{ fontSize: 13, color: C.white, fontFamily: "DMSans_700Bold" }}>Remove</Text>
+                </Pressable>
+              </Animated.View>
+            )}
+          </View>
+        </Animated.View>
+      </Pressable>
     </>
   );
 }
@@ -587,12 +529,12 @@ export default function FlightsScreen() {
 
   const totalShown = sections.reduce((s, sec) => s + sec.data.length, 0);
 
-  const handleQueryChange  = useCallback((q: string) => setQuery(q), []);
-  const handleSearchFocus  = useCallback(() => setSearchFocused(true), []);
-  const handleSearchBlur   = useCallback(() => setSearchFocused(false), []);
-  const handleClearSearch  = useCallback(() => { setQuery(""); searchRef.current?.blur(); Haptics.selectionAsync(); }, []);
+  const handleQueryChange   = useCallback((q: string) => setQuery(q), []);
+  const handleSearchFocus   = useCallback(() => setSearchFocused(true), []);
+  const handleSearchBlur    = useCallback(() => setSearchFocused(false), []);
+  const handleClearSearch   = useCallback(() => { setQuery(""); searchRef.current?.blur(); Haptics.selectionAsync(); }, []);
   const handleSetTimeFilter = useCallback((v: TimeFilter) => setTimeFilter(v), []);
-  const handleSetGroupBy   = useCallback((v: GroupBy) => setGroupBy(v), []);
+  const handleSetGroupBy    = useCallback((v: GroupBy) => setGroupBy(v), []);
 
   const renderListHeader = useCallback(() => (
     <View style={{ paddingTop: 8, paddingBottom: 8 }}>
