@@ -216,8 +216,8 @@ function FlightItem({ flight, onDelete, index, query }: { flight: Flight; onDele
           }}
           style={{ alignItems: "center", justifyContent: "center", gap: 4, width: "100%", height: "100%" }}
         >
-          <Ionicons name="trash" size={20} color="#fff" />
-          <Text style={{ fontSize: 11, color: "#fff", fontFamily: "DMSans_700Bold" }}>Delete</Text>
+          <Ionicons name="trash" size={20} color={C.white} />
+          <Text style={{ fontSize: 11, color: C.white, fontFamily: "DMSans_700Bold" }}>Delete</Text>
         </Pressable>
       </Animated.View>
 
@@ -236,9 +236,9 @@ function FlightItem({ flight, onDelete, index, query }: { flight: Flight; onDele
               borderWidth: 1,
               borderColor: C.border,
               overflow: "hidden",
-              shadowColor: "#000",
+              shadowColor: C.shadow,
               shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.06,
+              shadowOpacity: 1,
               shadowRadius: 8,
               elevation: 2,
             }}>
