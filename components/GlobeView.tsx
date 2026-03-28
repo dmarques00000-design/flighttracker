@@ -2,11 +2,11 @@
  * GlobeView — interactive 3D SVG globe with orthographic projection.
  *
  * - Pure react-native-svg + reanimated (no new installs needed)
- * - Auto-spins slowly when idle; responds to drag gestures
+ * - Fully idle on load — only moves when the user drags it
  * - Great-circle flight arcs clipped to the visible hemisphere
  * - Full dark/light theme via useColors()
  */
-import React, { useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -23,13 +23,11 @@ import Svg, {
   Stop,
   ClipPath,
 } from "react-native-svg";
-import Animated, {
+import {
   useSharedValue,
   useAnimatedReaction,
   runOnJS,
-  withTiming,
   cancelAnimation,
-  Easing,
 } from "react-native-reanimated";
 import { useColors } from "@/constants/colors";
 import { Flight } from "@/context/flights";
@@ -80,16 +78,13 @@ function geoToXyz(lon: number, lat: number, rotLon: number, rotLat: number): [nu
   const lam = (lon + rotLon) * D2R;
   const phi = lat * D2R;
   const rotPhiRad = rotLat * D2R;
-
   let x = Math.cos(phi) * Math.cos(lam);
   let y = Math.cos(phi) * Math.sin(lam);
   let z = Math.sin(phi);
-
   const cosT = Math.cos(rotPhiRad);
   const sinT = Math.sin(rotPhiRad);
   const y2 = y * cosT - z * sinT;
   const z2 = y * sinT + z * cosT;
-
   return [x, y2, z2];
 }
 
@@ -156,13 +151,13 @@ export function GlobeView({ flights }: Props) {
   const C = useColors();
   const isDark = C.bg === "#0A0A0F" || C.bg.startsWith("#0");
 
+  // Shared values for rotation — no animation, purely driven by drag
   const rotLon = useSharedValue(10);
   const rotLat = useSharedValue(20);
 
+  // JS-side state to trigger SVG re-render
   const [renderLon, setRenderLon] = React.useState(10);
   const [renderLat, setRenderLat] = React.useState(20);
-  const isInteracting = useRef(false);
-  const resumeTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useAnimatedReaction(
     () => ({ lon: rotLon.value, lat: rotLat.value }),
@@ -170,38 +165,21 @@ export function GlobeView({ flights }: Props) {
     []
   );
 
-  const startSpin = useCallback(() => {
-    cancelAnimation(rotLon);
-    const target = rotLon.value + 360;
-    rotLon.value = withTiming(target, { duration: 60000, easing: Easing.linear }, (finished) => {
-      if (finished) runOnJS(startSpin)();
-    });
-  }, [rotLon]);
-
-  const stopSpin = useCallback(() => {
-    cancelAnimation(rotLon);
-  }, [rotLon]);
-
-  useEffect(() => {
-    const t = setTimeout(() => startSpin(), 600);
-    return () => { clearTimeout(t); stopSpin(); };
-  }, [startSpin, stopSpin]);
-
-  // Use pageX/pageY to avoid locationX/Y jitter when touch passes over SVG child elements
+  // Track last touch position using pageX/pageY (stable across SVG child elements)
   const lastPage = useRef<{ x: number; y: number } | null>(null);
 
   const panResponder = useRef(
     PanResponder.create({
-      // Capture phase — claim the gesture BEFORE the ScrollView sees it
+      // Capture phase — claim gesture before the parent ScrollView
       onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponderCapture:  () => true,
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder:  () => true,
 
       onPanResponderGrant: (evt) => {
-        isInteracting.current = true;
-        if (resumeTimer.current) { clearTimeout(resumeTimer.current); resumeTimer.current = null; }
-        stopSpin();
+        // Cancel any lingering animation (safety measure)
+        cancelAnimation(rotLon);
+        cancelAnimation(rotLat);
         lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
       },
 
@@ -209,7 +187,6 @@ export function GlobeView({ flights }: Props) {
         if (!lastPage.current) return;
         const dx = evt.nativeEvent.pageX - lastPage.current.x;
         const dy = evt.nativeEvent.pageY - lastPage.current.y;
-        // FIX: negate dx so swiping right rotates globe rightward
         rotLon.value = rotLon.value - dx * 0.5;
         rotLat.value = Math.max(-60, Math.min(60, rotLat.value - dy * 0.4));
         lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
@@ -217,18 +194,16 @@ export function GlobeView({ flights }: Props) {
 
       onPanResponderRelease: () => {
         lastPage.current = null;
-        isInteracting.current = false;
-        resumeTimer.current = setTimeout(() => startSpin(), 1500);
+        // Globe stays exactly where released — no resume, no inertia
       },
 
       onPanResponderTerminate: () => {
         lastPage.current = null;
-        isInteracting.current = false;
-        resumeTimer.current = setTimeout(() => startSpin(), 1500);
       },
     })
   ).current;
 
+  // Derive unique routes + airports from flights
   const { routes, airportList } = useMemo(() => {
     const seenRoutes = new Set<string>();
     const routeList: { from: [number, number]; to: [number, number] }[] = [];
