@@ -1,77 +1,48 @@
 /**
- * GlobeView — deck.gl ArcLayer map with Apple Maps-style light basemap.
+ * GlobeView — interactive 3D SVG globe with orthographic projection.
  *
- * Offline fallback: when there is no network connection the CDN-hosted
- * maplibre-gl / deck.gl / Carto tile-style cannot load. Instead we render
- * a lightweight SVG canvas that plots airport dots and approximate
- * great-circle arcs using only the local AIRPORTS registry.
- *
- * Connectivity detection uses a native fetch-ping (no extra packages needed).
+ * - Pure react-native-svg + reanimated (no new installs needed)
+ * - Auto-spins slowly when idle; responds to drag gestures
+ * - Great-circle flight arcs clipped to the visible hemisphere
+ * - Full dark/light theme via useColors()
  */
-import React, { useRef, useMemo, useEffect, useState, useCallback } from "react";
+import React, { useEffect, useRef, useMemo, useCallback } from "react";
 import {
   View,
+  Text,
   StyleSheet,
   Dimensions,
-  Platform,
-  Text,
-  AppState,
-  AppStateStatus,
+  PanResponder,
 } from "react-native";
-import { WebView } from "react-native-webview";
+import Svg, {
+  Circle,
+  Path,
+  G,
+  Defs,
+  RadialGradient,
+  Stop,
+  ClipPath,
+  Rect,
+} from "react-native-svg";
+import Animated, {
+  useSharedValue,
+  useAnimatedReaction,
+  runOnJS,
+  withTiming,
+  cancelAnimation,
+  Easing,
+} from "react-native-reanimated";
+import { useColors } from "@/constants/colors";
 import { Flight } from "@/context/flights";
 
-// react-native-svg is bundled with Expo – no extra install needed.
-import Svg2, { Circle, Line, Polyline, G, Text as SvgText } from "react-native-svg";
-
+// ─── Layout ────────────────────────────────────────────────────────────────────
 const { width: SCREEN_W } = Dimensions.get("window");
-const MAP_W = Math.min(SCREEN_W - 40, 600);
-const MAP_H = Math.round(MAP_W * 0.62);
+const SIZE = Math.min(SCREEN_W - 40, 360);
+const CX   = SIZE / 2;
+const CY   = SIZE / 2;
+const R    = SIZE * 0.44;
 
-// ─── Connectivity hook (no external packages) ─────────────────────────────────
-// Pings a tiny always-online URL; falls back to "connected" on any error so
-// the WebView is shown optimistically and the SVG fallback only appears when
-// we are definitively offline.
-const PING_URL = "https://connectivitycheck.gstatic.com/generate_204";
-const PING_TIMEOUT = 4000;
-
-async function checkOnline(): Promise<boolean> {
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), PING_TIMEOUT);
-    const res = await fetch(PING_URL, {
-      method: "HEAD",
-      cache: "no-store",
-      signal: ctrl.signal,
-    });
-    clearTimeout(timer);
-    return res.status < 400;
-  } catch {
-    return false;
-  }
-}
-
-function useIsConnected(): boolean {
-  const [connected, setConnected] = useState(true); // optimistic default
-
-  const refresh = useCallback(async () => {
-    const online = await checkOnline();
-    setConnected(online);
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    // Re-check whenever the app comes back to the foreground
-    const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
-      if (state === "active") refresh();
-    });
-    return () => sub.remove();
-  }, [refresh]);
-
-  return connected;
-}
-
-// ─── Airport registry (lng, lat) ──────────────────────────────────────────────
+// ─── Airport registry [lon, lat] ──────────────────────────────────────────────
 const AIRPORTS: Record<string, [number, number]> = {
   LIS:[-9.14,38.78],GVA:[6.11,46.24],ZRH:[8.55,47.46],
   ATL:[-84.43,33.64],MIA:[-80.29,25.80],JFK:[-73.78,40.64],
@@ -89,64 +60,220 @@ const AIRPORTS: Record<string, [number, number]> = {
   HEL:[24.96,60.32],OSL:[11.08,60.20],WAW:[20.97,52.17],
   PRG:[14.26,50.10],BUD:[19.26,47.43],ATH:[23.95,37.94],
   OPO:[-8.68,41.24],SVQ:[-5.90,37.42],AGP:[-4.50,36.68],
-  TXL:[13.29,52.56],DUS:[6.77,51.28],HAM:[9.99,53.63],
-  NCE:[7.21,43.66],MRS:[5.22,43.44],LYS:[5.09,45.72],
+  DUS:[6.77,51.28],HAM:[9.99,53.63],NCE:[7.21,43.66],
   EDI:[-3.37,55.95],MAN:[-2.27,53.35],DUB:[-6.27,53.42],
   KEF:[-22.62,63.99],TLV:[34.88,32.00],CAI:[31.41,30.12],
-  CMN:[-7.59,33.37],TUN:[10.23,36.85],NBO:[36.93,-1.32],
-  JNB:[28.24,-26.13],ACC:[-0.17,5.60],LOS:[3.32,6.58],
-  ADD:[38.80,8.98],DAR:[39.20,-6.88],PEK:[116.58,40.08],
+  CMN:[-7.59,33.37],NBO:[36.93,-1.32],JNB:[28.24,-26.13],
+  ACC:[-0.17,5.60],ADD:[38.80,8.98],PEK:[116.58,40.08],
   PVG:[121.80,31.14],CAN:[113.30,23.39],KUL:[101.71,2.74],
   CGK:[106.65,-6.13],MNL:[121.02,14.51],BNE:[153.12,-27.38],
   MEL:[144.84,-37.67],AKL:[174.79,-37.01],SCL:[-70.79,-33.39],
   BOG:[-74.14,4.70],LIM:[-77.11,-12.02],EZE:[-58.54,-34.82],
   GIG:[-43.25,-22.81],YVR:[-123.18,49.19],YUL:[-73.74,45.47],
-  CUN:[-86.87,21.04],PMI:[2.74,39.55],IBZ:[1.37,38.87],
-  TFS:[-16.57,28.04],LPA:[-15.39,27.93],ACE:[-13.61,29.00],
-  NAP:[14.29,40.88],MXP:[8.72,45.63],RAK:[-8.04,31.61],
+  CUN:[-86.87,21.04],PMI:[2.74,39.55],TFS:[-16.57,28.04],
+  LPA:[-15.39,27.93],RAK:[-8.04,31.61],
 };
 
-// ─── Offline SVG fallback ─────────────────────────────────────────────────────
-const PADDING = 20;
-const LON_MIN = -180, LON_MAX = 180;
-const LAT_MIN = -75,  LAT_MAX = 85;
+// ─── Math helpers ─────────────────────────────────────────────────────────────
+const D2R = Math.PI / 180;
 
-function project(lon: number, lat: number): [number, number] {
-  const x = PADDING + ((lon - LON_MIN) / (LON_MAX - LON_MIN)) * (MAP_W - PADDING * 2);
-  const y = PADDING + ((LAT_MAX - lat) / (LAT_MAX - LAT_MIN)) * (MAP_H - PADDING * 2);
-  return [x, y];
+/** Convert geographic [lon, lat] + current rotation to 3-D xyz on unit sphere */
+function geoToXyz(lon: number, lat: number, rotLon: number, rotLat: number): [number, number, number] {
+  const lam = (lon + rotLon) * D2R;
+  const phi = lat * D2R;
+  const rotPhiRad = rotLat * D2R;
+
+  // First apply rotLon (around Z axis), then rotLat (around X axis)
+  let x = Math.cos(phi) * Math.cos(lam);
+  let y = Math.cos(phi) * Math.sin(lam);
+  let z = Math.sin(phi);
+
+  // Tilt around X axis by rotLat
+  const cosT = Math.cos(rotPhiRad);
+  const sinT = Math.sin(rotPhiRad);
+  const y2 = y * cosT - z * sinT;
+  const z2 = y * sinT + z * cosT;
+
+  return [x, y2, z2];
 }
 
-function greatCirclePoints(
-  from: [number, number],
-  to: [number, number],
-  steps = 30
-): string {
-  const [lon1, lat1] = from.map((d) => (d * Math.PI) / 180);
-  const [lon2, lat2] = to.map((d) => (d * Math.PI) / 180);
-  const points: string[] = [];
+/** Project 3-D xyz onto 2-D screen using orthographic projection */
+function project(x: number, y: number, _z: number): [number, number] {
+  return [CX + x * R, CY - _z * R];
+}
 
+/** Is the point visible (on the front hemisphere)? */
+function isVisible(x: number, _y: number, _z: number): boolean {
+  return _y > 0;
+}
+
+/** Interpolate great-circle path and return SVG path string, only visible segments */
+function greatCirclePath(
+  from: [number, number],
+  to:   [number, number],
+  rotLon: number,
+  rotLat: number,
+  steps = 64
+): string {
+  const pts: Array<{ x: number; z: number; vis: boolean }> = [];
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
-    const lat = lat1 + (lat2 - lat1) * t;
-    const lon = lon1 + (lon2 - lon1) * t;
-    const [x, y] = project(
-      (lon * 180) / Math.PI,
-      (lat * 180) / Math.PI
-    );
-    points.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    // Spherical interpolation (slerp) between two points
+    const [x1, y1, z1] = geoToXyz(from[0], from[1], rotLon, rotLat);
+    const [x2, y2, z2] = geoToXyz(to[0],   to[1],   rotLon, rotLat);
+    // Linear blend then normalise
+    const bx = x1 + (x2 - x1) * t;
+    const by = y1 + (y2 - y1) * t;
+    const bz = z1 + (z2 - z1) * t;
+    const len = Math.sqrt(bx * bx + by * by + bz * bz);
+    const nx = bx / len;
+    const ny = by / len;
+    const nz = bz / len;
+    const [px, pz] = project(nx, ny, nz);
+    pts.push({ x: px, z: pz, vis: ny > 0 });
   }
-  return points.join(" ");
+
+  // Build path string, breaking on visibility transitions
+  let d = "";
+  let penDown = false;
+  for (const pt of pts) {
+    if (pt.vis) {
+      if (!penDown) { d += `M${pt.x.toFixed(1)},${pt.z.toFixed(1)}`; penDown = true; }
+      else          { d += `L${pt.x.toFixed(1)},${pt.z.toFixed(1)}`; }
+    } else {
+      penDown = false;
+    }
+  }
+  return d;
 }
 
-interface OfflineFallbackProps {
-  flights: Flight[];
+/** Graticule lines (lat/lon grid) */
+function graticulePaths(rotLon: number, rotLat: number): string[] {
+  const paths: string[] = [];
+  const steps = 48;
+
+  // Latitude parallels: -60, -30, 0, 30, 60
+  for (const lat of [-60, -30, 0, 30, 60]) {
+    let d = ""; let penDown = false;
+    for (let i = 0; i <= steps; i++) {
+      const lon = -180 + (360 / steps) * i;
+      const [x, y, z] = geoToXyz(lon, lat, rotLon, rotLat);
+      const [px, pz] = project(x, y, z);
+      if (y > 0) {
+        if (!penDown) { d += `M${px.toFixed(1)},${pz.toFixed(1)}`; penDown = true; }
+        else          { d += `L${px.toFixed(1)},${pz.toFixed(1)}`; }
+      } else { penDown = false; }
+    }
+    if (d) paths.push(d);
+  }
+
+  // Longitude meridians: every 30 degrees
+  for (let lon = -180; lon < 180; lon += 30) {
+    let d = ""; let penDown = false;
+    for (let i = 0; i <= steps; i++) {
+      const lat = -90 + (180 / steps) * i;
+      const [x, y, z] = geoToXyz(lon, lat, rotLon, rotLat);
+      const [px, pz] = project(x, y, z);
+      if (y > 0) {
+        if (!penDown) { d += `M${px.toFixed(1)},${pz.toFixed(1)}`; penDown = true; }
+        else          { d += `L${px.toFixed(1)},${pz.toFixed(1)}`; }
+      } else { penDown = false; }
+    }
+    if (d) paths.push(d);
+  }
+
+  return paths;
 }
 
-function OfflineFallback({ flights }: OfflineFallbackProps) {
-  const { arcs, airports } = useMemo(() => {
+// ─── Component ────────────────────────────────────────────────────────────────
+interface Props { flights: Flight[]; }
+
+export function GlobeView({ flights }: Props) {
+  const C = useColors();
+  const isDark = C.bg === "#0A0A0F" || C.bg.startsWith("#0");
+
+  // Rotation state (degrees)
+  const rotLon = useSharedValue(10);
+  const rotLat = useSharedValue(20);
+
+  // Render-triggering state (JS side)
+  const [renderLon, setRenderLon] = React.useState(10);
+  const [renderLat, setRenderLat] = React.useState(20);
+  const isInteracting = useRef(false);
+  const spinAnim = useRef<any>(null);
+
+  // Sync shared values to JS state for SVG re-render
+  useAnimatedReaction(
+    () => ({ lon: rotLon.value, lat: rotLat.value }),
+    (cur) => { runOnJS(setRenderLon)(cur.lon); runOnJS(setRenderLat)(cur.lat); },
+    []
+  );
+
+  // Auto-spin
+  const startSpin = useCallback(() => {
+    cancelAnimation(rotLon);
+    // Spin ~360 degrees over 60 seconds, then loop
+    const spinOnce = () => {
+      spinAnim.current = withTiming(
+        rotLon.value + 360,
+        { duration: 60000, easing: Easing.linear },
+        (finished) => { if (finished) runOnJS(startSpin)(); }
+      );
+      rotLon.value = spinAnim.current;
+    };
+    spinOnce();
+  }, [rotLon]);
+
+  const stopSpin = useCallback(() => {
+    cancelAnimation(rotLon);
+  }, [rotLon]);
+
+  useEffect(() => {
+    const t = setTimeout(() => startSpin(), 600);
+    return () => { clearTimeout(t); stopSpin(); };
+  }, [startSpin, stopSpin]);
+
+  // Drag gesture
+  const lastTouch = useRef<{ x: number; y: number } | null>(null);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder:  () => true,
+      onPanResponderGrant: (evt) => {
+        isInteracting.current = true;
+        stopSpin();
+        const { locationX, locationY } = evt.nativeEvent;
+        lastTouch.current = { x: locationX, y: locationY };
+      },
+      onPanResponderMove: (evt) => {
+        const { locationX, locationY } = evt.nativeEvent;
+        if (!lastTouch.current) return;
+        const dx = locationX - lastTouch.current.x;
+        const dy = locationY - lastTouch.current.y;
+        rotLon.value = rotLon.value + dx * 0.4;
+        rotLat.value = Math.max(-60, Math.min(60, rotLat.value - dy * 0.4));
+        lastTouch.current = { x: locationX, y: locationY };
+      },
+      onPanResponderRelease: () => {
+        lastTouch.current = null;
+        isInteracting.current = false;
+        // Resume spin after 1.5 s of inactivity
+        const t = setTimeout(() => { if (!isInteracting.current) startSpin(); }, 1500);
+        return () => clearTimeout(t);
+      },
+      onPanResponderTerminate: () => {
+        lastTouch.current = null;
+        isInteracting.current = false;
+        setTimeout(() => startSpin(), 1500);
+      },
+    })
+  ).current;
+
+  // Derive unique routes + airports from flights
+  const { routes, airportList } = useMemo(() => {
     const seenRoutes = new Set<string>();
-    const arcList: { from: [number, number]; to: [number, number] }[] = [];
+    const routeList: { from: [number, number]; to: [number, number] }[] = [];
     const airportSet = new Set<string>();
 
     for (const f of flights) {
@@ -156,468 +283,195 @@ function OfflineFallback({ flights }: OfflineFallbackProps) {
       airportSet.add(f.departureAirport);
       airportSet.add(f.arrivalAirport);
       const key = [f.departureAirport, f.arrivalAirport].sort().join("-");
-      if (seenRoutes.has(key)) continue;
-      seenRoutes.add(key);
-      arcList.push({ from: fc, to: tc });
+      if (!seenRoutes.has(key)) {
+        seenRoutes.add(key);
+        routeList.push({ from: fc, to: tc });
+      }
     }
 
-    const airportList = Array.from(airportSet)
-      .filter((k) => AIRPORTS[k])
-      .map((k) => ({ iata: k, coords: AIRPORTS[k] }));
-
-    return { arcs: arcList, airports: airportList };
+    return {
+      routes: routeList,
+      airportList: Array.from(airportSet)
+        .filter(k => AIRPORTS[k])
+        .map(k => ({ iata: k, coords: AIRPORTS[k] })),
+    };
   }, [flights]);
 
+  const hasFlights = routes.length > 0;
+
+  // Theme colours
+  const sphereDeep = isDark ? "#0D1B3E" : "#D6E8FF";
+  const sphereMid  = isDark ? "#0F2654" : "#EAF3FF";
+  const sphereEdge = isDark ? "#061228" : "#B8D4F8";
+  const gridColor  = isDark ? "rgba(120,160,255,0.12)" : "rgba(79,142,240,0.12)";
+  const arcColor   = C.accent;
+  const arcGlow    = C.accentGlow;
+  const dotColor   = C.accent;
+  const dotRing    = C.accentDim;
+  const emptyColor = C.textMuted;
+
+  // Compute arc paths
+  const arcPaths = useMemo(() => {
+    return routes.map(r => greatCirclePath(r.from, r.to, renderLon, renderLat));
+  }, [routes, renderLon, renderLat]);
+
+  // Compute graticule
+  const graticuleLines = useMemo(() => {
+    return graticulePaths(renderLon, renderLat);
+  }, [renderLon, renderLat]);
+
+  // Compute airport screen positions
+  const dotPositions = useMemo(() => {
+    return airportList.map(ap => {
+      const [x, y, z] = geoToXyz(ap.coords[0], ap.coords[1], renderLon, renderLat);
+      const [px, pz] = project(x, y, z);
+      return { iata: ap.iata, px, pz, vis: y > 0 };
+    });
+  }, [airportList, renderLon, renderLat]);
+
+  const S = styles(C);
+
   return (
-    <View style={styles.fallbackContainer}>
-      <View style={styles.offlineBanner}>
-        <Text style={styles.offlineBannerText}>✈︎  Offline — showing cached routes</Text>
-      </View>
+    <View style={S.wrapper}>
+      <View
+        style={[S.container, { width: SIZE, height: SIZE }]}
+        {...panResponder.panHandlers}
+      >
+        <Svg width={SIZE} height={SIZE}>
+          <Defs>
+            {/* Sphere gradient */}
+            <RadialGradient
+              id="sphereGrad"
+              cx="38%" cy="32%" r="68%"
+              fx="38%" fy="32%"
+            >
+              <Stop offset="0%"   stopColor={sphereMid}  stopOpacity="1" />
+              <Stop offset="60%"  stopColor={sphereDeep} stopOpacity="1" />
+              <Stop offset="100%" stopColor={sphereEdge} stopOpacity="1" />
+            </RadialGradient>
 
-      <Svg2 width={MAP_W} height={MAP_H} style={styles.svg}>
-        {[-60, -30, 0, 30, 60].map((lat) => {
-          const [, y] = project(0, lat);
-          return (
-            <Line
-              key={`lat-${lat}`}
-              x1={PADDING}
-              y1={y}
-              x2={MAP_W - PADDING}
-              y2={y}
-              stroke="#C8D4E0"
-              strokeWidth={0.5}
-              strokeDasharray="4 4"
-            />
-          );
-        })}
-        {[-120, -60, 0, 60, 120].map((lon) => {
-          const [x] = project(lon, 0);
-          return (
-            <Line
-              key={`lon-${lon}`}
-              x1={x}
-              y1={PADDING}
-              x2={x}
-              y2={MAP_H - PADDING}
-              stroke="#C8D4E0"
-              strokeWidth={0.5}
-              strokeDasharray="4 4"
-            />
-          );
-        })}
+            {/* Atmosphere highlight (limb brightening) */}
+            <RadialGradient
+              id="atmosGrad"
+              cx="50%" cy="50%" r="50%"
+              fx="50%" fy="50%"
+            >
+              <Stop offset="72%" stopColor="transparent"           stopOpacity="0" />
+              <Stop offset="88%" stopColor={isDark ? "#2A5BA8" : "#4F8EF0"} stopOpacity={isDark ? "0.18" : "0.14"} />
+              <Stop offset="100%" stopColor={isDark ? "#1E3A7A" : "#4F8EF0"} stopOpacity={isDark ? "0.28" : "0.20"} />
+            </RadialGradient>
 
-        {arcs.map((arc, i) => (
-          <Polyline
-            key={`glow-${i}`}
-            points={greatCirclePoints(arc.from, arc.to)}
-            fill="none"
-            stroke="rgba(79,142,240,0.18)"
-            strokeWidth={8}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ))}
+            {/* Specular highlight */}
+            <RadialGradient
+              id="specular"
+              cx="35%" cy="28%" r="32%"
+            >
+              <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity={isDark ? "0.10" : "0.22"} />
+              <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
+            </RadialGradient>
 
-        {arcs.map((arc, i) => (
-          <Polyline
-            key={`arc-${i}`}
-            points={greatCirclePoints(arc.from, arc.to)}
-            fill="none"
-            stroke="#4F8EF0"
-            strokeWidth={1.5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            opacity={0.9}
-          />
-        ))}
+            {/* Clip to circle */}
+            <ClipPath id="globeClip">
+              <Circle cx={CX} cy={CY} r={R} />
+            </ClipPath>
+          </Defs>
 
-        {airports.map((ap) => {
-          const [x, y] = project(ap.coords[0], ap.coords[1]);
-          return (
-            <Circle
-              key={`ring-${ap.iata}`}
-              cx={x}
-              cy={y}
-              r={6}
-              fill="rgba(79,142,240,0.22)"
-            />
-          );
-        })}
+          {/* ── Base sphere ── */}
+          <Circle cx={CX} cy={CY} r={R} fill="url(#sphereGrad)" />
 
-        {airports.map((ap) => {
-          const [x, y] = project(ap.coords[0], ap.coords[1]);
-          return (
-            <Circle
-              key={`dot-${ap.iata}`}
-              cx={x}
-              cy={y}
-              r={3.5}
-              fill="#1E64DC"
-              stroke="white"
-              strokeWidth={1.2}
-            />
-          );
-        })}
+          {/* ── Graticule grid ── */}
+          <G clipPath="url(#globeClip)">
+            {graticuleLines.map((d, i) => (
+              <Path key={`g${i}`} d={d} stroke={gridColor} strokeWidth={0.7} fill="none" />
+            ))}
+          </G>
 
-        {airports.length <= 12 &&
-          airports.map((ap) => {
-            const [x, y] = project(ap.coords[0], ap.coords[1]);
-            return (
-              <SvgText
-                key={`label-${ap.iata}`}
-                x={x + 5}
-                y={y - 5}
-                fontSize={7}
-                fill="#3C5078"
-                fontWeight="600"
-                fontFamily="-apple-system, sans-serif"
-              >
-                {ap.iata}
-              </SvgText>
-            );
-          })}
+          {/* ── Arc glow (thick, low opacity) ── */}
+          <G clipPath="url(#globeClip)">
+            {arcPaths.map((d, i) =>
+              d ? <Path key={`ag${i}`} d={d} stroke={arcGlow} strokeWidth={8} fill="none" strokeLinecap="round" /> : null
+            )}
+          </G>
 
-        {airports.length === 0 && (
-          <SvgText
-            x={MAP_W / 2}
-            y={MAP_H / 2}
-            textAnchor="middle"
-            fontSize={13}
-            fill="rgba(60,80,120,0.45)"
-            fontFamily="-apple-system, sans-serif"
-          >
-            Add flights to see your network
-          </SvgText>
+          {/* ── Arc core lines ── */}
+          <G clipPath="url(#globeClip)">
+            {arcPaths.map((d, i) =>
+              d ? <Path key={`ac${i}`} d={d} stroke={arcColor} strokeWidth={1.8} fill="none" strokeLinecap="round" opacity={0.92} /> : null
+            )}
+          </G>
+
+          {/* ── Airport dots — ring ── */}
+          <G clipPath="url(#globeClip)">
+            {dotPositions.filter(d => d.vis).map(d => (
+              <Circle key={`r${d.iata}`} cx={d.px} cy={d.pz} r={8} fill={dotRing} />
+            ))}
+          </G>
+
+          {/* ── Airport dots — filled ── */}
+          <G clipPath="url(#globeClip)">
+            {dotPositions.filter(d => d.vis).map(d => (
+              <Circle key={`f${d.iata}`} cx={d.px} cy={d.pz} r={4} fill={dotColor} stroke="#FFFFFF" strokeWidth={1.2} />
+            ))}
+          </G>
+
+          {/* ── Atmosphere rim ── */}
+          <Circle cx={CX} cy={CY} r={R} fill="url(#atmosGrad)" />
+
+          {/* ── Specular highlight ── */}
+          <Circle cx={CX} cy={CY} r={R} fill="url(#specular)" clipPath="url(#globeClip)" />
+
+          {/* ── Globe border ── */}
+          <Circle cx={CX} cy={CY} r={R} fill="none" stroke={isDark ? "rgba(79,142,240,0.18)" : "rgba(79,142,240,0.20)"} strokeWidth={1.5} />
+
+          {/* ── Empty state label ── */}
+          {!hasFlights && (
+            <G>
+              <Path
+                d={`M${CX},${CY - 18} l4,8 l8,1 l-6,6 l2,9 l-8,-4 l-8,4 l2,-9 l-6,-6 l8,-1 z`}
+                fill={emptyColor}
+                opacity={0.35}
+              />
+            </G>
+          )}
+        </Svg>
+
+        {!hasFlights && (
+          <View style={S.emptyOverlay} pointerEvents="none">
+            <Text style={[S.emptyText, { color: emptyColor }]}>Add flights to see your network</Text>
+          </View>
         )}
-      </Svg2>
+      </View>
     </View>
   );
 }
 
-// ─── buildHTML ────────────────────────────────────────────────────────────────
-function buildHTML(flights: Flight[]): string {
-  const seenRoutes = new Set<string>();
-  const arcs: { from: [number,number]; to: [number,number] }[] = [];
-  const airportSet = new Set<string>();
-
-  for (const f of flights) {
-    const fc = AIRPORTS[f.departureAirport];
-    const tc = AIRPORTS[f.arrivalAirport];
-    if (!fc || !tc) continue;
-    airportSet.add(f.departureAirport);
-    airportSet.add(f.arrivalAirport);
-    const key = [f.departureAirport, f.arrivalAirport].sort().join("-");
-    if (seenRoutes.has(key)) continue;
-    seenRoutes.add(key);
-    arcs.push({ from: fc, to: tc });
-  }
-
-  const airports = Array.from(airportSet)
-    .filter(k => AIRPORTS[k])
-    .map(k => ({ iata: k, coords: AIRPORTS[k] }));
-
-  const hasData = arcs.length > 0;
-  let initLon = 10, initLat = 30;
-  if (airports.length > 0) {
-    initLon = airports.reduce((s, a) => s + a.coords[0], 0) / airports.length;
-    initLat = airports.reduce((s, a) => s + a.coords[1], 0) / airports.length;
-  }
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"/>
-<style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  html,body{width:100%;height:100%;background:#EEF2F5;overflow:hidden}
-  #map{width:100%;height:100%}
-  .maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right{display:none!important}
-  #empty{
-    display:${hasData ? "none" : "flex"};
-    position:absolute;inset:0;
-    flex-direction:column;align-items:center;justify-content:center;
-    color:rgba(60,80,120,0.45);font-family:-apple-system,sans-serif;gap:10px;
-    pointer-events:none;
-  }
-  #empty p{font-size:13px;letter-spacing:0.3px;font-weight:500}
-</style>
-</head>
-<body>
-<div id="map"></div>
-<div id="empty">
-  <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
-    <circle cx="12" cy="12" r="10"/>
-    <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-  </svg>
-  <p>Add flights to see your network</p>
-</div>
-
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="https://unpkg.com/@deck.gl/core@9.1.6/dist.min.js"></script>
-<script src="https://unpkg.com/@deck.gl/layers@9.1.6/dist.min.js"></script>
-<script src="https://unpkg.com/@deck.gl/mapbox@9.1.6/dist.min.js"></script>
-
-<script>
-(function(){
-
-const ARC_SRC  = [40, 120, 240, 210];
-const ARC_TIP  = [90, 160, 255, 210];
-const ARC_GLOW = [79, 142, 240,  28];
-const DOT_FILL = [30, 100, 220, 255];
-const DOT_RING = [79, 142, 240,  55];
-const DOT_CORE = [255, 255, 255, 245];
-
-const ARCS     = ${JSON.stringify(arcs)};
-const AIRPORTS = ${JSON.stringify(airports)};
-
-const STYLE_URL = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
-
-const map = new maplibregl.Map({
-  container: "map",
-  style: STYLE_URL,
-  center: [${initLon.toFixed(2)}, ${initLat.toFixed(2)}],
-  zoom: ${hasData ? 1.9 : 1.3},
-  pitch: 0,
-  bearing: 0,
-  antialias: true,
-  attributionControl: false,
-  logoPosition: "bottom-right",
-});
-
-map.on("load", () => {
-
-  ["water","water-shadow","waterway","waterway-shadow"].forEach(id => {
-    if (map.getLayer(id)) {
-      try { map.setPaintProperty(id, "fill-color", "#B8E4F4"); } catch(_){}
-      try { map.setPaintProperty(id, "line-color", "#91D4EE"); } catch(_){}
-    }
-  });
-
-  ["background","landcover","land"].forEach(id => {
-    if (map.getLayer(id)) {
-      try { map.setPaintProperty(id, "background-color", "#F5F0E8"); } catch(_){}
-      try { map.setPaintProperty(id, "fill-color",       "#F5F0E8"); } catch(_){}
-    }
-  });
-
-  ["landuse-park","landuse_park","park","green_areas","landuse-residential"].forEach(id => {
-    if (map.getLayer(id)) {
-      try { map.setPaintProperty(id, "fill-color", "#D4E8CE"); } catch(_){}
-    }
-  });
-
-  map.getStyle().layers.forEach(layer => {
-    if (!layer.id) return;
-    const lid = layer.id.toLowerCase();
-    if (lid.includes("road") || lid.includes("highway") || lid.includes("street") || lid.includes("tunnel") || lid.includes("bridge")) {
-      if (layer.type === "line") {
-        const color = lid.includes("motorway") || lid.includes("highway")
-          ? "#E2C97E"
-          : "#FFFFFF";
-        try { map.setPaintProperty(layer.id, "line-color", color); } catch(_){}
-      }
-      if (layer.type === "fill") {
-        try { map.setPaintProperty(layer.id, "fill-color", "#FFFFFF"); } catch(_){}
-      }
-    }
-    if (lid.includes("casing") || lid.includes("outline")) {
-      if (layer.type === "line") {
-        try { map.setPaintProperty(layer.id, "line-color", "#D8D0C8"); } catch(_){}
-      }
-    }
-    if (lid.includes("building")) {
-      if (layer.type === "fill") {
-        try { map.setPaintProperty(layer.id, "fill-color",   "#E8E0D8"); } catch(_){}
-        try { map.setPaintProperty(layer.id, "fill-opacity", 0.7);       } catch(_){}
-      }
-    }
-  });
-
-  setTimeout(() => {
-    map.easeTo({ pitch: 28, bearing: -8, duration: 1600,
-      easing: t => t<0.5 ? 2*t*t : -1+(4-2*t)*t });
-  }, 400);
-
-  startRotate();
-});
-
-const { MapboxOverlay, ArcLayer, ScatterplotLayer } = deck;
-
-function buildLayers() {
-  const layers = [];
-
-  if (ARCS.length > 0) {
-    layers.push(new ArcLayer({
-      id: "arcs-glow",
-      data: ARCS,
-      getSourcePosition: d => d.from,
-      getTargetPosition: d => d.to,
-      getSourceColor: ARC_GLOW,
-      getTargetColor: ARC_GLOW,
-      getWidth: 14,
-      getHeight: 0.45,
-      greatCircle: true,
-      widthUnits: "pixels",
-      pickable: false,
-    }));
-
-    layers.push(new ArcLayer({
-      id: "arcs-core",
-      data: ARCS,
-      getSourcePosition: d => d.from,
-      getTargetPosition: d => d.to,
-      getSourceColor: ARC_SRC,
-      getTargetColor: ARC_TIP,
-      getWidth: 2,
-      getHeight: 0.45,
-      greatCircle: true,
-      widthUnits: "pixels",
-      pickable: true,
-      autoHighlight: true,
-      highlightColor: [255, 180, 40, 255],
-    }));
-  }
-
-  if (AIRPORTS.length > 0) {
-    layers.push(new ScatterplotLayer({
-      id: "dots-ring",
-      data: AIRPORTS,
-      getPosition: d => d.coords,
-      getRadius: 22000,
-      getFillColor: DOT_RING,
-      stroked: false,
-      radiusUnits: "meters",
-      pickable: false,
-    }));
-
-    layers.push(new ScatterplotLayer({
-      id: "dots-fill",
-      data: AIRPORTS,
-      getPosition: d => d.coords,
-      getRadius: 8000,
-      getFillColor: DOT_FILL,
-      stroked: true,
-      lineWidthMinPixels: 1.5,
-      getLineColor: [255, 255, 255, 220],
-      radiusUnits: "meters",
-      pickable: true,
-      autoHighlight: true,
-      highlightColor: [255, 180, 40, 255],
-    }));
-
-    layers.push(new ScatterplotLayer({
-      id: "dots-core",
-      data: AIRPORTS,
-      getPosition: d => d.coords,
-      getRadius: 2800,
-      getFillColor: DOT_CORE,
-      stroked: false,
-      radiusUnits: "meters",
-      pickable: false,
-    }));
-  }
-
-  return layers;
-}
-
-const overlay = new MapboxOverlay({
-  interleaved: false,
-  layers: buildLayers(),
-});
-map.addControl(overlay);
-
-let userInteracting = false;
-let rotateTimer = null;
-
-function startRotate() {
-  if (rotateTimer) return;
-  rotateTimer = setInterval(() => {
-    if (!userInteracting) {
-      map.setBearing((map.getBearing() + 0.05) % 360);
-    }
-  }, 50);
-}
-
-map.on("mousedown",  () => { userInteracting = true; });
-map.on("touchstart", () => { userInteracting = true; });
-map.on("mouseup",    () => { userInteracting = false; });
-map.on("touchend",   () => { setTimeout(() => { userInteracting = false; }, 900); });
-
-window.addEventListener("resize", () => map.resize());
-
-})();
-</script>
-</body>
-</html>`;
-}
-
-interface Props { flights: Flight[]; }
-
-export function GlobeView({ flights }: Props) {
-  const webRef = useRef<any>(null);
-  const html = useMemo(() => buildHTML(flights), [flights]);
-  const isConnected = useIsConnected();
-
-  return (
-    <View style={[styles.container, { width: MAP_W, height: MAP_H }]}>
-      {isConnected ? (
-        <WebView
-          ref={webRef}
-          source={{ html }}
-          style={styles.webview}
-          scrollEnabled={false}
-          bounces={false}
-          overScrollMode="never"
-          originWhitelist={["*"]}
-          allowsInlineMediaPlayback
-          javaScriptEnabled
-          domStorageEnabled
-          mixedContentMode="always"
-          allowFileAccess
-          allowUniversalAccessFromFileURLs
-          backgroundColor="#EEF2F5"
-          {...(Platform.OS === "ios" ? { decelerationRate: "fast" } : {})}
-          onError={(e) => console.warn("GlobeView error:", e.nativeEvent)}
-        />
-      ) : (
-        <OfflineFallback flights={flights} />
-      )}
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: { borderRadius: 16, overflow: "hidden", backgroundColor: "#EEF2F5" },
-  webview:   { flex: 1, backgroundColor: "transparent" },
-  fallbackContainer: {
-    flex: 1,
-    backgroundColor: "#EEF2F5",
-    borderRadius: 16,
-    overflow: "hidden",
+const styles = (C: ReturnType<typeof useColors>) => StyleSheet.create({
+  wrapper: {
+    alignItems: "center",
+    paddingVertical: 4,
   },
-  offlineBanner: {
+  container: {
+    borderRadius: SIZE / 2 + 8,
+    overflow: "visible",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    elevation: 10,
+  },
+  emptyOverlay: {
     position: "absolute",
-    top: 8,
+    bottom: SIZE * 0.12,
     left: 0,
     right: 0,
-    zIndex: 10,
     alignItems: "center",
   },
-  offlineBannerText: {
-    fontSize: 11,
-    color: "rgba(60,80,120,0.65)",
-    fontWeight: "500",
-    backgroundColor: "rgba(255,255,255,0.82)",
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 10,
-    overflow: "hidden",
-    letterSpacing: 0.2,
-  },
-  svg: {
-    backgroundColor: "#EEF2F5",
+  emptyText: {
+    fontSize: 12,
+    fontFamily: "DMSans_500Medium",
+    letterSpacing: 0.3,
   },
 });
 
