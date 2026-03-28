@@ -3,11 +3,10 @@
  * Shows countries, airports, continents collected from all logged flights.
  * Includes a shareable story-card via ViewShot.
  */
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   Pressable,
   Platform,
@@ -23,9 +22,10 @@ import * as Haptics from "expo-haptics";
 import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
 import Animated, {
-  FadeInDown, FadeIn,
-  useAnimatedStyle, useSharedValue, withSpring, withTiming,
-  useEffect as useReanimatedEffect,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
 } from "react-native-reanimated";
 import ViewShot from "react-native-view-shot";
 import { useColors } from "@/constants/colors";
@@ -53,14 +53,14 @@ interface Rank {
   color: string;
 }
 const RANKS: Rank[] = [
-  { min: 0,   label: "First Timer",      emoji: "🌱", color: "#6BCB77" },
-  { min: 5,   label: "Wanderer",         emoji: "🧳", color: "#4D96FF" },
-  { min: 15,  label: "Explorer",         emoji: "🗺️",  color: "#845EC2" },
-  { min: 30,  label: "Globetrotter",     emoji: "✈️",  color: "#F9A825" },
-  { min: 60,  label: "World Traveller",  emoji: "🌍", color: "#FF6F61" },
-  { min: 100, label: "Century Club",     emoji: "💯", color: "#FF3D71" },
-  { min: 150, label: "Legend",           emoji: "🏆", color: "#FFD700" },
-  { min: 195, label: "World Conqueror",  emoji: "👑", color: "#FF9500" },
+  { min: 0,   label: "First Timer",     emoji: "🌱", color: "#6BCB77" },
+  { min: 5,   label: "Wanderer",        emoji: "🧳", color: "#4D96FF" },
+  { min: 15,  label: "Explorer",        emoji: "🗺️",  color: "#845EC2" },
+  { min: 30,  label: "Globetrotter",    emoji: "✈️",  color: "#F9A825" },
+  { min: 60,  label: "World Traveller", emoji: "🌍", color: "#FF6F61" },
+  { min: 100, label: "Century Club",    emoji: "💯", color: "#FF3D71" },
+  { min: 150, label: "Legend",          emoji: "🏆", color: "#FFD700" },
+  { min: 195, label: "World Conqueror", emoji: "👑", color: "#FF9500" },
 ];
 function getRank(count: number): Rank {
   let rank = RANKS[0];
@@ -68,26 +68,23 @@ function getRank(count: number): Rank {
   return rank;
 }
 
-// Milestone markers shown on the bar
 const MILESTONES = [10, 25, 50, 100, 150, 195];
 
 // ─── Gamified Progress Bar ────────────────────────────────────────────────────
 function CountryProgressBar({ visited }: { visited: number }) {
   const C = useColors();
   const { width: screenW } = useWindowDimensions();
-  const barWidth = screenW - SCREEN_PAD * 2 - 40; // card padding
+  const barWidth = screenW - SCREEN_PAD * 2 - 40;
 
-  const rank = getRank(visited);
-  const nextRank = RANKS.find((r) => r.min > visited) ?? null;
-  const pct = Math.min((visited / TOTAL_COUNTRIES) * 100, 100);
-
-  // Next milestone
+  const rank        = getRank(visited);
+  const nextRank    = RANKS.find((r) => r.min > visited) ?? null;
+  const pct         = Math.min((visited / TOTAL_COUNTRIES) * 100, 100);
   const nextMilestone = MILESTONES.find((m) => m > visited) ?? TOTAL_COUNTRIES;
-  const toNext = nextMilestone - visited;
+  const toNext      = nextMilestone - visited;
 
-  // Animated bar fill
+  // Animate bar fill using standard React useEffect
   const fillWidth = useSharedValue(0);
-  useReanimatedEffect(() => {
+  useEffect(() => {
     fillWidth.value = withSpring((pct / 100) * barWidth, { stiffness: 60, damping: 18 });
   }, [pct, barWidth]);
   const fillStyle = useAnimatedStyle(() => ({ width: fillWidth.value }));
@@ -104,7 +101,7 @@ function CountryProgressBar({ visited }: { visited: number }) {
         gap: 14,
       }}
     >
-      {/* Header row: title + rank badge */}
+      {/* Header: count + rank badge */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <View>
           <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.6, textTransform: "uppercase" }}>
@@ -120,7 +117,6 @@ function CountryProgressBar({ visited }: { visited: number }) {
           </View>
         </View>
 
-        {/* Rank badge */}
         <View style={{
           alignItems: "center", gap: 4,
           backgroundColor: rank.color + "18",
@@ -134,11 +130,9 @@ function CountryProgressBar({ visited }: { visited: number }) {
         </View>
       </View>
 
-      {/* Progress bar + milestone ticks */}
+      {/* Bar + milestone ticks */}
       <View>
-        {/* Track */}
-        <View style={{ height: 12, backgroundColor: C.accentDim, borderRadius: 6, overflow: "visible" }}>
-          {/* Animated fill */}
+        <View style={{ height: 12, backgroundColor: C.accentDim, borderRadius: 6, overflow: "hidden" }}>
           <Animated.View style={[fillStyle, {
             height: 12, borderRadius: 6,
             backgroundColor: rank.color,
@@ -150,18 +144,12 @@ function CountryProgressBar({ visited }: { visited: number }) {
           }]} />
         </View>
 
-        {/* Milestone markers */}
-        <View style={{ flexDirection: "row", position: "relative", marginTop: 8, height: 20 }}>
+        <View style={{ position: "relative", marginTop: 8, height: 20 }}>
           {MILESTONES.map((m) => {
             const pos = (m / TOTAL_COUNTRIES) * barWidth;
             const reached = visited >= m;
             return (
-              <View key={m} style={{
-                position: "absolute",
-                left: pos - 1,
-                alignItems: "center",
-                gap: 2,
-              }}>
+              <View key={m} style={{ position: "absolute", left: pos - 1, alignItems: "center", gap: 2 }}>
                 <View style={{
                   width: 2, height: 6,
                   backgroundColor: reached ? rank.color : C.border,
@@ -180,7 +168,7 @@ function CountryProgressBar({ visited }: { visited: number }) {
         </View>
       </View>
 
-      {/* Motivational sub-line */}
+      {/* Motivational line */}
       <View style={{
         flexDirection: "row", alignItems: "center", gap: 8,
         backgroundColor: rank.color + "10",
@@ -195,7 +183,9 @@ function CountryProgressBar({ visited }: { visited: number }) {
           </Text>
         ) : (
           <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_400Regular", flex: 1 }}>
-            <Text style={{ color: rank.color, fontFamily: "DMSans_700Bold" }}>{toNext} more {toNext === 1 ? "country" : "countries"}</Text>
+            <Text style={{ color: rank.color, fontFamily: "DMSans_700Bold" }}>
+              {toNext} more {toNext === 1 ? "country" : "countries"}
+            </Text>
             {" to reach "}
             <Text style={{ color: C.text, fontFamily: "DMSans_700Bold" }}>{nextMilestone}</Text>
             {nextRank && visited < nextRank.min
@@ -205,18 +195,17 @@ function CountryProgressBar({ visited }: { visited: number }) {
         )}
       </View>
 
-      {/* Next rank progress if applicable */}
+      {/* Next rank mini-bar */}
       {nextRank && visited < TOTAL_COUNTRIES && (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>
-            Next rank:
-          </Text>
+          <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>Next rank:</Text>
           <View style={{ flex: 1, height: 4, backgroundColor: C.surface, borderRadius: 2, overflow: "hidden" }}>
             <View style={{
-              height: 4,
-              borderRadius: 2,
-              backgroundColor: nextRank.color,
-              width: `${Math.min(((visited - getRank(visited).min) / (nextRank.min - getRank(visited).min)) * 100, 100)}%`,
+              height: 4, borderRadius: 2, backgroundColor: nextRank.color,
+              width: `${Math.min(
+                ((visited - getRank(visited).min) / (nextRank.min - getRank(visited).min)) * 100,
+                100
+              )}%`,
             }} />
           </View>
           <Text style={{ fontSize: 11, color: nextRank.color, fontFamily: "DMSans_700Bold" }}>
@@ -242,7 +231,10 @@ function HeroStat({ value, label, color }: { value: string | number; label: stri
 function ContinentChip({ name, count, color }: { name: string; count: number; color: string }) {
   const C = useColors();
   return (
-    <View style={[{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 }, { borderColor: color + "55", backgroundColor: color + "12" }]}>
+    <View style={[{
+      flexDirection: "row", alignItems: "center", gap: 6,
+      paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1,
+    }, { borderColor: color + "55", backgroundColor: color + "12" }]}>
       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }} />
       <Text style={{ fontSize: 12, fontFamily: "DMSans_500Medium", color }}>{name}</Text>
       <Text style={{ fontSize: 12, color, fontFamily: "DMSans_700Bold" }}>{count}</Text>
@@ -283,7 +275,9 @@ function CountryRow({ entry }: { entry: CountryEntry }) {
         {expanded && (
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
             {entry.airportCities.map((a, i) => (
-              <View key={i} style={[{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1 }, { borderColor: color + "44", backgroundColor: color + "0F" }]}>
+              <View key={i} style={[{
+                paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1,
+              }, { borderColor: color + "44", backgroundColor: color + "0F" }]}>
                 <Text style={{ fontSize: 11, fontFamily: "DMSans_500Medium", color }}>{a}</Text>
               </View>
             ))}
@@ -302,10 +296,10 @@ const CONTINENT_ORDER: ContinentKey[] = [
 // ─── Main screen ─────────────────────────────────────────────────────────────
 export default function PassportScreen() {
   const C = useColors();
-  const insets   = useSafeAreaInsets();
+  const insets      = useSafeAreaInsets();
   const { flights } = useFlights();
   const { profile } = useUser();
-  const cardRef  = useRef<ViewShot>(null);
+  const cardRef     = useRef<ViewShot>(null);
   const [capturing, setCapturing] = useState(false);
 
   const topPad    = Platform.OS === "web" ? 67 : insets.top + 8;
@@ -425,7 +419,11 @@ export default function PassportScreen() {
         paddingHorizontal: SCREEN_PAD, paddingBottom: 10,
         borderBottomWidth: 1, borderBottomColor: C.border,
       }}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
+        <Pressable
+          onPress={() => router.back()}
+          hitSlop={12}
+          style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
+        >
           <Ionicons name="chevron-back" size={22} color={C.textSec} />
         </Pressable>
         <View style={{ flex: 1, alignItems: "center", gap: 1 }}>
@@ -435,8 +433,10 @@ export default function PassportScreen() {
         <Pressable
           onPress={handleShare}
           disabled={capturing || isEmpty}
-          style={({ pressed }) => [{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }, { opacity: capturing || isEmpty || pressed ? 0.5 : 1 }]}
           hitSlop={8}
+          style={({ pressed }) => [{
+            width: 36, height: 36, alignItems: "center", justifyContent: "center",
+          }, { opacity: capturing || isEmpty || pressed ? 0.5 : 1 }]}
         >
           {capturing
             ? <ActivityIndicator size="small" color={C.accent} />
@@ -459,7 +459,9 @@ export default function PassportScreen() {
             </Text>
             <Pressable
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-flight"); }}
-              style={({ pressed }) => [{ backgroundColor: C.accent, paddingHorizontal: 28, paddingVertical: 15, borderRadius: 28, marginTop: 8 }, { opacity: pressed ? 0.8 : 1 }]}
+              style={({ pressed }) => [{
+                backgroundColor: C.accent, paddingHorizontal: 28, paddingVertical: 15, borderRadius: 28, marginTop: 8,
+              }, { opacity: pressed ? 0.8 : 1 }]}
             >
               <Text style={{ fontSize: 15, color: C.white, fontFamily: "DMSans_700Bold" }}>Add First Flight</Text>
             </Pressable>
@@ -473,11 +475,11 @@ export default function PassportScreen() {
               borderWidth: 1, borderColor: C.border,
               paddingVertical: 20, paddingHorizontal: 16,
             }}>
-              <HeroStat value={stats.totalCountries}  label="countries"   color={C.accent} />
+              <HeroStat value={stats.totalCountries}  label="countries"  color={C.accent} />
               <View style={{ width: 1, height: 40, backgroundColor: C.border }} />
-              <HeroStat value={stats.totalAirports}   label="airports"    color={C.green} />
+              <HeroStat value={stats.totalAirports}   label="airports"   color={C.green} />
               <View style={{ width: 1, height: 40, backgroundColor: C.border }} />
-              <HeroStat value={stats.totalContinents} label="continents"  color="#F5C842" />
+              <HeroStat value={stats.totalContinents} label="continents" color="#F5C842" />
             </Animated.View>
 
             {/* ── GAMIFIED COUNTRY PROGRESS BAR ── */}
@@ -486,21 +488,13 @@ export default function PassportScreen() {
             {/* ── CONTINENT CHIPS ── */}
             <Animated.View entering={FadeInDown.delay(70).springify()} style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               {CONTINENT_ORDER.filter((c) => (stats.continentCounts[c] ?? 0) > 0).map((c) => (
-                <ContinentChip
-                  key={c}
-                  name={c}
-                  count={stats.continentCounts[c]}
-                  color={CONTINENT_COLORS[c]}
-                />
+                <ContinentChip key={c} name={c} count={stats.continentCounts[c]} color={CONTINENT_COLORS[c]} />
               ))}
             </Animated.View>
 
             {/* ── COUNTRY LIST grouped by continent ── */}
             {grouped.map((group, gi) => (
-              <Animated.View
-                key={group.continent}
-                entering={FadeInDown.delay(100 + gi * 30).springify()}
-              >
+              <Animated.View key={group.continent} entering={FadeInDown.delay(100 + gi * 30).springify()}>
                 <View style={{
                   flexDirection: "row", alignItems: "center", justifyContent: "space-between",
                   borderLeftWidth: 3, borderLeftColor: group.color,
@@ -509,7 +503,9 @@ export default function PassportScreen() {
                   <Text style={{ fontSize: 11, fontFamily: "DMSans_700Bold", letterSpacing: 1.2, color: group.color }}>
                     {group.continent.toUpperCase()}
                   </Text>
-                  <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>{group.entries.length} countries</Text>
+                  <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>
+                    {group.entries.length} countries
+                  </Text>
                 </View>
                 {group.entries.map((entry) => (
                   <CountryRow key={entry.countryCode} entry={entry} />
@@ -532,18 +528,13 @@ export default function PassportScreen() {
                     shadowOpacity: 0.25, shadowRadius: 28, elevation: 14,
                   }}
                 >
-                  <View
-                    style={{
-                      width: PASSPORT_CARD_WIDTH,
-                      height: PASSPORT_CARD_HEIGHT,
-                      transform: [{ scale }],
-                      transformOrigin: "top left",
-                    }}
-                  >
-                    <PassportCard
-                      stats={stats}
-                      username={profile?.username ?? undefined}
-                    />
+                  <View style={{
+                    width: PASSPORT_CARD_WIDTH,
+                    height: PASSPORT_CARD_HEIGHT,
+                    transform: [{ scale }],
+                    transformOrigin: "top left",
+                  }}>
+                    <PassportCard stats={stats} username={profile?.username ?? undefined} />
                   </View>
                 </ViewShot>
               </View>
