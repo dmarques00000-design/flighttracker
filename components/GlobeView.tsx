@@ -1,7 +1,9 @@
 /**
  * GlobeView — interactive 3D SVG globe with orthographic projection.
  *
- * - Pure react-native-svg + reanimated (no new installs needed)
+ * - Country polygons from world-atlas (Natural Earth 110m TopoJSON)
+ * - To upgrade resolution: swap the import for countries-50m.json
+ * - Pure react-native-svg + reanimated (no extra installs beyond world-atlas)
  * - Fully idle on load — only moves when the user drags it
  * - Great-circle flight arcs clipped to the visible hemisphere
  * - Full dark/light theme via useColors()
@@ -31,6 +33,84 @@ import {
 } from "react-native-reanimated";
 import { useColors } from "@/constants/colors";
 import { Flight } from "@/context/flights";
+
+// ─── World data (swap to countries-50m.json for higher resolution) ─────────────
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const worldTopo = require("world-atlas/countries-110m.json") as TopoJSON;
+
+// ─── Minimal TopoJSON types ────────────────────────────────────────────────────
+interface TopoJSON {
+  type: string;
+  objects: Record<string, TopoObject>;
+  arcs: number[][][];
+  transform?: { scale: [number, number]; translate: [number, number] };
+}
+interface TopoObject {
+  type: string;
+  geometries: TopoGeometry[];
+}
+interface TopoGeometry {
+  type: string;
+  arcs: ArcIndex;
+  id?: number;
+  properties?: Record<string, unknown>;
+}
+type ArcIndex = number | number[] | number[][] | number[][][];
+
+// ─── TopoJSON → ring decoder ───────────────────────────────────────────────────
+function decodeArcs(topo: TopoJSON): [number, number][][] {
+  const { arcs, transform } = topo;
+  const scale  = transform?.scale   ?? [1, 1];
+  const transl = transform?.translate ?? [0, 0];
+
+  return arcs.map((arc) => {
+    let x = 0, y = 0;
+    return arc.map(([dx, dy]) => {
+      x += dx;
+      y += dy;
+      // Convert from quantized TopoJSON coords → [lon, lat]
+      const lon = x * scale[0] + transl[0];
+      const lat = y * scale[1] + transl[1];
+      return [lon, lat] as [number, number];
+    });
+  });
+}
+
+// Stitch arc indices into a closed ring of [lon,lat] points.
+// Negative index means the arc is reversed (TopoJSON spec).
+function stitchRing(arcIndices: number[], decoded: [number, number][][]): [number, number][] {
+  const pts: [number, number][] = [];
+  for (const idx of arcIndices) {
+    const arc = idx < 0 ? [...decoded[~idx]].reverse() : decoded[idx];
+    // Omit last point of each arc (shared with first of next)
+    pts.push(...arc.slice(0, -1));
+  }
+  return pts;
+}
+
+// Extract all polygon rings from the "countries" TopoJSON object.
+// Returns an array of rings; each ring is [[lon,lat], ...]
+function extractCountryRings(topo: TopoJSON): [number, number][][][] {
+  const decoded = decodeArcs(topo);
+  const obj = topo.objects["countries"] ?? topo.objects[Object.keys(topo.objects)[0]];
+  const allPolygons: [number, number][][][] = [];
+
+  for (const geom of obj.geometries) {
+    if (geom.type === "Polygon") {
+      const rings = (geom.arcs as number[][]).map(ring => stitchRing(ring, decoded));
+      allPolygons.push(rings);
+    } else if (geom.type === "MultiPolygon") {
+      for (const poly of (geom.arcs as number[][][])) {
+        const rings = poly.map(ring => stitchRing(ring, decoded));
+        allPolygons.push(rings);
+      }
+    }
+  }
+  return allPolygons;
+}
+
+// Pre-decode once at module load — this is static data, no need to redo per render
+const COUNTRY_POLYGONS: [number, number][][][] = extractCountryRings(worldTopo);
 
 // ─── Layout ────────────────────────────────────────────────────────────────────
 const { width: SCREEN_W } = Dimensions.get("window");
@@ -92,6 +172,24 @@ function project(x: number, y: number, z: number): [number, number] {
   return [CX + x * R, CY - z * R];
 }
 
+// Project a ring of [lon,lat] points into an SVG path string.
+// Points behind the globe (y <= 0) break the path to avoid wraparound artefacts.
+function ringToPath(ring: [number, number][], rotLon: number, rotLat: number): string {
+  let d = "";
+  let penDown = false;
+  for (const [lon, lat] of ring) {
+    const [x, y, z] = geoToXyz(lon, lat, rotLon, rotLat);
+    const [px, pz] = project(x, y, z);
+    if (y > 0) {
+      if (!penDown) { d += `M${px.toFixed(1)},${pz.toFixed(1)}`; penDown = true; }
+      else          { d += `L${px.toFixed(1)},${pz.toFixed(1)}`; }
+    } else {
+      penDown = false;
+    }
+  }
+  return d;
+}
+
 function greatCirclePath(
   from: [number, number],
   to:   [number, number],
@@ -151,11 +249,9 @@ export function GlobeView({ flights }: Props) {
   const C = useColors();
   const isDark = C.bg === "#0A0A0F" || C.bg.startsWith("#0");
 
-  // Shared values for rotation — no animation, purely driven by drag
   const rotLon = useSharedValue(10);
   const rotLat = useSharedValue(20);
 
-  // JS-side state to trigger SVG re-render
   const [renderLon, setRenderLon] = React.useState(10);
   const [renderLat, setRenderLat] = React.useState(20);
 
@@ -165,19 +261,16 @@ export function GlobeView({ flights }: Props) {
     []
   );
 
-  // Track last touch position using pageX/pageY (stable across SVG child elements)
   const lastPage = useRef<{ x: number; y: number } | null>(null);
 
   const panResponder = useRef(
     PanResponder.create({
-      // Capture phase — claim gesture before the parent ScrollView
       onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponderCapture:  () => true,
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder:  () => true,
 
       onPanResponderGrant: (evt) => {
-        // Cancel any lingering animation (safety measure)
         cancelAnimation(rotLon);
         cancelAnimation(rotLat);
         lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
@@ -192,18 +285,11 @@ export function GlobeView({ flights }: Props) {
         lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
       },
 
-      onPanResponderRelease: () => {
-        lastPage.current = null;
-        // Globe stays exactly where released — no resume, no inertia
-      },
-
-      onPanResponderTerminate: () => {
-        lastPage.current = null;
-      },
+      onPanResponderRelease: () => { lastPage.current = null; },
+      onPanResponderTerminate: () => { lastPage.current = null; },
     })
   ).current;
 
-  // Derive unique routes + airports from flights
   const { routes, airportList } = useMemo(() => {
     const seenRoutes = new Set<string>();
     const routeList: { from: [number, number]; to: [number, number] }[] = [];
@@ -224,10 +310,25 @@ export function GlobeView({ flights }: Props) {
 
   const hasFlights = routes.length > 0;
 
-  const sphereDeep = isDark ? "#0D1B3E" : "#D6E8FF";
-  const sphereMid  = isDark ? "#0F2654" : "#EAF3FF";
-  const sphereEdge = isDark ? "#061228" : "#B8D4F8";
-  const gridColor  = isDark ? "rgba(120,160,255,0.12)" : "rgba(79,142,240,0.12)";
+  // ─── Theme colours ──────────────────────────────────────────────────────────
+  const sphereDeep  = isDark ? "#0D1B3E" : "#D6E8FF";
+  const sphereMid   = isDark ? "#0F2654" : "#EAF3FF";
+  const sphereEdge  = isDark ? "#061228" : "#B8D4F8";
+  const gridColor   = isDark ? "rgba(120,160,255,0.10)" : "rgba(79,142,240,0.10)";
+  // Land fill — slightly lighter than the ocean so continents read clearly
+  const landFill    = isDark ? "#1C3566" : "#B8D0F0";
+  const landStroke  = isDark ? "#2A4A80" : "#8AB0D8";
+
+  // ─── Country polygon SVG paths (recomputed on rotation) ─────────────────────
+  const countryPaths = useMemo(() => {
+    return COUNTRY_POLYGONS.map((polygon, pi) => {
+      // Each polygon is an array of rings; outer ring first, holes after.
+      // We only render the outer ring for performance at 110m resolution.
+      const outerRing = polygon[0];
+      const d = ringToPath(outerRing, renderLon, renderLat);
+      return d ? { key: `c${pi}`, d } : null;
+    }).filter(Boolean) as { key: string; d: string }[];
+  }, [renderLon, renderLat]);
 
   const arcPaths = useMemo(() =>
     routes.map(r => greatCirclePath(r.from, r.to, renderLon, renderLat)),
@@ -275,25 +376,44 @@ export function GlobeView({ flights }: Props) {
             </ClipPath>
           </Defs>
 
+          {/* Ocean */}
           <Circle cx={CX} cy={CY} r={R} fill="url(#sphereGrad)" />
 
+          {/* Graticule */}
           <G clipPath="url(#globeClip)">
             {graticuleLines.map((d, i) => (
               <Path key={`g${i}`} d={d} stroke={gridColor} strokeWidth={0.7} fill="none" />
             ))}
           </G>
 
+          {/* Country fills */}
+          <G clipPath="url(#globeClip)">
+            {countryPaths.map(({ key, d }) => (
+              <Path
+                key={key}
+                d={d}
+                fill={landFill}
+                stroke={landStroke}
+                strokeWidth={0.5}
+                strokeLinejoin="round"
+              />
+            ))}
+          </G>
+
+          {/* Flight arc glow */}
           <G clipPath="url(#globeClip)">
             {arcPaths.map((d, i) =>
               d ? <Path key={`ag${i}`} d={d} stroke={C.accentGlow} strokeWidth={8} fill="none" strokeLinecap="round" /> : null
             )}
           </G>
+          {/* Flight arc line */}
           <G clipPath="url(#globeClip)">
             {arcPaths.map((d, i) =>
               d ? <Path key={`ac${i}`} d={d} stroke={C.accent} strokeWidth={1.8} fill="none" strokeLinecap="round" opacity={0.92} /> : null
             )}
           </G>
 
+          {/* Airport dots */}
           <G clipPath="url(#globeClip)">
             {dotPositions.filter(d => d.vis).map(d => (
               <Circle key={`r${d.iata}`} cx={d.px} cy={d.pz} r={8} fill={C.accentDim} />
@@ -305,6 +425,7 @@ export function GlobeView({ flights }: Props) {
             ))}
           </G>
 
+          {/* Atmosphere + specular highlight — rendered last so they sit on top */}
           <Circle cx={CX} cy={CY} r={R} fill="url(#atmosGrad)" />
           <Circle cx={CX} cy={CY} r={R} fill="url(#specular)" clipPath="url(#globeClip)" />
           <Circle cx={CX} cy={CY} r={R} fill="none"
