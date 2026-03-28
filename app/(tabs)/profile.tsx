@@ -349,7 +349,7 @@ export default function ProfileScreen() {
                   {flightStats.topAirline && flights.length > 1 && (
                     <HighlightRow
                       icon="briefcase-outline"
-                      accent="#8B5CF6"
+                      accent={C.secondary}
                       title={flightStats.topAirline.name}
                       subtitle="Most-flown airline"
                       badge={`${flightStats.topAirline.count}\u00d7`}
