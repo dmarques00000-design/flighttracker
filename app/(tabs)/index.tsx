@@ -145,43 +145,23 @@ function StatCard({ label, value, icon, accent }: { label: string; value: string
   );
 }
 
-// ─── Next Flight Hero Card ───────────────────────────────────────────────────
 function NextFlightCard({ flight, today }: { flight: Flight; today: string }) {
   const C = useColors();
   const days = daysUntil(flight.date, today);
   const scale = useSharedValue(1);
   const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-
   const urgencyColor = days === 0 ? C.accent : days <= 3 ? C.amber : C.green;
   const urgencyLabel = days === 0 ? "Today!" : days === 1 ? "Tomorrow" : `In ${days} days`;
-
   return (
-    <Animated.View
-      entering={FadeInDown.delay(60).springify()}
-      style={[animStyle, { marginBottom: 24 }]}
-    >
+    <Animated.View entering={FadeInDown.delay(60).springify()} style={[animStyle, { marginBottom: 24 }]}>
       <Pressable
         onPressIn={() => { scale.value = withSpring(0.97, { stiffness: 300 }); }}
         onPressOut={() => { scale.value = withSpring(1, { stiffness: 300 }); }}
         onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push({ pathname: "/flight/[id]", params: { id: flight.id } }); }}
       >
-        <View style={{
-          borderRadius: 22,
-          overflow: "hidden",
-          borderWidth: 1.5,
-          borderColor: urgencyColor + "55",
-          backgroundColor: C.card,
-          shadowColor: urgencyColor,
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.18,
-          shadowRadius: 18,
-          elevation: 6,
-        }}>
-          {/* Coloured top stripe */}
+        <View style={{ borderRadius: 22, overflow: "hidden", borderWidth: 1.5, borderColor: urgencyColor + "55", backgroundColor: C.card, shadowColor: urgencyColor, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.18, shadowRadius: 18, elevation: 6 }}>
           <View style={{ height: 4, backgroundColor: urgencyColor }} />
-
           <View style={{ padding: 20 }}>
-            {/* Label row */}
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                 <Ionicons name="airplane-outline" size={14} color={urgencyColor} />
@@ -191,16 +171,11 @@ function NextFlightCard({ flight, today }: { flight: Flight; today: string }) {
                 <Text style={{ fontSize: 12, color: urgencyColor, fontFamily: "DMSans_700Bold" }}>{urgencyLabel}</Text>
               </View>
             </View>
-
-            {/* Route */}
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <View style={{ alignItems: "flex-start" }}>
                 <Text style={{ fontSize: 36, color: C.text, fontFamily: "DMSans_700Bold", letterSpacing: -1 }}>{flight.departureAirport}</Text>
-                <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 }} numberOfLines={1}>
-                  {flight.departureCity || ""}
-                </Text>
+                <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 }} numberOfLines={1}>{flight.departureCity || ""}</Text>
               </View>
-
               <View style={{ flex: 1, flexDirection: "row", alignItems: "center", marginHorizontal: 12, gap: 4 }}>
                 <View style={{ flex: 1, height: 1.5, backgroundColor: C.border }} />
                 <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: urgencyColor + "18", alignItems: "center", justifyContent: "center" }}>
@@ -208,16 +183,11 @@ function NextFlightCard({ flight, today }: { flight: Flight; today: string }) {
                 </View>
                 <View style={{ flex: 1, height: 1.5, backgroundColor: C.border }} />
               </View>
-
               <View style={{ alignItems: "flex-end" }}>
                 <Text style={{ fontSize: 36, color: C.text, fontFamily: "DMSans_700Bold", letterSpacing: -1 }}>{flight.arrivalAirport}</Text>
-                <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 }} numberOfLines={1}>
-                  {flight.arrivalCity || ""}
-                </Text>
+                <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 }} numberOfLines={1}>{flight.arrivalCity || ""}</Text>
               </View>
             </View>
-
-            {/* Footer info */}
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 14, borderTopWidth: 1, borderTopColor: C.border }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                 <Ionicons name="calendar-outline" size={13} color={C.textMuted} />
@@ -390,6 +360,12 @@ export default function HomeScreen() {
   const { profile, isLoggedIn, dismissedPrompt, dismissPrompt } = useUser();
   const [period, setPeriod] = useState<"all" | number>(new Date().getFullYear());
   const [menuOpen, setMenuOpen] = useState(false);
+  // ─── Globe drag lock ───────────────────────────────────────────────────────
+  // When the user drags the globe we disable the parent ScrollView so the
+  // screen doesn't scroll at the same time.
+  const [globeDragging, setGlobeDragging] = useState(false);
+  const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
+  // ──────────────────────────────────────────────────────────────────────────
   const today = useToday();
   const topPadding    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
@@ -401,11 +377,8 @@ export default function HomeScreen() {
     return Array.from(set).sort((a, b) => b - a);
   }, [flights]);
 
-  // The single next upcoming flight (closest future date)
   const nextFlight = useMemo(() =>
-    flights
-      .filter((f) => f.date >= today)
-      .sort((a, b) => a.date.localeCompare(b.date))[0] ?? null,
+    flights.filter((f) => f.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0] ?? null,
     [flights, today]
   );
 
@@ -427,7 +400,13 @@ export default function HomeScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPadding }}>
       <HamburgerMenu visible={menuOpen} onClose={() => setMenuOpen(false)} onSelect={handleMenuSelect} />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomPadding + 100 }} contentInsetAdjustmentBehavior="automatic">
+      <ScrollView
+        ref={scrollRef}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={!globeDragging}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomPadding + 100 }}
+        contentInsetAdjustmentBehavior="automatic"
+      >
 
         {/* Header */}
         <Animated.View entering={FadeInDown.delay(0).springify()} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 20 }}>
@@ -461,14 +440,12 @@ export default function HomeScreen() {
 
         {hasFlights ? (
           <>
-            {/* ─── Next Flight Hero Card (pinned above everything else) ─── */}
             {nextFlight && <NextFlightCard flight={nextFlight} today={today} />}
 
             <Animated.View entering={FadeInDown.delay(40).springify()} style={{ marginBottom: 16 }}>
               <PeriodDropdown period={period} years={years} onChange={(p) => { Haptics.selectionAsync(); setPeriod(p); }} />
             </Animated.View>
 
-            {/* ─── Hero flight-count card ─── */}
             <Animated.View entering={FadeInDown.delay(80).springify()} style={{ backgroundColor: C.card, borderRadius: 20, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: C.border }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                 <View>
@@ -500,10 +477,14 @@ export default function HomeScreen() {
               )}
             </Animated.View>
 
-            {/* ─── Globe ─── */}
+            {/* ─── Globe — scroll locked while dragging ─── */}
             <Animated.View entering={FadeInDown.delay(120).springify()} style={{ marginTop: 4, marginBottom: 24 }}>
               <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Your Flight Network</Text>
-              <GlobeView flights={flights} />
+              <GlobeView
+                flights={flights}
+                onDragStart={() => setGlobeDragging(true)}
+                onDragEnd={() => setGlobeDragging(false)}
+              />
             </Animated.View>
 
             {/* ─── Statistics ─── */}

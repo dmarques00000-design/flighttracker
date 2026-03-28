@@ -2,9 +2,9 @@
  * GlobeView — interactive 3D SVG globe with orthographic projection.
  *
  * - Country polygons from world-atlas (Natural Earth 110m TopoJSON)
- * - To upgrade resolution: swap the import for countries-50m.json
- * - Pure react-native-svg + reanimated (no extra installs beyond world-atlas)
- * - Fully idle on load — only moves when the user drags it
+ * - Pure react-native-svg + reanimated
+ * - Drag is captured exclusively — parent ScrollView is locked while touching
+ * - onDragStart / onDragEnd callbacks let the parent disable its scroll
  * - Great-circle flight arcs clipped to the visible hemisphere
  * - Full dark/light theme via useColors()
  */
@@ -34,7 +34,7 @@ import {
 import { useColors } from "@/constants/colors";
 import { Flight } from "@/context/flights";
 
-// ─── World data (swap to countries-50m.json for higher resolution) ─────────────
+// ─── World data ────────────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const worldTopo = require("world-atlas/countries-110m.json") as TopoJSON;
 
@@ -62,54 +62,40 @@ function decodeArcs(topo: TopoJSON): [number, number][][] {
   const { arcs, transform } = topo;
   const scale  = transform?.scale   ?? [1, 1];
   const transl = transform?.translate ?? [0, 0];
-
   return arcs.map((arc) => {
     let x = 0, y = 0;
     return arc.map(([dx, dy]) => {
-      x += dx;
-      y += dy;
-      // Convert from quantized TopoJSON coords → [lon, lat]
-      const lon = x * scale[0] + transl[0];
-      const lat = y * scale[1] + transl[1];
-      return [lon, lat] as [number, number];
+      x += dx; y += dy;
+      return [x * scale[0] + transl[0], y * scale[1] + transl[1]] as [number, number];
     });
   });
 }
 
-// Stitch arc indices into a closed ring of [lon,lat] points.
-// Negative index means the arc is reversed (TopoJSON spec).
 function stitchRing(arcIndices: number[], decoded: [number, number][][]): [number, number][] {
   const pts: [number, number][] = [];
   for (const idx of arcIndices) {
     const arc = idx < 0 ? [...decoded[~idx]].reverse() : decoded[idx];
-    // Omit last point of each arc (shared with first of next)
     pts.push(...arc.slice(0, -1));
   }
   return pts;
 }
 
-// Extract all polygon rings from the "countries" TopoJSON object.
-// Returns an array of rings; each ring is [[lon,lat], ...]
 function extractCountryRings(topo: TopoJSON): [number, number][][][] {
   const decoded = decodeArcs(topo);
   const obj = topo.objects["countries"] ?? topo.objects[Object.keys(topo.objects)[0]];
   const allPolygons: [number, number][][][] = [];
-
   for (const geom of obj.geometries) {
     if (geom.type === "Polygon") {
-      const rings = (geom.arcs as number[][]).map(ring => stitchRing(ring, decoded));
-      allPolygons.push(rings);
+      allPolygons.push((geom.arcs as number[][]).map(r => stitchRing(r, decoded)));
     } else if (geom.type === "MultiPolygon") {
       for (const poly of (geom.arcs as number[][][])) {
-        const rings = poly.map(ring => stitchRing(ring, decoded));
-        allPolygons.push(rings);
+        allPolygons.push(poly.map(r => stitchRing(r, decoded)));
       }
     }
   }
   return allPolygons;
 }
 
-// Pre-decode once at module load — this is static data, no need to redo per render
 const COUNTRY_POLYGONS: [number, number][][][] = extractCountryRings(worldTopo);
 
 // ─── Layout ────────────────────────────────────────────────────────────────────
@@ -151,7 +137,7 @@ const AIRPORTS: Record<string, [number, number]> = {
   LPA:[-15.39,27.93],RAK:[-8.04,31.61],
 };
 
-// ─── Math helpers ─────────────────────────────────────────────────────────────
+// ─── Math helpers ──────────────────────────────────────────────────────────────
 const D2R = Math.PI / 180;
 
 function geoToXyz(lon: number, lat: number, rotLon: number, rotLat: number): [number, number, number] {
@@ -172,39 +158,29 @@ function project(x: number, y: number, z: number): [number, number] {
   return [CX + x * R, CY - z * R];
 }
 
-// Project a ring of [lon,lat] points into an SVG path string.
-// Points behind the globe (y <= 0) break the path to avoid wraparound artefacts.
 function ringToPath(ring: [number, number][], rotLon: number, rotLat: number): string {
-  let d = "";
-  let penDown = false;
+  let d = ""; let penDown = false;
   for (const [lon, lat] of ring) {
     const [x, y, z] = geoToXyz(lon, lat, rotLon, rotLat);
-    const [px, pz] = project(x, y, z);
+    const [px, pz]  = project(x, y, z);
     if (y > 0) {
       if (!penDown) { d += `M${px.toFixed(1)},${pz.toFixed(1)}`; penDown = true; }
       else          { d += `L${px.toFixed(1)},${pz.toFixed(1)}`; }
-    } else {
-      penDown = false;
-    }
+    } else { penDown = false; }
   }
   return d;
 }
 
 function greatCirclePath(
-  from: [number, number],
-  to:   [number, number],
-  rotLon: number,
-  rotLat: number,
-  steps = 64
+  from: [number, number], to: [number, number],
+  rotLon: number, rotLat: number, steps = 64
 ): string {
   let d = ""; let penDown = false;
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const [x1, y1, z1] = geoToXyz(from[0], from[1], rotLon, rotLat);
     const [x2, y2, z2] = geoToXyz(to[0],   to[1],   rotLon, rotLat);
-    const bx = x1 + (x2 - x1) * t;
-    const by = y1 + (y2 - y1) * t;
-    const bz = z1 + (z2 - z1) * t;
+    const bx = x1 + (x2 - x1) * t; const by = y1 + (y2 - y1) * t; const bz = z1 + (z2 - z1) * t;
     const len = Math.sqrt(bx * bx + by * by + bz * bz);
     const nx = bx / len; const ny = by / len; const nz = bz / len;
     const [px, pz] = project(nx, ny, nz);
@@ -217,8 +193,7 @@ function greatCirclePath(
 }
 
 function graticulePaths(rotLon: number, rotLat: number): string[] {
-  const paths: string[] = [];
-  const steps = 48;
+  const paths: string[] = []; const steps = 48;
   for (const lat of [-60, -30, 0, 30, 60]) {
     let d = ""; let penDown = false;
     for (let i = 0; i <= steps; i++) {
@@ -243,15 +218,20 @@ function graticulePaths(rotLon: number, rotLat: number): string[] {
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
-interface Props { flights: Flight[]; }
+interface Props {
+  flights: Flight[];
+  /** Called when the user starts dragging the globe */
+  onDragStart?: () => void;
+  /** Called when the user releases the globe */
+  onDragEnd?: () => void;
+}
 
-export function GlobeView({ flights }: Props) {
+export function GlobeView({ flights, onDragStart, onDragEnd }: Props) {
   const C = useColors();
   const isDark = C.bg === "#0A0A0F" || C.bg.startsWith("#0");
 
   const rotLon = useSharedValue(10);
   const rotLat = useSharedValue(20);
-
   const [renderLon, setRenderLon] = React.useState(10);
   const [renderLat, setRenderLat] = React.useState(20);
 
@@ -265,6 +245,7 @@ export function GlobeView({ flights }: Props) {
 
   const panResponder = useRef(
     PanResponder.create({
+      // Capture immediately so the ScrollView never gets a chance to claim the gesture
       onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponderCapture:  () => true,
       onStartShouldSetPanResponder: () => true,
@@ -274,6 +255,7 @@ export function GlobeView({ flights }: Props) {
         cancelAnimation(rotLon);
         cancelAnimation(rotLat);
         lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
+        onDragStart?.();
       },
 
       onPanResponderMove: (evt) => {
@@ -285,8 +267,15 @@ export function GlobeView({ flights }: Props) {
         lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
       },
 
-      onPanResponderRelease: () => { lastPage.current = null; },
-      onPanResponderTerminate: () => { lastPage.current = null; },
+      onPanResponderRelease: () => {
+        lastPage.current = null;
+        onDragEnd?.();
+      },
+
+      onPanResponderTerminate: () => {
+        lastPage.current = null;
+        onDragEnd?.();
+      },
     })
   ).current;
 
@@ -295,8 +284,7 @@ export function GlobeView({ flights }: Props) {
     const routeList: { from: [number, number]; to: [number, number] }[] = [];
     const airportSet = new Set<string>();
     for (const f of flights) {
-      const fc = AIRPORTS[f.departureAirport];
-      const tc = AIRPORTS[f.arrivalAirport];
+      const fc = AIRPORTS[f.departureAirport]; const tc = AIRPORTS[f.arrivalAirport];
       if (!fc || !tc) continue;
       airportSet.add(f.departureAirport); airportSet.add(f.arrivalAirport);
       const key = [f.departureAirport, f.arrivalAirport].sort().join("-");
@@ -310,38 +298,29 @@ export function GlobeView({ flights }: Props) {
 
   const hasFlights = routes.length > 0;
 
-  // ─── Theme colours ──────────────────────────────────────────────────────────
-  const sphereDeep  = isDark ? "#0D1B3E" : "#D6E8FF";
-  const sphereMid   = isDark ? "#0F2654" : "#EAF3FF";
-  const sphereEdge  = isDark ? "#061228" : "#B8D4F8";
-  const gridColor   = isDark ? "rgba(120,160,255,0.10)" : "rgba(79,142,240,0.10)";
-  // Land fill — slightly lighter than the ocean so continents read clearly
-  const landFill    = isDark ? "#1C3566" : "#B8D0F0";
-  const landStroke  = isDark ? "#2A4A80" : "#8AB0D8";
+  const sphereDeep = isDark ? "#0D1B3E" : "#D6E8FF";
+  const sphereMid  = isDark ? "#0F2654" : "#EAF3FF";
+  const sphereEdge = isDark ? "#061228" : "#B8D4F8";
+  const gridColor  = isDark ? "rgba(120,160,255,0.10)" : "rgba(79,142,240,0.10)";
+  const landFill   = isDark ? "#1C3566" : "#B8D0F0";
+  const landStroke = isDark ? "#2A4A80" : "#8AB0D8";
 
-  // ─── Country polygon SVG paths (recomputed on rotation) ─────────────────────
-  const countryPaths = useMemo(() => {
-    return COUNTRY_POLYGONS.map((polygon, pi) => {
-      // Each polygon is an array of rings; outer ring first, holes after.
-      // We only render the outer ring for performance at 110m resolution.
-      const outerRing = polygon[0];
-      const d = ringToPath(outerRing, renderLon, renderLat);
-      return d ? { key: `c${pi}`, d } : null;
-    }).filter(Boolean) as { key: string; d: string }[];
-  }, [renderLon, renderLat]);
+  const countryPaths = useMemo(() =>
+    COUNTRY_POLYGONS
+      .map((polygon, pi) => { const d = ringToPath(polygon[0], renderLon, renderLat); return d ? { key: `c${pi}`, d } : null; })
+      .filter(Boolean) as { key: string; d: string }[],
+    [renderLon, renderLat]
+  );
 
   const arcPaths = useMemo(() =>
     routes.map(r => greatCirclePath(r.from, r.to, renderLon, renderLat)),
     [routes, renderLon, renderLat]
   );
-  const graticuleLines = useMemo(() =>
-    graticulePaths(renderLon, renderLat),
-    [renderLon, renderLat]
-  );
+  const graticuleLines = useMemo(() => graticulePaths(renderLon, renderLat), [renderLon, renderLat]);
   const dotPositions = useMemo(() =>
     airportList.map(ap => {
       const [x, y, z] = geoToXyz(ap.coords[0], ap.coords[1], renderLon, renderLat);
-      const [px, pz] = project(x, y, z);
+      const [px, pz]  = project(x, y, z);
       return { iata: ap.iata, px, pz, vis: y > 0 };
     }),
     [airportList, renderLon, renderLat]
@@ -371,73 +350,44 @@ export function GlobeView({ flights }: Props) {
               <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity={isDark ? "0.10" : "0.22"} />
               <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
             </RadialGradient>
-            <ClipPath id="globeClip">
-              <Circle cx={CX} cy={CY} r={R} />
-            </ClipPath>
+            <ClipPath id="globeClip"><Circle cx={CX} cy={CY} r={R} /></ClipPath>
           </Defs>
 
-          {/* Ocean */}
           <Circle cx={CX} cy={CY} r={R} fill="url(#sphereGrad)" />
 
-          {/* Graticule */}
           <G clipPath="url(#globeClip)">
-            {graticuleLines.map((d, i) => (
-              <Path key={`g${i}`} d={d} stroke={gridColor} strokeWidth={0.7} fill="none" />
-            ))}
+            {graticuleLines.map((d, i) => <Path key={`g${i}`} d={d} stroke={gridColor} strokeWidth={0.7} fill="none" />)}
           </G>
 
-          {/* Country fills */}
           <G clipPath="url(#globeClip)">
             {countryPaths.map(({ key, d }) => (
-              <Path
-                key={key}
-                d={d}
-                fill={landFill}
-                stroke={landStroke}
-                strokeWidth={0.5}
-                strokeLinejoin="round"
-              />
+              <Path key={key} d={d} fill={landFill} stroke={landStroke} strokeWidth={0.5} strokeLinejoin="round" />
             ))}
           </G>
 
-          {/* Flight arc glow */}
           <G clipPath="url(#globeClip)">
-            {arcPaths.map((d, i) =>
-              d ? <Path key={`ag${i}`} d={d} stroke={C.accentGlow} strokeWidth={8} fill="none" strokeLinecap="round" /> : null
-            )}
+            {arcPaths.map((d, i) => d ? <Path key={`ag${i}`} d={d} stroke={C.accentGlow} strokeWidth={8}   fill="none" strokeLinecap="round" /> : null)}
           </G>
-          {/* Flight arc line */}
           <G clipPath="url(#globeClip)">
-            {arcPaths.map((d, i) =>
-              d ? <Path key={`ac${i}`} d={d} stroke={C.accent} strokeWidth={1.8} fill="none" strokeLinecap="round" opacity={0.92} /> : null
-            )}
+            {arcPaths.map((d, i) => d ? <Path key={`ac${i}`} d={d} stroke={C.accent}     strokeWidth={1.8} fill="none" strokeLinecap="round" opacity={0.92} /> : null)}
           </G>
 
-          {/* Airport dots */}
           <G clipPath="url(#globeClip)">
-            {dotPositions.filter(d => d.vis).map(d => (
-              <Circle key={`r${d.iata}`} cx={d.px} cy={d.pz} r={8} fill={C.accentDim} />
-            ))}
+            {dotPositions.filter(d => d.vis).map(d => <Circle key={`r${d.iata}`} cx={d.px} cy={d.pz} r={8} fill={C.accentDim} />)}
           </G>
           <G clipPath="url(#globeClip)">
-            {dotPositions.filter(d => d.vis).map(d => (
-              <Circle key={`f${d.iata}`} cx={d.px} cy={d.pz} r={4} fill={C.accent} stroke="#FFFFFF" strokeWidth={1.2} />
-            ))}
+            {dotPositions.filter(d => d.vis).map(d => <Circle key={`f${d.iata}`} cx={d.px} cy={d.pz} r={4} fill={C.accent} stroke="#FFFFFF" strokeWidth={1.2} />)}
           </G>
 
-          {/* Atmosphere + specular highlight — rendered last so they sit on top */}
           <Circle cx={CX} cy={CY} r={R} fill="url(#atmosGrad)" />
-          <Circle cx={CX} cy={CY} r={R} fill="url(#specular)" clipPath="url(#globeClip)" />
+          <Circle cx={CX} cy={CY} r={R} fill="url(#specular)"  clipPath="url(#globeClip)" />
           <Circle cx={CX} cy={CY} r={R} fill="none"
             stroke={isDark ? "rgba(79,142,240,0.18)" : "rgba(79,142,240,0.20)"}
             strokeWidth={1.5}
           />
 
           {!hasFlights && (
-            <Path
-              d={`M${CX},${CY - 18} l4,8 l8,1 l-6,6 l2,9 l-8,-4 l-8,4 l2,-9 l-6,-6 l8,-1 z`}
-              fill={C.textMuted} opacity={0.35}
-            />
+            <Path d={`M${CX},${CY - 18} l4,8 l8,1 l-6,6 l2,9 l-8,-4 l-8,4 l2,-9 l-6,-6 l8,-1 z`} fill={C.textMuted} opacity={0.35} />
           )}
         </Svg>
 
@@ -452,29 +402,15 @@ export function GlobeView({ flights }: Props) {
 }
 
 const styles = (C: ReturnType<typeof useColors>) => StyleSheet.create({
-  wrapper: { alignItems: "center", paddingVertical: 4 },
+  wrapper:   { alignItems: "center", paddingVertical: 4 },
   container: {
-    borderRadius: SIZE / 2 + 8,
-    overflow: "visible",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: C.accent,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.22,
-    shadowRadius: 24,
-    elevation: 10,
+    borderRadius: SIZE / 2 + 8, overflow: "visible",
+    alignItems: "center", justifyContent: "center",
+    shadowColor: C.accent, shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22, shadowRadius: 24, elevation: 10,
   },
-  emptyOverlay: {
-    position: "absolute",
-    bottom: SIZE * 0.12,
-    left: 0, right: 0,
-    alignItems: "center",
-  },
-  emptyText: {
-    fontSize: 12,
-    fontFamily: "DMSans_500Medium",
-    letterSpacing: 0.3,
-  },
+  emptyOverlay: { position: "absolute", bottom: SIZE * 0.12, left: 0, right: 0, alignItems: "center" },
+  emptyText:    { fontSize: 12, fontFamily: "DMSans_500Medium", letterSpacing: 0.3 },
 });
 
 export default GlobeView;
