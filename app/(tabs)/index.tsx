@@ -305,6 +305,12 @@ export default function HomeScreen() {
     return Array.from(set).sort((a, b) => b - a);
   }, [flights]);
 
+  // Flights filtered to the selected period — used for both stats AND the globe
+  const filteredFlights = useMemo(
+    () => period === "all" ? flights : flights.filter((f) => f.date.startsWith(String(period))),
+    [flights, period],
+  );
+
   const upcomingFlights = useMemo(() => flights.filter((f) => f.date >= today).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3), [flights, today]);
   const pastFlights     = useMemo(() => flights.filter((f) => f.date < today).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3), [flights, today]);
   const stats = useFilteredStats(flights, period);
@@ -393,10 +399,10 @@ export default function HomeScreen() {
               )}
             </Animated.View>
 
-            {/* ─── Globe ─── */}
+            {/* ─── Globe (filtered by selected period) ─── */}
             <Animated.View entering={FadeInDown.delay(120).springify()} style={{ marginTop: 4, marginBottom: 24 }}>
               <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Your Flight Network</Text>
-              <GlobeView flights={flights} />
+              <GlobeView flights={filteredFlights} />
             </Animated.View>
 
             {/* ─── Statistics: 4 original cards in a clean 2×2 grid ─── */}
