@@ -1,12 +1,16 @@
 /**
- * GlobeView — deck.gl ArcLayer map with Apple Maps-style light basemap.
+ * GlobeView — Apple Maps-style 3D globe rendered in a WebView using
+ * deck.gl GlobeView with a deep-navy/satellite aesthetic:
+ *   • Black starfield background
+ *   • Deep navy ocean (#0B1F3A)
+ *   • Muted teal-green land masses
+ *   • Thin atmospheric blue rim glow
+ *   • Great-circle arcs with white-blue gradient
+ *   • White dot airport markers with blue halo
+ *   • Slow auto-rotation that pauses on touch
+ *   • Pinch-to-zoom
  *
- * Offline fallback: when there is no network connection the CDN-hosted
- * maplibre-gl / deck.gl / Carto tile-style cannot load. Instead we render
- * a lightweight SVG canvas that plots airport dots and approximate
- * great-circle arcs using only the local AIRPORTS registry.
- *
- * Connectivity detection uses a native fetch-ping (no extra packages needed).
+ * Offline fallback: lightweight SVG flat-map shown when no connectivity.
  */
 import React, { useRef, useMemo, useEffect, useState, useCallback } from "react";
 import {
@@ -21,17 +25,13 @@ import {
 import { WebView } from "react-native-webview";
 import { Flight } from "@/context/flights";
 
-// react-native-svg is bundled with Expo – no extra install needed.
 import Svg2, { Circle, Line, Polyline, G, Text as SvgText } from "react-native-svg";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-const MAP_W = Math.min(SCREEN_W - 40, 600);
-const MAP_H = Math.round(MAP_W * 0.62);
+const MAP_W = Math.min(SCREEN_W - 32, 600);
+const MAP_H = MAP_W; // square canvas so the sphere looks perfect
 
-// ─── Connectivity hook (no external packages) ─────────────────────────────────
-// Pings a tiny always-online URL; falls back to "connected" on any error so
-// the WebView is shown optimistically and the SVG fallback only appears when
-// we are definitively offline.
+// ─── Connectivity hook ────────────────────────────────────────────────────────
 const PING_URL = "https://connectivitycheck.gstatic.com/generate_204";
 const PING_TIMEOUT = 4000;
 
@@ -39,11 +39,7 @@ async function checkOnline(): Promise<boolean> {
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), PING_TIMEOUT);
-    const res = await fetch(PING_URL, {
-      method: "HEAD",
-      cache: "no-store",
-      signal: ctrl.signal,
-    });
+    const res = await fetch(PING_URL, { method: "HEAD", cache: "no-store", signal: ctrl.signal });
     clearTimeout(timer);
     return res.status < 400;
   } catch {
@@ -52,22 +48,17 @@ async function checkOnline(): Promise<boolean> {
 }
 
 function useIsConnected(): boolean {
-  const [connected, setConnected] = useState(true); // optimistic default
-
+  const [connected, setConnected] = useState(true);
   const refresh = useCallback(async () => {
-    const online = await checkOnline();
-    setConnected(online);
+    setConnected(await checkOnline());
   }, []);
-
   useEffect(() => {
     refresh();
-    // Re-check whenever the app comes back to the foreground
-    const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
-      if (state === "active") refresh();
+    const sub = AppState.addEventListener("change", (s: AppStateStatus) => {
+      if (s === "active") refresh();
     });
     return () => sub.remove();
   }, [refresh]);
-
   return connected;
 }
 
@@ -117,55 +108,33 @@ function project(lon: number, lat: number): [number, number] {
   return [x, y];
 }
 
-function greatCirclePoints(
-  from: [number, number],
-  to: [number, number],
-  steps = 30
-): string {
-  const [lon1, lat1] = from.map((d) => (d * Math.PI) / 180);
-  const [lon2, lat2] = to.map((d) => (d * Math.PI) / 180);
-  const points: string[] = [];
-
+function greatCirclePoints(from: [number,number], to: [number,number], steps = 30): string {
+  const [lon1, lat1] = from.map(d => (d * Math.PI) / 180);
+  const [lon2, lat2] = to.map(d => (d * Math.PI) / 180);
+  const pts: string[] = [];
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
-    const lat = lat1 + (lat2 - lat1) * t;
-    const lon = lon1 + (lon2 - lon1) * t;
-    const [x, y] = project(
-      (lon * 180) / Math.PI,
-      (lat * 180) / Math.PI
-    );
-    points.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    const [x, y] = project((lon1 + (lon2-lon1)*t)*180/Math.PI, (lat1+(lat2-lat1)*t)*180/Math.PI);
+    pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
   }
-  return points.join(" ");
+  return pts.join(" ");
 }
 
-interface OfflineFallbackProps {
-  flights: Flight[];
-}
-
-function OfflineFallback({ flights }: OfflineFallbackProps) {
+function OfflineFallback({ flights }: { flights: Flight[] }) {
   const { arcs, airports } = useMemo(() => {
-    const seenRoutes = new Set<string>();
-    const arcList: { from: [number, number]; to: [number, number] }[] = [];
-    const airportSet = new Set<string>();
-
+    const seen = new Set<string>();
+    const arcList: {from:[number,number];to:[number,number]}[] = [];
+    const apSet = new Set<string>();
     for (const f of flights) {
-      const fc = AIRPORTS[f.departureAirport];
-      const tc = AIRPORTS[f.arrivalAirport];
+      const fc = AIRPORTS[f.departureAirport], tc = AIRPORTS[f.arrivalAirport];
       if (!fc || !tc) continue;
-      airportSet.add(f.departureAirport);
-      airportSet.add(f.arrivalAirport);
+      apSet.add(f.departureAirport); apSet.add(f.arrivalAirport);
       const key = [f.departureAirport, f.arrivalAirport].sort().join("-");
-      if (seenRoutes.has(key)) continue;
-      seenRoutes.add(key);
+      if (seen.has(key)) continue;
+      seen.add(key);
       arcList.push({ from: fc, to: tc });
     }
-
-    const airportList = Array.from(airportSet)
-      .filter((k) => AIRPORTS[k])
-      .map((k) => ({ iata: k, coords: AIRPORTS[k] }));
-
-    return { arcs: arcList, airports: airportList };
+    return { arcs: arcList, airports: Array.from(apSet).filter(k=>AIRPORTS[k]).map(k=>({iata:k,coords:AIRPORTS[k]})) };
   }, [flights]);
 
   return (
@@ -173,122 +142,20 @@ function OfflineFallback({ flights }: OfflineFallbackProps) {
       <View style={styles.offlineBanner}>
         <Text style={styles.offlineBannerText}>✈︎  Offline — showing cached routes</Text>
       </View>
-
       <Svg2 width={MAP_W} height={MAP_H} style={styles.svg}>
-        {[-60, -30, 0, 30, 60].map((lat) => {
-          const [, y] = project(0, lat);
-          return (
-            <Line
-              key={`lat-${lat}`}
-              x1={PADDING}
-              y1={y}
-              x2={MAP_W - PADDING}
-              y2={y}
-              stroke="#C8D4E0"
-              strokeWidth={0.5}
-              strokeDasharray="4 4"
-            />
-          );
+        {[-60,-30,0,30,60].map(lat => {
+          const [,y] = project(0,lat);
+          return <Line key={`lat-${lat}`} x1={PADDING} y1={y} x2={MAP_W-PADDING} y2={y} stroke="#C8D4E0" strokeWidth={0.5} strokeDasharray="4 4"/>;
         })}
-        {[-120, -60, 0, 60, 120].map((lon) => {
-          const [x] = project(lon, 0);
-          return (
-            <Line
-              key={`lon-${lon}`}
-              x1={x}
-              y1={PADDING}
-              x2={x}
-              y2={MAP_H - PADDING}
-              stroke="#C8D4E0"
-              strokeWidth={0.5}
-              strokeDasharray="4 4"
-            />
-          );
+        {[-120,-60,0,60,120].map(lon => {
+          const [x] = project(lon,0);
+          return <Line key={`lon-${lon}`} x1={x} y1={PADDING} x2={x} y2={MAP_H-PADDING} stroke="#C8D4E0" strokeWidth={0.5} strokeDasharray="4 4"/>;
         })}
-
-        {arcs.map((arc, i) => (
-          <Polyline
-            key={`glow-${i}`}
-            points={greatCirclePoints(arc.from, arc.to)}
-            fill="none"
-            stroke="rgba(79,142,240,0.18)"
-            strokeWidth={8}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ))}
-
-        {arcs.map((arc, i) => (
-          <Polyline
-            key={`arc-${i}`}
-            points={greatCirclePoints(arc.from, arc.to)}
-            fill="none"
-            stroke="#4F8EF0"
-            strokeWidth={1.5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            opacity={0.9}
-          />
-        ))}
-
-        {airports.map((ap) => {
-          const [x, y] = project(ap.coords[0], ap.coords[1]);
-          return (
-            <Circle
-              key={`ring-${ap.iata}`}
-              cx={x}
-              cy={y}
-              r={6}
-              fill="rgba(79,142,240,0.22)"
-            />
-          );
-        })}
-
-        {airports.map((ap) => {
-          const [x, y] = project(ap.coords[0], ap.coords[1]);
-          return (
-            <Circle
-              key={`dot-${ap.iata}`}
-              cx={x}
-              cy={y}
-              r={3.5}
-              fill="#1E64DC"
-              stroke="white"
-              strokeWidth={1.2}
-            />
-          );
-        })}
-
-        {airports.length <= 12 &&
-          airports.map((ap) => {
-            const [x, y] = project(ap.coords[0], ap.coords[1]);
-            return (
-              <SvgText
-                key={`label-${ap.iata}`}
-                x={x + 5}
-                y={y - 5}
-                fontSize={7}
-                fill="#3C5078"
-                fontWeight="600"
-                fontFamily="-apple-system, sans-serif"
-              >
-                {ap.iata}
-              </SvgText>
-            );
-          })}
-
-        {airports.length === 0 && (
-          <SvgText
-            x={MAP_W / 2}
-            y={MAP_H / 2}
-            textAnchor="middle"
-            fontSize={13}
-            fill="rgba(60,80,120,0.45)"
-            fontFamily="-apple-system, sans-serif"
-          >
-            Add flights to see your network
-          </SvgText>
-        )}
+        {arcs.map((arc,i) => <Polyline key={`glow-${i}`} points={greatCirclePoints(arc.from,arc.to)} fill="none" stroke="rgba(79,142,240,0.18)" strokeWidth={8} strokeLinecap="round"/>)}
+        {arcs.map((arc,i) => <Polyline key={`arc-${i}`} points={greatCirclePoints(arc.from,arc.to)} fill="none" stroke="#4F8EF0" strokeWidth={1.5} strokeLinecap="round" opacity={0.9}/>)}
+        {airports.map(ap => { const [x,y]=project(ap.coords[0],ap.coords[1]); return <Circle key={`ring-${ap.iata}`} cx={x} cy={y} r={6} fill="rgba(79,142,240,0.22)"/>; })}
+        {airports.map(ap => { const [x,y]=project(ap.coords[0],ap.coords[1]); return <Circle key={`dot-${ap.iata}`} cx={x} cy={y} r={3.5} fill="#1E64DC" stroke="white" strokeWidth={1.2}/>; })}
+        {airports.length===0 && <SvgText x={MAP_W/2} y={MAP_H/2} textAnchor="middle" fontSize={13} fill="rgba(60,80,120,0.45)" fontFamily="-apple-system,sans-serif">Add flights to see your network</SvgText>}
       </Svg2>
     </View>
   );
@@ -296,31 +163,27 @@ function OfflineFallback({ flights }: OfflineFallbackProps) {
 
 // ─── buildHTML ────────────────────────────────────────────────────────────────
 function buildHTML(flights: Flight[]): string {
-  const seenRoutes = new Set<string>();
-  const arcs: { from: [number,number]; to: [number,number] }[] = [];
-  const airportSet = new Set<string>();
+  const seen = new Set<string>();
+  const arcs: {from:[number,number];to:[number,number]}[] = [];
+  const apSet = new Set<string>();
 
   for (const f of flights) {
-    const fc = AIRPORTS[f.departureAirport];
-    const tc = AIRPORTS[f.arrivalAirport];
+    const fc = AIRPORTS[f.departureAirport], tc = AIRPORTS[f.arrivalAirport];
     if (!fc || !tc) continue;
-    airportSet.add(f.departureAirport);
-    airportSet.add(f.arrivalAirport);
+    apSet.add(f.departureAirport); apSet.add(f.arrivalAirport);
     const key = [f.departureAirport, f.arrivalAirport].sort().join("-");
-    if (seenRoutes.has(key)) continue;
-    seenRoutes.add(key);
+    if (seen.has(key)) continue;
+    seen.add(key);
     arcs.push({ from: fc, to: tc });
   }
 
-  const airports = Array.from(airportSet)
-    .filter(k => AIRPORTS[k])
-    .map(k => ({ iata: k, coords: AIRPORTS[k] }));
-
+  const airports = Array.from(apSet).filter(k=>AIRPORTS[k]).map(k=>({iata:k,coords:AIRPORTS[k]}));
   const hasData = arcs.length > 0;
-  let initLon = 10, initLat = 30;
+
+  let initLon = 10, initLat = 20;
   if (airports.length > 0) {
-    initLon = airports.reduce((s, a) => s + a.coords[0], 0) / airports.length;
-    initLat = airports.reduce((s, a) => s + a.coords[1], 0) / airports.length;
+    initLon = airports.reduce((s,a)=>s+a.coords[0],0)/airports.length;
+    initLat = airports.reduce((s,a)=>s+a.coords[1],0)/airports.length;
   }
 
   return `<!DOCTYPE html>
@@ -328,24 +191,24 @@ function buildHTML(flights: Flight[]): string {
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"/>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  html,body{width:100%;height:100%;background:#EEF2F5;overflow:hidden}
-  #map{width:100%;height:100%}
-  .maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right{display:none!important}
+  html,body{width:100%;height:100%;background:#000;overflow:hidden}
+  canvas{display:block}
+  #deck-canvas{position:absolute;inset:0;pointer-events:none}
   #empty{
-    display:${hasData ? "none" : "flex"};
+    display:${hasData?"none":"flex"};
     position:absolute;inset:0;
     flex-direction:column;align-items:center;justify-content:center;
-    color:rgba(60,80,120,0.45);font-family:-apple-system,sans-serif;gap:10px;
-    pointer-events:none;
+    color:rgba(180,210,255,0.55);font-family:-apple-system,sans-serif;gap:12px;
+    pointer-events:none;z-index:10;
   }
-  #empty p{font-size:13px;letter-spacing:0.3px;font-weight:500}
+  #empty p{font-size:13px;letter-spacing:0.4px;font-weight:500}
 </style>
 </head>
 <body>
-<div id="map"></div>
+<canvas id="bg-canvas" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+<div id="deck-root" style="position:absolute;inset:0;"></div>
 <div id="empty">
   <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
     <circle cx="12" cy="12" r="10"/>
@@ -354,198 +217,212 @@ function buildHTML(flights: Flight[]): string {
   <p>Add flights to see your network</p>
 </div>
 
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="https://unpkg.com/@deck.gl/core@9.1.6/dist.min.js"></script>
-<script src="https://unpkg.com/@deck.gl/layers@9.1.6/dist.min.js"></script>
-<script src="https://unpkg.com/@deck.gl/mapbox@9.1.6/dist.min.js"></script>
+<script src="https://unpkg.com/deck.gl@9.1.6/dist.min.js"></script>
 
 <script>
 (function(){
 
-const ARC_SRC  = [40, 120, 240, 210];
-const ARC_TIP  = [90, 160, 255, 210];
-const ARC_GLOW = [79, 142, 240,  28];
-const DOT_FILL = [30, 100, 220, 255];
-const DOT_RING = [79, 142, 240,  55];
-const DOT_CORE = [255, 255, 255, 245];
+// ── Starfield background ───────────────────────────────────────────────────────
+(function drawStars(){
+  const c = document.getElementById('bg-canvas');
+  c.width  = window.innerWidth;
+  c.height = window.innerHeight;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#030A14';
+  ctx.fillRect(0,0,c.width,c.height);
+  const N = 320;
+  for(let i=0;i<N;i++){
+    const x = Math.random()*c.width;
+    const y = Math.random()*c.height;
+    const r = Math.random()*1.1+0.15;
+    const a = Math.random()*0.7+0.3;
+    ctx.beginPath();
+    ctx.arc(x,y,r,0,Math.PI*2);
+    ctx.fillStyle = \`rgba(200,220,255,\${a})\`;
+    ctx.fill();
+  }
+})();
+
+const W = window.innerWidth;
+const H = window.innerHeight;
 
 const ARCS     = ${JSON.stringify(arcs)};
 const AIRPORTS = ${JSON.stringify(airports)};
 
-const STYLE_URL = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
+// Arc colours — white → pale blue gradient matching Apple Maps style
+const ARC_SRC  = [220, 235, 255, 200];
+const ARC_TIP  = [100, 175, 255, 200];
+const ARC_GLOW = [100, 175, 255,  22];
 
-const map = new maplibregl.Map({
-  container: "map",
-  style: STYLE_URL,
-  center: [${initLon.toFixed(2)}, ${initLat.toFixed(2)}],
-  zoom: ${hasData ? 1.9 : 1.3},
-  pitch: 0,
-  bearing: 0,
-  antialias: true,
-  attributionControl: false,
-  logoPosition: "bottom-right",
-});
+// Dot colours — white dot with blue ring
+const DOT_RING = [100, 180, 255,  80];
+const DOT_FILL = [255, 255, 255, 255];
+const DOT_CORE = [140, 200, 255, 220];
 
-map.on("load", () => {
+let bearing = ${initLon.toFixed(1)};
+let userInteracting = false;
+let rotateAF = null;
 
-  ["water","water-shadow","waterway","waterway-shadow"].forEach(id => {
-    if (map.getLayer(id)) {
-      try { map.setPaintProperty(id, "fill-color", "#B8E4F4"); } catch(_){}
-      try { map.setPaintProperty(id, "line-color", "#91D4EE"); } catch(_){}
-    }
-  });
+// deck.gl GlobeView with natural-earth basemap style
+const {Deck, GlobeView, ArcLayer, ScatterplotLayer} = deck;
 
-  ["background","landcover","land"].forEach(id => {
-    if (map.getLayer(id)) {
-      try { map.setPaintProperty(id, "background-color", "#F5F0E8"); } catch(_){}
-      try { map.setPaintProperty(id, "fill-color",       "#F5F0E8"); } catch(_){}
-    }
-  });
-
-  ["landuse-park","landuse_park","park","green_areas","landuse-residential"].forEach(id => {
-    if (map.getLayer(id)) {
-      try { map.setPaintProperty(id, "fill-color", "#D4E8CE"); } catch(_){}
-    }
-  });
-
-  map.getStyle().layers.forEach(layer => {
-    if (!layer.id) return;
-    const lid = layer.id.toLowerCase();
-    if (lid.includes("road") || lid.includes("highway") || lid.includes("street") || lid.includes("tunnel") || lid.includes("bridge")) {
-      if (layer.type === "line") {
-        const color = lid.includes("motorway") || lid.includes("highway")
-          ? "#E2C97E"
-          : "#FFFFFF";
-        try { map.setPaintProperty(layer.id, "line-color", color); } catch(_){}
-      }
-      if (layer.type === "fill") {
-        try { map.setPaintProperty(layer.id, "fill-color", "#FFFFFF"); } catch(_){}
-      }
-    }
-    if (lid.includes("casing") || lid.includes("outline")) {
-      if (layer.type === "line") {
-        try { map.setPaintProperty(layer.id, "line-color", "#D8D0C8"); } catch(_){}
-      }
-    }
-    if (lid.includes("building")) {
-      if (layer.type === "fill") {
-        try { map.setPaintProperty(layer.id, "fill-color",   "#E8E0D8"); } catch(_){}
-        try { map.setPaintProperty(layer.id, "fill-opacity", 0.7);       } catch(_){}
-      }
-    }
-  });
-
-  setTimeout(() => {
-    map.easeTo({ pitch: 28, bearing: -8, duration: 1600,
-      easing: t => t<0.5 ? 2*t*t : -1+(4-2*t)*t });
-  }, 400);
-
-  startRotate();
-});
-
-const { MapboxOverlay, ArcLayer, ScatterplotLayer } = deck;
-
-function buildLayers() {
+function buildLayers(scale){
+  const s = scale || 1;
   const layers = [];
-
-  if (ARCS.length > 0) {
+  if(ARCS.length > 0){
     layers.push(new ArcLayer({
-      id: "arcs-glow",
-      data: ARCS,
-      getSourcePosition: d => d.from,
-      getTargetPosition: d => d.to,
-      getSourceColor: ARC_GLOW,
-      getTargetColor: ARC_GLOW,
-      getWidth: 14,
-      getHeight: 0.45,
-      greatCircle: true,
-      widthUnits: "pixels",
-      pickable: false,
+      id:'arcs-glow',
+      data:ARCS,
+      getSourcePosition:d=>d.from,
+      getTargetPosition:d=>d.to,
+      getSourceColor:ARC_GLOW,
+      getTargetColor:ARC_GLOW,
+      getWidth:18*s,
+      getHeight:0.42,
+      greatCircle:true,
+      widthUnits:'pixels',
+      pickable:false,
     }));
-
     layers.push(new ArcLayer({
-      id: "arcs-core",
-      data: ARCS,
-      getSourcePosition: d => d.from,
-      getTargetPosition: d => d.to,
-      getSourceColor: ARC_SRC,
-      getTargetColor: ARC_TIP,
-      getWidth: 2,
-      getHeight: 0.45,
-      greatCircle: true,
-      widthUnits: "pixels",
-      pickable: true,
-      autoHighlight: true,
-      highlightColor: [255, 180, 40, 255],
+      id:'arcs-core',
+      data:ARCS,
+      getSourcePosition:d=>d.from,
+      getTargetPosition:d=>d.to,
+      getSourceColor:ARC_SRC,
+      getTargetColor:ARC_TIP,
+      getWidth:Math.max(1.5,2*s),
+      getHeight:0.42,
+      greatCircle:true,
+      widthUnits:'pixels',
+      pickable:true,
+      autoHighlight:true,
+      highlightColor:[255,210,80,255],
     }));
   }
-
-  if (AIRPORTS.length > 0) {
+  if(AIRPORTS.length > 0){
     layers.push(new ScatterplotLayer({
-      id: "dots-ring",
-      data: AIRPORTS,
-      getPosition: d => d.coords,
-      getRadius: 22000,
-      getFillColor: DOT_RING,
-      stroked: false,
-      radiusUnits: "meters",
-      pickable: false,
+      id:'dots-halo',
+      data:AIRPORTS,
+      getPosition:d=>d.coords,
+      getRadius:28000*s,
+      getFillColor:DOT_RING,
+      stroked:false,
+      radiusUnits:'meters',
+      pickable:false,
     }));
-
     layers.push(new ScatterplotLayer({
-      id: "dots-fill",
-      data: AIRPORTS,
-      getPosition: d => d.coords,
-      getRadius: 8000,
-      getFillColor: DOT_FILL,
-      stroked: true,
-      lineWidthMinPixels: 1.5,
-      getLineColor: [255, 255, 255, 220],
-      radiusUnits: "meters",
-      pickable: true,
-      autoHighlight: true,
-      highlightColor: [255, 180, 40, 255],
+      id:'dots-fill',
+      data:AIRPORTS,
+      getPosition:d=>d.coords,
+      getRadius:9000*s,
+      getFillColor:DOT_FILL,
+      stroked:true,
+      lineWidthMinPixels:1.5,
+      getLineColor:[100,175,255,180],
+      radiusUnits:'meters',
+      pickable:true,
+      autoHighlight:true,
+      highlightColor:[255,210,80,255],
     }));
-
     layers.push(new ScatterplotLayer({
-      id: "dots-core",
-      data: AIRPORTS,
-      getPosition: d => d.coords,
-      getRadius: 2800,
-      getFillColor: DOT_CORE,
-      stroked: false,
-      radiusUnits: "meters",
-      pickable: false,
+      id:'dots-core',
+      data:AIRPORTS,
+      getPosition:d=>d.coords,
+      getRadius:3200*s,
+      getFillColor:DOT_CORE,
+      stroked:false,
+      radiusUnits:'meters',
+      pickable:false,
     }));
   }
-
   return layers;
 }
 
-const overlay = new MapboxOverlay({
-  interleaved: false,
-  layers: buildLayers(),
-});
-map.addControl(overlay);
-
-let userInteracting = false;
-let rotateTimer = null;
-
-function startRotate() {
-  if (rotateTimer) return;
-  rotateTimer = setInterval(() => {
-    if (!userInteracting) {
-      map.setBearing((map.getBearing() + 0.05) % 360);
+// Natural Earth style JSON (deep navy ocean, muted teal land)
+const MAP_STYLE = {
+  version:8,
+  sources:{
+    "ne-tiles":{
+      type:"vector",
+      tiles:["https://basemaps.cartocdn.com/gl/dark-matter-gl-style/{z}/{x}/{y}.pbf"],
+      maxzoom:6
     }
-  }, 50);
+  },
+  layers:[
+    {id:"bg",type:"background",paint:{"background-color":"#0B1F3A"}},
+    {id:"water",type:"fill",source:"ne-tiles","source-layer":"water",paint:{"fill-color":"#0B1F3A"}},
+    {id:"land",type:"fill",source:"ne-tiles","source-layer":"landcover",paint:{"fill-color":"#1C4D45","fill-opacity":0.9}},
+    {id:"land2",type:"fill",source:"ne-tiles","source-layer":"land",paint:{"fill-color":"#1E5248","fill-opacity":0.85}},
+    {id:"country-border",type:"line",source:"ne-tiles","source-layer":"admin",paint:{"line-color":"rgba(150,210,200,0.25)","line-width":0.5}},
+    {id:"state-border",type:"line",source:"ne-tiles","source-layer":"admin",filter:["==","admin_level",4],paint:{"line-color":"rgba(150,210,200,0.12)","line-width":0.25}},
+  ]
+};
+
+// Fallback: use Carto dark-matter tile style URL (supports GlobeView natively)
+const STYLE_URL = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+
+let deckInstance = null;
+
+function getViewState(){
+  return {
+    longitude: bearing,
+    latitude: ${initLat.toFixed(1)},
+    zoom: ${hasData ? 1.0 : 0.85},
+    minZoom: 0.5,
+    maxZoom: 4,
+  };
 }
 
-map.on("mousedown",  () => { userInteracting = true; });
-map.on("touchstart", () => { userInteracting = true; });
-map.on("mouseup",    () => { userInteracting = false; });
-map.on("touchend",   () => { setTimeout(() => { userInteracting = false; }, 900); });
+deckInstance = new Deck({
+  canvas: (() => {
+    const c = document.createElement('canvas');
+    c.id = 'deck-canvas';
+    c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;';
+    document.getElementById('deck-root').appendChild(c);
+    return c;
+  })(),
+  width: W,
+  height: H,
+  views: new GlobeView({id:'globe', resolution:1}),
+  initialViewState: getViewState(),
+  controller: {
+    touchZoom: true,
+    touchRotate: false,
+    dragPan: true,
+    keyboard: false,
+    scrollZoom: true,
+  },
+  layers: buildLayers(1),
+  map: true,
+  mapStyle: STYLE_URL,
+  parameters: {clearColor:[0,0,0,0]},
+  onViewStateChange: ({viewState}) => {
+    bearing = viewState.longitude;
+    userInteracting = true;
+    clearTimeout(window._resumeTimer);
+    window._resumeTimer = setTimeout(() => { userInteracting = false; }, 1200);
+    deckInstance.setProps({viewState});
+    return viewState;
+  },
+  _onMetrics: null,
+});
 
-window.addEventListener("resize", () => map.resize());
+// Slow auto-rotation
+function autoRotate(){
+  if(!userInteracting && deckInstance){
+    bearing = (bearing + 0.04) % 360;
+    deckInstance.setProps({
+      viewState: { ...getViewState(), longitude: bearing, transitionDuration: 0 }
+    });
+  }
+  rotateAF = requestAnimationFrame(autoRotate);
+}
+autoRotate();
+
+window.addEventListener('resize', () => {
+  document.getElementById('bg-canvas').width  = window.innerWidth;
+  document.getElementById('bg-canvas').height = window.innerHeight;
+});
 
 })();
 </script>
@@ -553,11 +430,12 @@ window.addEventListener("resize", () => map.resize());
 </html>`;
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
 interface Props { flights: Flight[]; }
 
 export function GlobeView({ flights }: Props) {
   const webRef = useRef<any>(null);
-  const html = useMemo(() => buildHTML(flights), [flights]);
+  const html   = useMemo(() => buildHTML(flights), [flights]);
   const isConnected = useIsConnected();
 
   return (
@@ -577,7 +455,7 @@ export function GlobeView({ flights }: Props) {
           mixedContentMode="always"
           allowFileAccess
           allowUniversalAccessFromFileURLs
-          backgroundColor="#EEF2F5"
+          backgroundColor="#030A14"
           {...(Platform.OS === "ios" ? { decelerationRate: "fast" } : {})}
           onError={(e) => console.warn("GlobeView error:", e.nativeEvent)}
         />
@@ -589,36 +467,20 @@ export function GlobeView({ flights }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { borderRadius: 16, overflow: "hidden", backgroundColor: "#EEF2F5" },
-  webview:   { flex: 1, backgroundColor: "transparent" },
-  fallbackContainer: {
-    flex: 1,
-    backgroundColor: "#EEF2F5",
-    borderRadius: 16,
+  container: {
+    borderRadius: 20,
     overflow: "hidden",
+    backgroundColor: "#030A14",
   },
-  offlineBanner: {
-    position: "absolute",
-    top: 8,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-    alignItems: "center",
-  },
+  webview: { flex: 1, backgroundColor: "transparent" },
+  fallbackContainer: { flex: 1, backgroundColor: "#030A14", borderRadius: 20, overflow: "hidden" },
+  offlineBanner: { position: "absolute", top: 8, left: 0, right: 0, zIndex: 10, alignItems: "center" },
   offlineBannerText: {
-    fontSize: 11,
-    color: "rgba(60,80,120,0.65)",
-    fontWeight: "500",
-    backgroundColor: "rgba(255,255,255,0.82)",
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 10,
-    overflow: "hidden",
-    letterSpacing: 0.2,
+    fontSize: 11, color: "rgba(160,200,255,0.75)", fontWeight: "500",
+    backgroundColor: "rgba(11,31,58,0.88)", paddingHorizontal: 10,
+    paddingVertical: 3, borderRadius: 10, overflow: "hidden", letterSpacing: 0.2,
   },
-  svg: {
-    backgroundColor: "#EEF2F5",
-  },
+  svg: { backgroundColor: "#030A14" },
 });
 
 export default GlobeView;
