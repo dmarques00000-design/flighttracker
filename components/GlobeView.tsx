@@ -154,8 +154,12 @@ function geoToXyz(lon: number, lat: number, rotLon: number, rotLat: number): [nu
   return [x, y2, z2];
 }
 
+// Fix: negate x so that east is right and west is left (standard map orientation).
+// Previously +x * R placed the prime meridian correctly but mirrored east/west
+// because in the orthographic projection the "forward" hemisphere (y > 0) sees
+// increasing longitude going left instead of right.
 function project(x: number, y: number, z: number): [number, number] {
-  return [CX + x * R, CY - z * R];
+  return [CX - x * R, CY - z * R];
 }
 
 function ringToPath(ring: [number, number][], rotLon: number, rotLat: number): string {
@@ -258,11 +262,13 @@ export function GlobeView({ flights, onDragStart, onDragEnd }: Props) {
         onDragStart?.();
       },
 
+      // Negate dx to match the flipped x-axis in project() so dragging right
+      // rotates the globe eastward (same direction as a real globe spin).
       onPanResponderMove: (evt) => {
         if (!lastPage.current) return;
         const dx = evt.nativeEvent.pageX - lastPage.current.x;
         const dy = evt.nativeEvent.pageY - lastPage.current.y;
-        rotLon.value = rotLon.value - dx * 0.5;
+        rotLon.value = rotLon.value + dx * 0.5;
         rotLat.value = Math.max(-60, Math.min(60, rotLat.value - dy * 0.4));
         lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
       },
