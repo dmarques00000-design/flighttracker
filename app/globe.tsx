@@ -1,10 +1,10 @@
 /**
  * Full-screen interactive globe — no tab bar.
  *
- * The canvas is SCREEN_H × SCREEN_H (a square as tall as the screen).
- * We pass rBase={SCREEN_H / 2} so the sphere starts exactly touching
- * all four edges of the screen with zero overflow and no clipping needed.
- * The root View no longer needs overflow:hidden.
+ * Canvas is SCREEN_H × SCREEN_H so the square is never clipped vertically.
+ * rBase is derived from SCREEN_W (the narrow dimension) so the sphere
+ * sits comfortably within the screen width with natural breathing room
+ * on all sides. The user can still pinch-zoom beyond this default.
  */
 import React, { useState } from "react";
 import {
@@ -27,11 +27,12 @@ import GlobeView from "@/components/GlobeView";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
-// Canvas is a square as tall as the screen; the sphere radius is
-// exactly half the screen height so the sphere fills the viewport
-// edge-to-edge with no overflow and no clipping required.
+// Canvas tall enough to never clip vertically.
 const GLOBE_SIZE = SCREEN_H;
-const GLOBE_R_BASE = SCREEN_H / 2;
+
+// Sphere radius = just under half the screen WIDTH so the globe fits
+// edge-to-edge horizontally and floats with breathing room top/bottom.
+const GLOBE_R_BASE = (SCREEN_W / 2) * 0.88;
 
 export default function GlobeScreen() {
   const C = useColors();
@@ -102,7 +103,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    // No overflow:hidden needed — sphere fits exactly inside the screen
   },
   globeWrap: {
     width: SCREEN_W,
