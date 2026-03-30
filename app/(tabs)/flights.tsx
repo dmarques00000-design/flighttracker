@@ -23,6 +23,7 @@ import {
   getIndividualRemindersForFlight,
   saveIndividualRemindersForFlight,
 } from "@/utils/notifications";
+import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 
 const TODAY = new Date().toISOString().substring(0, 10);
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -523,6 +524,10 @@ export default function FlightsScreen() {
 
   const isSearching = query.trim().length > 0;
 
+  // Swipe right → home, swipe left → profile
+  // Disabled while the search keyboard is open to avoid accidental navigation
+  const swipeHandlers = useSwipeNavigation(1, !searchFocused);
+
   // Load reminder flags for all upcoming flights on mount
   useEffect(() => {
     const upcomingFlights = flights.filter((f) => f.date >= TODAY);
@@ -625,7 +630,7 @@ export default function FlightsScreen() {
   ), [isSearching, totalShown, query, timeFilter, dropdownOptions, groupBy]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPadding }}>
+    <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPadding }} {...swipeHandlers}>
       {/* Search bar */}
       <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4, backgroundColor: C.bg }}>
         <Animated.View
