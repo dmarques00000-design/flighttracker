@@ -148,10 +148,12 @@ function FlightReminderModal({
   flight,
   visible,
   onClose,
+  onSaved,
 }: {
   flight: Flight | null;
   visible: boolean;
   onClose: () => void;
+  onSaved: (flightId: string, hasReminders: boolean) => void;
 }) {
   const C = useColors();
   const insets = useSafeAreaInsets();
@@ -194,6 +196,7 @@ function FlightReminderModal({
       }
       await saveIndividualRemindersForFlight(flight, activeOffsets.size > 0 ? activeOffsets : null);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onSaved(flight.id, activeOffsets.size > 0);
     } catch {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
@@ -331,14 +334,18 @@ function FlightReminderModal({
 // Swipeable Flight Card
 // ---------------------------------------------------------------------------
 function FlightItem({
-  flight, onDelete, onLongPress, index, query,
+  flight, onDelete, onLongPress, index, query, hasIndividualReminder,
 }: {
-  flight: Flight; onDelete: () => void; onLongPress: () => void; index: number; query: string;
+  flight: Flight;
+  onDelete: () => void;
+  onLongPress: () => void;
+  index: number;
+  query: string;
+  hasIndividualReminder: boolean;
 }) {
   const C = useColors();
   const [confirming, setConfirming] = useState(false);
   const isUpcoming = flight.date >= TODAY;
-  const { color: airlineColor } = getAirlineInfo(flight.airlineCode);
 
   const translateX = useSharedValue(0);
   const deleteOpacity = useSharedValue(0);
@@ -474,10 +481,10 @@ function FlightItem({
                       <Text style={{ fontSize: 10, color: C.amber, fontFamily: "DMSans_700Bold" }}>Estimated</Text>
                     </View>
                   )}
-                  {/* Bell hint for upcoming flights that have individual reminders */}
-                  {isUpcoming && (
+                  {/* Bell icon — only shown when individual reminders are active */}
+                  {isUpcoming && hasIndividualReminder && (
                     <View style={{ marginLeft: "auto" }}>
-                      <Ionicons name="alarm-outline" size={13} color={C.textMuted} />
+                      <Ionicons name="alarm-outline" size={13} color={C.accent} />
                     </View>
                   )}
                 </View>
@@ -510,9 +517,29 @@ export default function FlightsScreen() {
   const [searchFocused, setSearchFocused]   = useState(false);
   const [reminderFlight, setReminderFlight] = useState<Flight | null>(null);
   const [reminderVisible, setReminderVisible] = useState(false);
+  // Map of flightId -> whether it has individual reminders set
+  const [reminderFlags, setReminderFlags]   = useState<Record<string, boolean>>({});
   const searchRef = useRef<TextInput>(null);
 
   const isSearching = query.trim().length > 0;
+
+  // Load reminder flags for all upcoming flights on mount
+  useEffect(() => {
+    const upcomingFlights = flights.filter((f) => f.date >= TODAY);
+    Promise.all(
+      upcomingFlights.map((f) =>
+        getIndividualRemindersForFlight(f.id).then((offsets) => ({
+          id: f.id,
+          hasReminder: offsets !== null && offsets.size > 0,
+        }))
+      )
+    ).then((results) => {
+      const flags: Record<string, boolean> = {};
+      results.forEach(({ id, hasReminder }) => { flags[id] = hasReminder; });
+      setReminderFlags(flags);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flights.length]);
 
   useEffect(() => {
     if (params.filter === "upcoming") setTimeFilter("upcoming");
@@ -560,6 +587,11 @@ export default function FlightsScreen() {
 
   const handleReminderClose = useCallback(() => {
     setReminderVisible(false);
+  }, []);
+
+  // Called by the modal after a successful save so the bell updates immediately
+  const handleReminderSaved = useCallback((flightId: string, hasReminders: boolean) => {
+    setReminderFlags((prev) => ({ ...prev, [flightId]: hasReminders }));
   }, []);
 
   const renderListHeader = useCallback(() => (
@@ -682,6 +714,7 @@ export default function FlightsScreen() {
             flight={item}
             index={index}
             query={query}
+            hasIndividualReminder={!!reminderFlags[item.id]}
             onDelete={() => { removeFlight(item.id); Keyboard.dismiss(); }}
             onLongPress={() => handleLongPress(item)}
           />
@@ -711,6 +744,7 @@ export default function FlightsScreen() {
         flight={reminderFlight}
         visible={reminderVisible}
         onClose={handleReminderClose}
+        onSaved={handleReminderSaved}
       />
     </View>
   );
