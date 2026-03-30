@@ -4,7 +4,10 @@
  * - Country polygons from world-atlas (Natural Earth 110m TopoJSON)
  * - Pure react-native-svg + reanimated
  * - Single-finger drag rotates the globe
- * - Two-finger pinch zooms in/out (R scales between 0.28x and 1.1x of SIZE)
+ * - Two-finger pinch zooms in/out
+ * - Accepts an optional `size` prop — defaults to the compact home-preview size.
+ *   Pass SCREEN_W (or the full viewport dimension) for full-screen mode so the
+ *   canvas, centre-point, and zoom limits all scale up correctly.
  * - Drag is captured exclusively — parent ScrollView is locked while touching
  * - onDragStart / onDragEnd callbacks let the parent disable its scroll
  * - Great-circle flight arcs clipped to the visible hemisphere
@@ -100,14 +103,9 @@ function extractCountryRings(topo: TopoJSON): [number, number][][][] {
 
 const COUNTRY_POLYGONS: [number, number][][][] = extractCountryRings(worldTopo);
 
-// ─── Layout ────────────────────────────────────────────────────────────────────
+// ─── Default (compact / home-preview) size ────────────────────────────────────
 const { width: SCREEN_W } = Dimensions.get("window");
-const SIZE   = Math.min(SCREEN_W - 40, 360);
-const CX     = SIZE / 2;
-const CY     = SIZE / 2;
-const R_BASE = SIZE * 0.44;   // default radius
-const R_MIN  = SIZE * 0.28;   // max zoom-out
-const R_MAX  = SIZE * 1.1;    // max zoom-in
+const DEFAULT_SIZE = Math.min(SCREEN_W - 40, 360);
 
 // ─── Airport registry [lon, lat] ──────────────────────────────────────────────
 const AIRPORTS: Record<string, [number, number]> = {
@@ -158,85 +156,26 @@ function geoToXyz(lon: number, lat: number, rotLon: number, rotLat: number): [nu
   return [x, y2, z2];
 }
 
-// x is negated so east → right, west → left (standard map orientation).
-function project(x: number, z: number, r: number): [number, number] {
-  return [CX - x * r, CY - z * r];
-}
-
-function ringToPath(ring: [number, number][], rotLon: number, rotLat: number, r: number): string {
-  let d = ""; let penDown = false;
-  for (const [lon, lat] of ring) {
-    const [x, y, z] = geoToXyz(lon, lat, rotLon, rotLat);
-    const [px, pz]  = project(x, z, r);
-    if (y > 0) {
-      if (!penDown) { d += `M${px.toFixed(1)},${pz.toFixed(1)}`; penDown = true; }
-      else          { d += `L${px.toFixed(1)},${pz.toFixed(1)}`; }
-    } else { penDown = false; }
-  }
-  return d;
-}
-
-function greatCirclePath(
-  from: [number, number], to: [number, number],
-  rotLon: number, rotLat: number, r: number, steps = 64
-): string {
-  let d = ""; let penDown = false;
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const [x1, y1, z1] = geoToXyz(from[0], from[1], rotLon, rotLat);
-    const [x2, y2, z2] = geoToXyz(to[0],   to[1],   rotLon, rotLat);
-    const bx = x1 + (x2 - x1) * t; const by = y1 + (y2 - y1) * t; const bz = z1 + (z2 - z1) * t;
-    const len = Math.sqrt(bx * bx + by * by + bz * bz);
-    const nx = bx / len; const ny = by / len; const nz = bz / len;
-    const [px, pz] = project(nx, nz, r);
-    if (ny > 0) {
-      if (!penDown) { d += `M${px.toFixed(1)},${pz.toFixed(1)}`; penDown = true; }
-      else          { d += `L${px.toFixed(1)},${pz.toFixed(1)}`; }
-    } else { penDown = false; }
-  }
-  return d;
-}
-
-function graticulePaths(rotLon: number, rotLat: number, r: number): string[] {
-  const paths: string[] = []; const steps = 48;
-  for (const lat of [-60, -30, 0, 30, 60]) {
-    let d = ""; let penDown = false;
-    for (let i = 0; i <= steps; i++) {
-      const lon = -180 + (360 / steps) * i;
-      const [x, y, z] = geoToXyz(lon, lat, rotLon, rotLat);
-      const [px, pz] = project(x, z, r);
-      if (y > 0) { if (!penDown) { d += `M${px.toFixed(1)},${pz.toFixed(1)}`; penDown = true; } else { d += `L${px.toFixed(1)},${pz.toFixed(1)}`; } } else { penDown = false; }
-    }
-    if (d) paths.push(d);
-  }
-  for (let lon = -180; lon < 180; lon += 30) {
-    let d = ""; let penDown = false;
-    for (let i = 0; i <= steps; i++) {
-      const lat = -90 + (180 / steps) * i;
-      const [x, y, z] = geoToXyz(lon, lat, rotLon, rotLat);
-      const [px, pz] = project(x, z, r);
-      if (y > 0) { if (!penDown) { d += `M${px.toFixed(1)},${pz.toFixed(1)}`; penDown = true; } else { d += `L${px.toFixed(1)},${pz.toFixed(1)}`; } } else { penDown = false; }
-    }
-    if (d) paths.push(d);
-  }
-  return paths;
-}
-
-// ─── Pinch distance helper ─────────────────────────────────────────────────────
-function pinchDist(touches: React.Touch[]): number {
-  const dx = touches[0].pageX - touches[1].pageX;
-  const dy = touches[0].pageY - touches[1].pageY;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 interface Props {
   flights: Flight[];
+  /** Canvas side-length in px. Defaults to compact home-preview size.        */
+  size?: number;
   onDragStart?: () => void;
   onDragEnd?: () => void;
+  /** Legacy prop accepted but unused — size controls everything now.          */
+  fullScreen?: boolean;
 }
 
-export function GlobeView({ flights, onDragStart, onDragEnd }: Props) {
+export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: Props) {
+  // ─── All layout constants derived from `size` so they scale correctly ────
+  const SIZE   = sizeProp ?? DEFAULT_SIZE;
+  const CX     = SIZE / 2;
+  const CY     = SIZE / 2;
+  const R_BASE = SIZE * 0.44;
+  const R_MIN  = SIZE * 0.28;
+  const R_MAX  = SIZE * 1.8;   // allow zooming in until the globe fills the canvas
+
   const C = useColors();
   const isDark = C.bg === "#0A0A0F" || C.bg.startsWith("#0");
 
@@ -246,16 +185,85 @@ export function GlobeView({ flights, onDragStart, onDragEnd }: Props) {
   const [renderLat, setRenderLat] = React.useState(20);
   const [radius, setRadius]       = React.useState(R_BASE);
 
+  // ─── project helper (depends on CX/CY which depend on SIZE) ──────────────
+  function project(x: number, z: number, r: number): [number, number] {
+    return [CX - x * r, CY - z * r];
+  }
+
+  function ringToPath(ring: [number, number][], rotLon: number, rotLat: number, r: number): string {
+    let d = ""; let penDown = false;
+    for (const [lon, lat] of ring) {
+      const [x, y, z] = geoToXyz(lon, lat, rotLon, rotLat);
+      const [px, pz]  = project(x, z, r);
+      if (y > 0) {
+        if (!penDown) { d += `M${px.toFixed(1)},${pz.toFixed(1)}`; penDown = true; }
+        else          { d += `L${px.toFixed(1)},${pz.toFixed(1)}`; }
+      } else { penDown = false; }
+    }
+    return d;
+  }
+
+  function greatCirclePath(
+    from: [number, number], to: [number, number],
+    rotLon: number, rotLat: number, r: number, steps = 64
+  ): string {
+    let d = ""; let penDown = false;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const [x1, y1, z1] = geoToXyz(from[0], from[1], rotLon, rotLat);
+      const [x2, y2, z2] = geoToXyz(to[0],   to[1],   rotLon, rotLat);
+      const bx = x1 + (x2 - x1) * t; const by = y1 + (y2 - y1) * t; const bz = z1 + (z2 - z1) * t;
+      const len = Math.sqrt(bx * bx + by * by + bz * bz);
+      const nx = bx / len; const ny = by / len; const nz = bz / len;
+      const [px, pz] = project(nx, nz, r);
+      if (ny > 0) {
+        if (!penDown) { d += `M${px.toFixed(1)},${pz.toFixed(1)}`; penDown = true; }
+        else          { d += `L${px.toFixed(1)},${pz.toFixed(1)}`; }
+      } else { penDown = false; }
+    }
+    return d;
+  }
+
+  function graticulePaths(rotLon: number, rotLat: number, r: number): string[] {
+    const paths: string[] = []; const steps = 48;
+    for (const lat of [-60, -30, 0, 30, 60]) {
+      let d = ""; let penDown = false;
+      for (let i = 0; i <= steps; i++) {
+        const lon = -180 + (360 / steps) * i;
+        const [x, y, z] = geoToXyz(lon, lat, rotLon, rotLat);
+        const [px, pz] = project(x, z, r);
+        if (y > 0) { if (!penDown) { d += `M${px.toFixed(1)},${pz.toFixed(1)}`; penDown = true; } else { d += `L${px.toFixed(1)},${pz.toFixed(1)}`; } } else { penDown = false; }
+      }
+      if (d) paths.push(d);
+    }
+    for (let lon = -180; lon < 180; lon += 30) {
+      let d = ""; let penDown = false;
+      for (let i = 0; i <= steps; i++) {
+        const lat = -90 + (180 / steps) * i;
+        const [x, y, z] = geoToXyz(lon, lat, rotLon, rotLat);
+        const [px, pz] = project(x, z, r);
+        if (y > 0) { if (!penDown) { d += `M${px.toFixed(1)},${pz.toFixed(1)}`; penDown = true; } else { d += `L${px.toFixed(1)},${pz.toFixed(1)}`; } } else { penDown = false; }
+      }
+      if (d) paths.push(d);
+    }
+    return paths;
+  }
+
   useAnimatedReaction(
     () => ({ lon: rotLon.value, lat: rotLat.value }),
     (cur) => { runOnJS(setRenderLon)(cur.lon); runOnJS(setRenderLat)(cur.lat); },
     []
   );
 
-  // Gesture state refs (mutable, no re-render needed)
   const lastPage      = useRef<{ x: number; y: number } | null>(null);
   const pinchStartRef = useRef<{ dist: number; r: number } | null>(null);
-  const radiusRef     = useRef(R_BASE);   // shadow of `radius` state, readable inside PanResponder
+  const radiusRef     = useRef(R_BASE);
+
+  function pinchDist(touches: React.Touch[]): number {
+    const dx = touches[0].pageX - touches[1].pageX;
+    const dy = touches[0].pageY - touches[1].pageY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
 
   const panResponder = useRef(
     PanResponder.create({
@@ -269,7 +277,6 @@ export function GlobeView({ flights, onDragStart, onDragEnd }: Props) {
         cancelAnimation(rotLat);
         const touches = evt.nativeEvent.touches;
         if (touches.length >= 2) {
-          // Start a pinch — snapshot current distance and radius
           pinchStartRef.current = { dist: pinchDist(touches as unknown as React.Touch[]), r: radiusRef.current };
           lastPage.current = null;
         } else {
@@ -281,9 +288,7 @@ export function GlobeView({ flights, onDragStart, onDragEnd }: Props) {
 
       onPanResponderMove: (evt) => {
         const touches = evt.nativeEvent.touches;
-
         if (touches.length >= 2) {
-          // ── Pinch zoom ──
           if (!pinchStartRef.current) {
             pinchStartRef.current = { dist: pinchDist(touches as unknown as React.Touch[]), r: radiusRef.current };
           }
@@ -292,9 +297,8 @@ export function GlobeView({ flights, onDragStart, onDragEnd }: Props) {
           const newR  = Math.max(R_MIN, Math.min(R_MAX, pinchStartRef.current.r * scale));
           radiusRef.current = newR;
           runOnJS(setRadius)(newR);
-          lastPage.current = null; // don't rotate while pinching
+          lastPage.current = null;
         } else {
-          // ── Single-finger rotate ──
           pinchStartRef.current = null;
           if (!lastPage.current) {
             lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
@@ -348,42 +352,62 @@ export function GlobeView({ flights, onDragStart, onDragEnd }: Props) {
   const landFill   = isDark ? "#1C3566" : "#B8D0F0";
   const landStroke = isDark ? "#2A4A80" : "#8AB0D8";
 
-  // Arc stroke widths scale with zoom so they don't look huge when zoomed in
-  const arcGlowW  = Math.max(4,  8   * (R_BASE / radius));
-  const arcCoreW  = Math.max(1,  1.8 * (R_BASE / radius));
-  const dotRGlow  = Math.max(4,  8   * (R_BASE / radius));
-  const dotRCore  = Math.max(2,  4   * (R_BASE / radius));
+  const arcGlowW = Math.max(4,  8   * (R_BASE / radius));
+  const arcCoreW = Math.max(1,  1.8 * (R_BASE / radius));
+  const dotRGlow = Math.max(4,  8   * (R_BASE / radius));
+  const dotRCore = Math.max(2,  4   * (R_BASE / radius));
 
   const countryPaths = useMemo(() =>
     COUNTRY_POLYGONS
       .map((polygon, pi) => { const d = ringToPath(polygon[0], renderLon, renderLat, radius); return d ? { key: `c${pi}`, d } : null; })
       .filter(Boolean) as { key: string; d: string }[],
-    [renderLon, renderLat, radius]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [renderLon, renderLat, radius, SIZE]
   );
 
   const arcPaths = useMemo(() =>
     routes.map(r => greatCirclePath(r.from, r.to, renderLon, renderLat, radius)),
-    [routes, renderLon, renderLat, radius]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [routes, renderLon, renderLat, radius, SIZE]
   );
-  const graticuleLines = useMemo(() => graticulePaths(renderLon, renderLat, radius), [renderLon, renderLat, radius]);
-  const dotPositions   = useMemo(() =>
+  const graticuleLines = useMemo(() => graticulePaths(renderLon, renderLat, radius),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [renderLon, renderLat, radius, SIZE]
+  );
+  const dotPositions = useMemo(() =>
     airportList.map(ap => {
       const [x, y, z] = geoToXyz(ap.coords[0], ap.coords[1], renderLon, renderLat);
       const [px, pz]  = project(x, z, radius);
       return { iata: ap.iata, px, pz, vis: y > 0 };
     }),
-    [airportList, renderLon, renderLat, radius]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [airportList, renderLon, renderLat, radius, SIZE]
   );
 
-  const S = styles(C);
-
   return (
-    <View style={S.wrapper}>
+    <View style={{ alignItems: "center", paddingVertical: sizeProp ? 0 : 4 }}>
       <View
-        style={[S.container, { width: SIZE, height: SIZE }]}
+        style={[
+          {
+            width: SIZE, height: SIZE,
+            // Clip the SVG so when the globe radius exceeds SIZE/2 the
+            // sphere bleeds to the canvas edge but never outside the View.
+            overflow: "hidden",
+            alignItems: "center", justifyContent: "center",
+            // Shadow only for the compact card variant
+            ...(sizeProp ? {} : {
+              borderRadius: SIZE / 2 + 8,
+              shadowColor: C.accent,
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: 0.22,
+              shadowRadius: 24,
+              elevation: 10,
+            }),
+          },
+        ]}
         {...panResponder.panHandlers}
       >
-        <Svg width={SIZE} height={SIZE}>
+        <Svg width={SIZE} height={SIZE} style={{ overflow: "visible" }}>
           <Defs>
             <RadialGradient id="sphereGrad" cx="38%" cy="32%" r="68%" fx="38%" fy="32%">
               <Stop offset="0%"   stopColor={sphereMid}  stopOpacity="1" />
@@ -402,7 +426,6 @@ export function GlobeView({ flights, onDragStart, onDragEnd }: Props) {
             <ClipPath id="globeClip"><Circle cx={CX} cy={CY} r={radius} /></ClipPath>
           </Defs>
 
-          {/* Sphere base — grows/shrinks with radius */}
           <Circle cx={CX} cy={CY} r={radius} fill="url(#sphereGrad)" />
 
           <G clipPath="url(#globeClip)">
@@ -442,25 +465,13 @@ export function GlobeView({ flights, onDragStart, onDragEnd }: Props) {
         </Svg>
 
         {!hasFlights && (
-          <View style={S.emptyOverlay} pointerEvents="none">
-            <Text style={[S.emptyText, { color: C.textMuted }]}>Add flights to see your network</Text>
+          <View style={{ position: "absolute", bottom: SIZE * 0.12, left: 0, right: 0, alignItems: "center" }} pointerEvents="none">
+            <Text style={{ fontSize: 12, fontFamily: "DMSans_500Medium", letterSpacing: 0.3, color: C.textMuted }}>Add flights to see your network</Text>
           </View>
         )}
       </View>
     </View>
   );
 }
-
-const styles = (C: ReturnType<typeof useColors>) => StyleSheet.create({
-  wrapper:   { alignItems: "center", paddingVertical: 4 },
-  container: {
-    borderRadius: SIZE / 2 + 8, overflow: "visible",
-    alignItems: "center", justifyContent: "center",
-    shadowColor: C.accent, shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.22, shadowRadius: 24, elevation: 10,
-  },
-  emptyOverlay: { position: "absolute", bottom: SIZE * 0.12, left: 0, right: 0, alignItems: "center" },
-  emptyText:    { fontSize: 12, fontFamily: "DMSans_500Medium", letterSpacing: 0.3 },
-});
 
 export default GlobeView;

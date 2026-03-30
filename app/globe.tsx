@@ -1,7 +1,8 @@
 /**
  * Full-screen interactive globe — no tab bar.
- * Shows all flight arcs with full drag + pinch interaction.
- * A floating back arrow in the top-left returns to the home screen.
+ * Passes the full screen dimension to GlobeView so the SVG canvas,
+ * centre point, and R_MAX all scale to fill the entire viewport.
+ * A floating back arrow returns to the home screen.
  */
 import React, { useState } from "react";
 import {
@@ -23,6 +24,9 @@ import { useFlights } from "@/context/flights";
 import GlobeView from "@/components/GlobeView";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
+// Use the full screen dimension as the canvas size so the globe can fill
+// the viewport edge-to-edge when zoomed in.
+const GLOBE_SIZE = Math.max(SCREEN_W, SCREEN_H);
 
 export default function GlobeScreen() {
   const C = useColors();
@@ -36,17 +40,18 @@ export default function GlobeScreen() {
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <StatusBar barStyle="light-content" />
 
-      {/* Full-screen globe centred in the viewport */}
+      {/* Globe fills the screen — size prop = full viewport diagonal so
+          zooming in never reveals the canvas boundary */}
       <Animated.View entering={FadeIn.duration(300)} style={styles.globeWrap}>
         <GlobeView
           flights={flights}
+          size={GLOBE_SIZE}
           onDragStart={() => setDragging(true)}
           onDragEnd={() => setDragging(false)}
-          fullScreen
         />
       </Animated.View>
 
-      {/* Back button — floating over the globe */}
+      {/* Back button — floating, hidden while dragging */}
       {!dragging && (
         <Animated.View
           entering={FadeIn.duration(200)}
@@ -73,7 +78,7 @@ export default function GlobeScreen() {
         </Animated.View>
       )}
 
-      {/* Subtle hint label */}
+      {/* Hint label */}
       {!dragging && (
         <Animated.View
           entering={FadeIn.delay(400).duration(300)}
@@ -96,12 +101,14 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
   globeWrap: {
     width: SCREEN_W,
     height: SCREEN_H,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
   backBtn: {
     position: "absolute",
