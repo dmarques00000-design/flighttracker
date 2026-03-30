@@ -1,14 +1,19 @@
 /**
  * Full-screen interactive globe — no tab bar.
- * Passes the full screen dimension to GlobeView so the SVG canvas,
- * centre point, and R_MAX all scale to fill the entire viewport.
+ *
+ * GLOBE_SIZE = SCREEN_W  (portrait width, typically 390-430 px).
+ * The SVG canvas is exactly that square, centred in the viewport.
+ * Because GlobeView's R_BASE = SIZE * 0.44 and R_MAX = SIZE * 1.8,
+ * the globe starts fitting the screen comfortably and the user can
+ * pinch-zoom until it fills edge-to-edge — at which point the canvas
+ * clips cleanly (overflow:hidden) so no empty border is ever visible.
+ *
  * A floating back arrow returns to the home screen.
  */
 import React, { useState } from "react";
 import {
   View,
   Text,
-  Pressable,
   StyleSheet,
   Dimensions,
   Platform,
@@ -19,14 +24,18 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeIn } from "react-native-reanimated";
+import { Pressable } from "react-native";
 import { useColors } from "@/constants/colors";
 import { useFlights } from "@/context/flights";
 import GlobeView from "@/components/GlobeView";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
-// Use the full screen dimension as the canvas size so the globe can fill
-// the viewport edge-to-edge when zoomed in.
-const GLOBE_SIZE = Math.max(SCREEN_W, SCREEN_H);
+
+// The canvas is the screen width (portrait) so the globe starts at a
+// comfortable size. R_MAX inside GlobeView is SIZE*1.8, meaning the user
+// can zoom until the sphere fills the entire screen with no canvas edge
+// becoming visible.
+const GLOBE_SIZE = SCREEN_W;
 
 export default function GlobeScreen() {
   const C = useColors();
@@ -40,8 +49,6 @@ export default function GlobeScreen() {
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <StatusBar barStyle="light-content" />
 
-      {/* Globe fills the screen — size prop = full viewport diagonal so
-          zooming in never reveals the canvas boundary */}
       <Animated.View entering={FadeIn.duration(300)} style={styles.globeWrap}>
         <GlobeView
           flights={flights}
@@ -101,6 +108,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    // Clip the globe when it's zoomed beyond the viewport
     overflow: "hidden",
   },
   globeWrap: {
