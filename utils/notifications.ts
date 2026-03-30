@@ -10,6 +10,7 @@
  * installed all functions become silent no-ops so the app still bundles.
  */
 import { Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Flight } from "@/context/flights";
 
 // ---------------------------------------------------------------------------
@@ -53,6 +54,57 @@ export function notifId(flightId: string, offsetHours: number): string {
   return `flight-${flightId}-${offsetHours}h`;
 }
 
+/** AsyncStorage key for per-flight individual reminder offsets. */
+function individualReminderKey(flightId: string): string {
+  return `@flighttracker_individual_reminders_${flightId}`;
+}
+
+/**
+ * Load the set of individually-set reminder offsets for a specific flight.
+ * Returns null if no individual overrides exist for that flight.
+ */
+export async function getIndividualRemindersForFlight(
+  flightId: string,
+): Promise<Set<ReminderOffset> | null> {
+  try {
+    const raw = await AsyncStorage.getItem(individualReminderKey(flightId));
+    if (!raw) return null;
+    const parsed: ReminderOffset[] = JSON.parse(raw);
+    return new Set(parsed);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save individual reminder offsets for a flight and schedule/cancel the
+ * corresponding notifications.
+ * Pass an empty Set (or null) to clear all individual overrides and remove
+ * any individually-scheduled notifications for that flight.
+ */
+export async function saveIndividualRemindersForFlight(
+  flight: Flight,
+  offsets: Set<ReminderOffset> | null,
+): Promise<void> {
+  const key = individualReminderKey(flight.id);
+
+  // Cancel whatever was previously individually scheduled
+  await cancelFlightReminders(flight.id);
+
+  if (!offsets || offsets.size === 0) {
+    await AsyncStorage.removeItem(key);
+    return;
+  }
+
+  // Persist
+  await AsyncStorage.setItem(key, JSON.stringify(Array.from(offsets)));
+
+  // Schedule each chosen offset
+  for (const offset of offsets) {
+    await scheduleFlightReminder(flight, offset);
+  }
+}
+
 /** Ask for permission once; resolves true if granted. */
 export async function requestNotificationPermission(): Promise<boolean> {
   if (Platform.OS === "web") return false;
@@ -94,8 +146,8 @@ export async function scheduleFlightReminder(
   await N.scheduleNotificationAsync({
     identifier: id,
     content: {
-      title: `\u2708\uFE0F ${flight.flightCode} departs ${label}`,
-      body: `${flight.departureAirport} \u2192 ${flight.arrivalAirport}  \u00b7  ${flight.departureTime} departure`,
+      title: `✈️ ${flight.flightCode} departs ${label}`,
+      body: `${flight.departureAirport} → ${flight.arrivalAirport}  ·  ${flight.departureTime} departure`,
       sound: true,
       data: { flightId: flight.id },
     },
@@ -163,6 +215,8 @@ export async function hasAnyReminderForFlight(flightId: string): Promise<boolean
 /**
  * Sync global default reminders for all upcoming flights.
  * Called when the user changes their global notification preferences.
+ * Flights that have individual overrides are skipped — their own schedule
+ * is managed independently.
  */
 export async function syncGlobalReminders(
   flights: Flight[],
@@ -175,6 +229,10 @@ export async function syncGlobalReminders(
 
   const upcoming = flights.filter((f) => f.date >= today);
   for (const flight of upcoming) {
+    // Don't overwrite individually-set reminders
+    const individual = await getIndividualRemindersForFlight(flight.id);
+    if (individual !== null) continue;
+
     await cancelFlightReminders(flight.id);
     if (prefs.enabled) {
       for (const offset of prefs.offsets) {
