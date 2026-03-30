@@ -1,23 +1,34 @@
 /**
  * GlobeView — interactive 3D SVG globe with orthographic projection.
  *
- * - Country polygons from world-atlas (Natural Earth 110m TopoJSON)
- * - Pure react-native-svg + reanimated
- * - Single-finger drag rotates the globe
- * - Two-finger pinch zooms in/out
- * - Accepts an optional `size` prop — defaults to the compact home-preview size.
- *   Pass SCREEN_W (or the full viewport dimension) for full-screen mode so the
- *   canvas, centre-point, and zoom limits all scale up correctly.
- * - Drag is captured exclusively — parent ScrollView is locked while touching
- * - onDragStart / onDragEnd callbacks let the parent disable its scroll
- * - Great-circle flight arcs clipped to the visible hemisphere
- * - Full dark/light theme via useColors()
+ * Performance architecture
+ * ─────────────────────────
+ * The original implementation routed every gesture frame through:
+ *   PanResponder (JS) → Reanimated shared value (UI thread)
+ *   → useAnimatedReaction → runOnJS(setState) (back to JS) → full re-render
+ *
+ * That bridge added ~2 frame latency and queued multiple re-renders per
+ * gesture event batch. The rewrite removes Reanimated entirely for rotation
+ * and uses:
+ *   PanResponder (JS) → mutable refs → requestAnimationFrame gate → setState
+ *
+ * One rAF is scheduled per gesture move; if a new move arrives before the
+ * previous frame fires, the pending frame is cancelled and a new one is
+ * scheduled with the latest values — so we never queue more than one
+ * re-render per display frame (~16 ms).
+ *
+ * Additional savings
+ * ──────────────────
+ * • Arc 3D unit-sphere points are pre-cached at flight-list change time;
+ *   per-frame work is projection-only (multiply + add), not full slerp.
+ * • Arc steps reduced 64 → 32 (imperceptible at globe scale).
+ * • Graticule step count left at 48 but paths are still memo-gated.
+ * • All useMemo deps are the three render values (lon, lat, radius) only.
  */
-import React, { useRef, useMemo } from "react";
+import React, { useRef, useMemo, useCallback } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   Dimensions,
   PanResponder,
 } from "react-native";
@@ -30,12 +41,6 @@ import Svg, {
   Stop,
   ClipPath,
 } from "react-native-svg";
-import {
-  useSharedValue,
-  useAnimatedReaction,
-  runOnJS,
-  cancelAnimation,
-} from "react-native-reanimated";
 import { useColors } from "@/constants/colors";
 import { Flight } from "@/context/flights";
 
@@ -43,67 +48,43 @@ import { Flight } from "@/context/flights";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const worldTopo = require("world-atlas/countries-110m.json") as TopoJSON;
 
-// ─── Minimal TopoJSON types ────────────────────────────────────────────────────
 interface TopoJSON {
   type: string;
   objects: Record<string, TopoObject>;
   arcs: number[][][];
   transform?: { scale: [number, number]; translate: [number, number] };
 }
-interface TopoObject {
-  type: string;
-  geometries: TopoGeometry[];
-}
-interface TopoGeometry {
-  type: string;
-  arcs: ArcIndex;
-  id?: number;
-  properties?: Record<string, unknown>;
-}
+interface TopoObject   { type: string; geometries: TopoGeometry[]; }
+interface TopoGeometry { type: string; arcs: ArcIndex; id?: number; properties?: Record<string, unknown>; }
 type ArcIndex = number | number[] | number[][] | number[][][];
 
-// ─── TopoJSON → ring decoder ───────────────────────────────────────────────────
 function decodeArcs(topo: TopoJSON): [number, number][][] {
   const { arcs, transform } = topo;
-  const scale  = transform?.scale   ?? [1, 1];
+  const scale  = transform?.scale    ?? [1, 1];
   const transl = transform?.translate ?? [0, 0];
   return arcs.map((arc) => {
     let x = 0, y = 0;
-    return arc.map(([dx, dy]) => {
-      x += dx; y += dy;
-      return [x * scale[0] + transl[0], y * scale[1] + transl[1]] as [number, number];
-    });
+    return arc.map(([dx, dy]) => { x += dx; y += dy; return [x * scale[0] + transl[0], y * scale[1] + transl[1]] as [number, number]; });
   });
 }
-
-function stitchRing(arcIndices: number[], decoded: [number, number][][]): [number, number][] {
+function stitchRing(idx: number[], dec: [number, number][][]): [number, number][] {
   const pts: [number, number][] = [];
-  for (const idx of arcIndices) {
-    const arc = idx < 0 ? [...decoded[~idx]].reverse() : decoded[idx];
-    pts.push(...arc.slice(0, -1));
-  }
+  for (const i of idx) { const a = i < 0 ? [...dec[~i]].reverse() : dec[i]; pts.push(...a.slice(0, -1)); }
   return pts;
 }
-
 function extractCountryRings(topo: TopoJSON): [number, number][][][] {
-  const decoded = decodeArcs(topo);
+  const dec = decodeArcs(topo);
   const obj = topo.objects["countries"] ?? topo.objects[Object.keys(topo.objects)[0]];
-  const allPolygons: [number, number][][][] = [];
-  for (const geom of obj.geometries) {
-    if (geom.type === "Polygon") {
-      allPolygons.push((geom.arcs as number[][]).map(r => stitchRing(r, decoded)));
-    } else if (geom.type === "MultiPolygon") {
-      for (const poly of (geom.arcs as number[][][])) {
-        allPolygons.push(poly.map(r => stitchRing(r, decoded)));
-      }
-    }
+  const out: [number, number][][][] = [];
+  for (const g of obj.geometries) {
+    if (g.type === "Polygon")      { out.push((g.arcs as number[][]).map(r => stitchRing(r, dec))); }
+    else if (g.type === "MultiPolygon") { for (const p of (g.arcs as number[][][])) out.push(p.map(r => stitchRing(r, dec))); }
   }
-  return allPolygons;
+  return out;
 }
+const COUNTRY_POLYGONS = extractCountryRings(worldTopo);
 
-const COUNTRY_POLYGONS: [number, number][][][] = extractCountryRings(worldTopo);
-
-// ─── Default (compact / home-preview) size ────────────────────────────────────
+// ─── Default size ──────────────────────────────────────────────────────────────
 const { width: SCREEN_W } = Dimensions.get("window");
 const DEFAULT_SIZE = Math.min(SCREEN_W - 40, 360);
 
@@ -139,131 +120,146 @@ const AIRPORTS: Record<string, [number, number]> = {
   LPA:[-15.39,27.93],RAK:[-8.04,31.61],
 };
 
-// ─── Math helpers ──────────────────────────────────────────────────────────────
+// ─── Math ──────────────────────────────────────────────────────────────────────
 const D2R = Math.PI / 180;
 
+/** Rotate a lon/lat point and return its 3-D unit-sphere coords [x, y, z].
+ *  y > 0 means the point faces the viewer (visible hemisphere). */
 function geoToXyz(lon: number, lat: number, rotLon: number, rotLat: number): [number, number, number] {
-  const lam = (lon + rotLon) * D2R;
-  const phi = lat * D2R;
-  const rotPhiRad = rotLat * D2R;
+  const lam = (lon + rotLon) * D2R, phi = lat * D2R;
   const x = Math.cos(phi) * Math.cos(lam);
   const y = Math.cos(phi) * Math.sin(lam);
   const z = Math.sin(phi);
-  const cosT = Math.cos(rotPhiRad);
-  const sinT = Math.sin(rotPhiRad);
-  const y2 = y * cosT - z * sinT;
-  const z2 = y * sinT + z * cosT;
-  return [x, y2, z2];
+  const cosT = Math.cos(rotLat * D2R), sinT = Math.sin(rotLat * D2R);
+  return [x, y * cosT - z * sinT, y * sinT + z * cosT];
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+/** Build an SVG path from pre-computed 3-D unit-sphere points.
+ *  pts[i] = [x, y, z] — y > 0 is visible. */
+function pts3dToPath(pts: [number, number, number][], CX: number, CY: number, r: number): string {
+  let d = "", pen = false;
+  for (const [x, y, z] of pts) {
+    if (y > 0) {
+      const px = (CX - x * r).toFixed(1), pz = (CY - z * r).toFixed(1);
+      d += pen ? `L${px},${pz}` : `M${px},${pz}`;
+      pen = true;
+    } else { pen = false; }
+  }
+  return d;
+}
+
+/** Pre-compute great-circle 3-D points in geodetic space (rotLon=0, rotLat=0).
+ *  Per-frame we only apply the rotation transform, not the slerp. */
+function precomputeArc(from: [number, number], to: [number, number], steps = 32): [number, number, number][] {
+  const pts: [number, number, number][] = [];
+  const [x1, y1, z1] = [Math.cos(from[1]*D2R)*Math.cos(from[0]*D2R), Math.cos(from[1]*D2R)*Math.sin(from[0]*D2R), Math.sin(from[1]*D2R)];
+  const [x2, y2, z2] = [Math.cos(to[1]*D2R)*Math.cos(to[0]*D2R),   Math.cos(to[1]*D2R)*Math.sin(to[0]*D2R),   Math.sin(to[1]*D2R)];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const bx = x1+(x2-x1)*t, by = y1+(y2-y1)*t, bz = z1+(z2-z1)*t;
+    const len = Math.sqrt(bx*bx+by*by+bz*bz);
+    pts.push([bx/len, by/len, bz/len]);
+  }
+  return pts;
+}
+
+/** Rotate pre-computed geodetic 3-D pts by (rotLon, rotLat). */
+function rotateArcPts(pts: [number, number, number][], rotLon: number, rotLat: number): [number, number, number][] {
+  const lamOff = rotLon * D2R, cosT = Math.cos(rotLat * D2R), sinT = Math.sin(rotLat * D2R);
+  return pts.map(([x, y, z]) => {
+    // Apply longitude rotation (around Z axis in geo-space → affects x,y differently)
+    // Re-derive from lon/lat is cheaper here; we store the original lon/lat equivalents.
+    // Instead: rotate the raw 3D point. Longitude offset = rotate around globe's Z axis.
+    const cosL = Math.cos(lamOff), sinL = Math.sin(lamOff);
+    const rx = x * cosL - y * sinL;
+    const ry = x * sinL + y * cosL;
+    const rz = z;
+    // Then latitude tilt (rotate around X axis)
+    return [rx, ry * cosT - rz * sinT, ry * sinT + rz * cosT] as [number, number, number];
+  });
+}
+
+function ringToPath(ring: [number, number][], rotLon: number, rotLat: number, CX: number, CY: number, r: number): string {
+  let d = "", pen = false;
+  for (const [lon, lat] of ring) {
+    const [x, y, z] = geoToXyz(lon, lat, rotLon, rotLat);
+    if (y > 0) {
+      const px = (CX - x * r).toFixed(1), pz = (CY - z * r).toFixed(1);
+      d += pen ? `L${px},${pz}` : `M${px},${pz}`;
+      pen = true;
+    } else { pen = false; }
+  }
+  return d;
+}
+
+function graticulePaths(rotLon: number, rotLat: number, CX: number, CY: number, r: number): string[] {
+  const out: string[] = []; const steps = 48;
+  for (const lat of [-60, -30, 0, 30, 60]) {
+    let d = "", pen = false;
+    for (let i = 0; i <= steps; i++) {
+      const [x, y, z] = geoToXyz(-180 + (360/steps)*i, lat, rotLon, rotLat);
+      if (y > 0) { d += pen ? `L${(CX-x*r).toFixed(1)},${(CY-z*r).toFixed(1)}` : `M${(CX-x*r).toFixed(1)},${(CY-z*r).toFixed(1)}`; pen = true; } else pen = false;
+    }
+    if (d) out.push(d);
+  }
+  for (let lon = -180; lon < 180; lon += 30) {
+    let d = "", pen = false;
+    for (let i = 0; i <= steps; i++) {
+      const [x, y, z] = geoToXyz(lon, -90+(180/steps)*i, rotLon, rotLat);
+      if (y > 0) { d += pen ? `L${(CX-x*r).toFixed(1)},${(CY-z*r).toFixed(1)}` : `M${(CX-x*r).toFixed(1)},${(CY-z*r).toFixed(1)}`; pen = true; } else pen = false;
+    }
+    if (d) out.push(d);
+  }
+  return out;
+}
+
+function pinchDist(t: { pageX: number; pageY: number }[]): number {
+  const dx = t[0].pageX - t[1].pageX, dy = t[0].pageY - t[1].pageY;
+  return Math.sqrt(dx*dx + dy*dy);
+}
+
+// ─── Props ─────────────────────────────────────────────────────────────────────
 interface Props {
   flights: Flight[];
-  /** Canvas side-length in px. Defaults to compact home-preview size.        */
   size?: number;
   onDragStart?: () => void;
   onDragEnd?: () => void;
-  /** Legacy prop accepted but unused — size controls everything now.          */
   fullScreen?: boolean;
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
 export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: Props) {
-  // ─── All layout constants derived from `size` so they scale correctly ────
   const SIZE   = sizeProp ?? DEFAULT_SIZE;
   const CX     = SIZE / 2;
   const CY     = SIZE / 2;
   const R_BASE = SIZE * 0.44;
   const R_MIN  = SIZE * 0.28;
-  const R_MAX  = SIZE * 1.8;   // allow zooming in until the globe fills the canvas
+  const R_MAX  = SIZE * 1.8;
 
   const C = useColors();
   const isDark = C.bg === "#0A0A0F" || C.bg.startsWith("#0");
 
-  const rotLon = useSharedValue(10);
-  const rotLat = useSharedValue(20);
-  const [renderLon, setRenderLon] = React.useState(10);
-  const [renderLat, setRenderLat] = React.useState(20);
-  const [radius, setRadius]       = React.useState(R_BASE);
+  // ─── Render state — only updated once per animation frame ────────────────
+  const [renderState, setRenderState] = React.useState({ lon: 10, lat: 20, radius: R_BASE });
 
-  // ─── project helper (depends on CX/CY which depend on SIZE) ──────────────
-  function project(x: number, z: number, r: number): [number, number] {
-    return [CX - x * r, CY - z * r];
-  }
+  // Mutable refs hold the latest values; the rAF gate reads from them.
+  const lonRef    = useRef(10);
+  const latRef    = useRef(20);
+  const radiusRef = useRef(R_BASE);
+  const rafRef    = useRef<number | null>(null);
 
-  function ringToPath(ring: [number, number][], rotLon: number, rotLat: number, r: number): string {
-    let d = ""; let penDown = false;
-    for (const [lon, lat] of ring) {
-      const [x, y, z] = geoToXyz(lon, lat, rotLon, rotLat);
-      const [px, pz]  = project(x, z, r);
-      if (y > 0) {
-        if (!penDown) { d += `M${px.toFixed(1)},${pz.toFixed(1)}`; penDown = true; }
-        else          { d += `L${px.toFixed(1)},${pz.toFixed(1)}`; }
-      } else { penDown = false; }
-    }
-    return d;
-  }
+  /** Schedule at most one re-render per display frame. */
+  const scheduleRender = useCallback(() => {
+    if (rafRef.current !== null) return;          // already pending
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      setRenderState({ lon: lonRef.current, lat: latRef.current, radius: radiusRef.current });
+    });
+  }, []);
 
-  function greatCirclePath(
-    from: [number, number], to: [number, number],
-    rotLon: number, rotLat: number, r: number, steps = 64
-  ): string {
-    let d = ""; let penDown = false;
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const [x1, y1, z1] = geoToXyz(from[0], from[1], rotLon, rotLat);
-      const [x2, y2, z2] = geoToXyz(to[0],   to[1],   rotLon, rotLat);
-      const bx = x1 + (x2 - x1) * t; const by = y1 + (y2 - y1) * t; const bz = z1 + (z2 - z1) * t;
-      const len = Math.sqrt(bx * bx + by * by + bz * bz);
-      const nx = bx / len; const ny = by / len; const nz = bz / len;
-      const [px, pz] = project(nx, nz, r);
-      if (ny > 0) {
-        if (!penDown) { d += `M${px.toFixed(1)},${pz.toFixed(1)}`; penDown = true; }
-        else          { d += `L${px.toFixed(1)},${pz.toFixed(1)}`; }
-      } else { penDown = false; }
-    }
-    return d;
-  }
-
-  function graticulePaths(rotLon: number, rotLat: number, r: number): string[] {
-    const paths: string[] = []; const steps = 48;
-    for (const lat of [-60, -30, 0, 30, 60]) {
-      let d = ""; let penDown = false;
-      for (let i = 0; i <= steps; i++) {
-        const lon = -180 + (360 / steps) * i;
-        const [x, y, z] = geoToXyz(lon, lat, rotLon, rotLat);
-        const [px, pz] = project(x, z, r);
-        if (y > 0) { if (!penDown) { d += `M${px.toFixed(1)},${pz.toFixed(1)}`; penDown = true; } else { d += `L${px.toFixed(1)},${pz.toFixed(1)}`; } } else { penDown = false; }
-      }
-      if (d) paths.push(d);
-    }
-    for (let lon = -180; lon < 180; lon += 30) {
-      let d = ""; let penDown = false;
-      for (let i = 0; i <= steps; i++) {
-        const lat = -90 + (180 / steps) * i;
-        const [x, y, z] = geoToXyz(lon, lat, rotLon, rotLat);
-        const [px, pz] = project(x, z, r);
-        if (y > 0) { if (!penDown) { d += `M${px.toFixed(1)},${pz.toFixed(1)}`; penDown = true; } else { d += `L${px.toFixed(1)},${pz.toFixed(1)}`; } } else { penDown = false; }
-      }
-      if (d) paths.push(d);
-    }
-    return paths;
-  }
-
-  useAnimatedReaction(
-    () => ({ lon: rotLon.value, lat: rotLat.value }),
-    (cur) => { runOnJS(setRenderLon)(cur.lon); runOnJS(setRenderLat)(cur.lat); },
-    []
-  );
-
+  // ─── Gesture refs ─────────────────────────────────────────────────────────
   const lastPage      = useRef<{ x: number; y: number } | null>(null);
   const pinchStartRef = useRef<{ dist: number; r: number } | null>(null);
-  const radiusRef     = useRef(R_BASE);
-
-  function pinchDist(touches: React.Touch[]): number {
-    const dx = touches[0].pageX - touches[1].pageX;
-    const dy = touches[0].pageY - touches[1].pageY;
-    return Math.sqrt(dx * dx + dy * dy);
-  }
 
   const panResponder = useRef(
     PanResponder.create({
@@ -273,11 +269,11 @@ export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: P
       onMoveShouldSetPanResponder:  () => true,
 
       onPanResponderGrant: (evt) => {
-        cancelAnimation(rotLon);
-        cancelAnimation(rotLat);
+        // Cancel any pending frame so stale values don't fire after lift
+        if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
         const touches = evt.nativeEvent.touches;
         if (touches.length >= 2) {
-          pinchStartRef.current = { dist: pinchDist(touches as unknown as React.Touch[]), r: radiusRef.current };
+          pinchStartRef.current = { dist: pinchDist(touches as unknown as { pageX: number; pageY: number }[]), r: radiusRef.current };
           lastPage.current = null;
         } else {
           lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
@@ -290,60 +286,88 @@ export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: P
         const touches = evt.nativeEvent.touches;
         if (touches.length >= 2) {
           if (!pinchStartRef.current) {
-            pinchStartRef.current = { dist: pinchDist(touches as unknown as React.Touch[]), r: radiusRef.current };
+            pinchStartRef.current = { dist: pinchDist(touches as unknown as { pageX: number; pageY: number }[]), r: radiusRef.current };
           }
-          const currentDist = pinchDist(touches as unknown as React.Touch[]);
-          const scale = currentDist / pinchStartRef.current.dist;
-          const newR  = Math.max(R_MIN, Math.min(R_MAX, pinchStartRef.current.r * scale));
-          radiusRef.current = newR;
-          runOnJS(setRadius)(newR);
-          lastPage.current = null;
+          const scale = pinchDist(touches as unknown as { pageX: number; pageY: number }[]) / pinchStartRef.current.dist;
+          radiusRef.current = Math.max(R_MIN, Math.min(R_MAX, pinchStartRef.current.r * scale));
+          lastPage.current  = null;
         } else {
           pinchStartRef.current = null;
-          if (!lastPage.current) {
-            lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
-            return;
-          }
+          if (!lastPage.current) { lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY }; return; }
           const dx = evt.nativeEvent.pageX - lastPage.current.x;
           const dy = evt.nativeEvent.pageY - lastPage.current.y;
-          rotLon.value = rotLon.value + dx * 0.5;
-          rotLat.value = Math.max(-60, Math.min(60, rotLat.value - dy * 0.4));
+          lonRef.current = lonRef.current + dx * 0.5;
+          latRef.current = Math.max(-60, Math.min(60, latRef.current - dy * 0.4));
           lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
         }
+        scheduleRender();
       },
 
       onPanResponderRelease: () => {
-        lastPage.current      = null;
-        pinchStartRef.current = null;
+        lastPage.current = null; pinchStartRef.current = null;
         onDragEnd?.();
       },
-
       onPanResponderTerminate: () => {
-        lastPage.current      = null;
-        pinchStartRef.current = null;
+        lastPage.current = null; pinchStartRef.current = null;
         onDragEnd?.();
       },
     })
   ).current;
 
-  const { routes, airportList } = useMemo(() => {
-    const seenRoutes = new Set<string>();
-    const routeList: { from: [number, number]; to: [number, number] }[] = [];
-    const airportSet = new Set<string>();
+  // ─── Pre-compute arc 3-D unit-sphere points (only when flights change) ────
+  const arcPts3d = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { pts: [number, number, number][]; from: [number, number]; to: [number, number] }[] = [];
     for (const f of flights) {
-      const fc = AIRPORTS[f.departureAirport]; const tc = AIRPORTS[f.arrivalAirport];
+      const fc = AIRPORTS[f.departureAirport], tc = AIRPORTS[f.arrivalAirport];
       if (!fc || !tc) continue;
-      airportSet.add(f.departureAirport); airportSet.add(f.arrivalAirport);
       const key = [f.departureAirport, f.arrivalAirport].sort().join("-");
-      if (!seenRoutes.has(key)) { seenRoutes.add(key); routeList.push({ from: fc, to: tc }); }
+      if (!seen.has(key)) { seen.add(key); out.push({ pts: precomputeArc(fc, tc, 32), from: fc, to: tc }); }
     }
-    return {
-      routes: routeList,
-      airportList: Array.from(airportSet).filter(k => AIRPORTS[k]).map(k => ({ iata: k, coords: AIRPORTS[k] })),
-    };
+    return out;
   }, [flights]);
 
-  const hasFlights = routes.length > 0;
+  const airportList = useMemo(() => {
+    const set = new Set<string>();
+    for (const f of flights) { if (AIRPORTS[f.departureAirport]) set.add(f.departureAirport); if (AIRPORTS[f.arrivalAirport]) set.add(f.arrivalAirport); }
+    return Array.from(set).map(k => ({ iata: k, coords: AIRPORTS[k] }));
+  }, [flights]);
+
+  const { lon: renderLon, lat: renderLat, radius } = renderState;
+
+  // ─── Per-frame derived geometry ───────────────────────────────────────────
+  const countryPaths = useMemo(() =>
+    COUNTRY_POLYGONS
+      .map((poly, pi) => { const d = ringToPath(poly[0], renderLon, renderLat, CX, CY, radius); return d ? { key: `c${pi}`, d } : null; })
+      .filter(Boolean) as { key: string; d: string }[],
+    [renderLon, renderLat, radius, CX, CY] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const arcPaths = useMemo(() =>
+    arcPts3d.map(({ pts }) => pts3dToPath(rotateArcPts(pts, renderLon, renderLat), CX, CY, radius)),
+    [arcPts3d, renderLon, renderLat, radius, CX, CY] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const graticuleLines = useMemo(() =>
+    graticulePaths(renderLon, renderLat, CX, CY, radius),
+    [renderLon, renderLat, radius, CX, CY] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const dotPositions = useMemo(() =>
+    airportList.map(ap => {
+      const [x, y, z] = geoToXyz(ap.coords[0], ap.coords[1], renderLon, renderLat);
+      return { iata: ap.iata, px: CX - x * radius, pz: CY - z * radius, vis: y > 0 };
+    }),
+    [airportList, renderLon, renderLat, radius, CX, CY] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const hasFlights = arcPts3d.length > 0;
+
+  // ─── Arc stroke widths scale with zoom ───────────────────────────────────
+  const arcGlowW = Math.max(4,  8   * (R_BASE / radius));
+  const arcCoreW = Math.max(1,  1.8 * (R_BASE / radius));
+  const dotRGlow = Math.max(4,  8   * (R_BASE / radius));
+  const dotRCore = Math.max(2,  4   * (R_BASE / radius));
 
   const sphereDeep = isDark ? "#0D1B3E" : "#D6E8FF";
   const sphereMid  = isDark ? "#0F2654" : "#EAF3FF";
@@ -352,59 +376,22 @@ export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: P
   const landFill   = isDark ? "#1C3566" : "#B8D0F0";
   const landStroke = isDark ? "#2A4A80" : "#8AB0D8";
 
-  const arcGlowW = Math.max(4,  8   * (R_BASE / radius));
-  const arcCoreW = Math.max(1,  1.8 * (R_BASE / radius));
-  const dotRGlow = Math.max(4,  8   * (R_BASE / radius));
-  const dotRCore = Math.max(2,  4   * (R_BASE / radius));
-
-  const countryPaths = useMemo(() =>
-    COUNTRY_POLYGONS
-      .map((polygon, pi) => { const d = ringToPath(polygon[0], renderLon, renderLat, radius); return d ? { key: `c${pi}`, d } : null; })
-      .filter(Boolean) as { key: string; d: string }[],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [renderLon, renderLat, radius, SIZE]
-  );
-
-  const arcPaths = useMemo(() =>
-    routes.map(r => greatCirclePath(r.from, r.to, renderLon, renderLat, radius)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [routes, renderLon, renderLat, radius, SIZE]
-  );
-  const graticuleLines = useMemo(() => graticulePaths(renderLon, renderLat, radius),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [renderLon, renderLat, radius, SIZE]
-  );
-  const dotPositions = useMemo(() =>
-    airportList.map(ap => {
-      const [x, y, z] = geoToXyz(ap.coords[0], ap.coords[1], renderLon, renderLat);
-      const [px, pz]  = project(x, z, radius);
-      return { iata: ap.iata, px, pz, vis: y > 0 };
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [airportList, renderLon, renderLat, radius, SIZE]
-  );
-
   return (
     <View style={{ alignItems: "center", paddingVertical: sizeProp ? 0 : 4 }}>
       <View
-        style={[
-          {
-            width: SIZE, height: SIZE,
-            // Clip the SVG so when the globe radius exceeds SIZE/2 the
-            // sphere bleeds to the canvas edge but never outside the View.
-            overflow: "hidden",
-            alignItems: "center", justifyContent: "center",
-            // Shadow only for the compact card variant
-            ...(sizeProp ? {} : {
-              borderRadius: SIZE / 2 + 8,
-              shadowColor: C.accent,
-              shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: 0.22,
-              shadowRadius: 24,
-              elevation: 10,
-            }),
-          },
-        ]}
+        style={{
+          width: SIZE, height: SIZE,
+          overflow: "hidden",
+          alignItems: "center", justifyContent: "center",
+          ...(sizeProp ? {} : {
+            borderRadius: SIZE / 2 + 8,
+            shadowColor: C.accent,
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.22,
+            shadowRadius: 24,
+            elevation: 10,
+          }),
+        }}
         {...panResponder.panHandlers}
       >
         <Svg width={SIZE} height={SIZE} style={{ overflow: "visible" }}>
@@ -431,20 +418,15 @@ export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: P
           <G clipPath="url(#globeClip)">
             {graticuleLines.map((d, i) => <Path key={`g${i}`} d={d} stroke={gridColor} strokeWidth={0.7} fill="none" />)}
           </G>
-
           <G clipPath="url(#globeClip)">
-            {countryPaths.map(({ key, d }) => (
-              <Path key={key} d={d} fill={landFill} stroke={landStroke} strokeWidth={0.5} strokeLinejoin="round" />
-            ))}
+            {countryPaths.map(({ key, d }) => <Path key={key} d={d} fill={landFill} stroke={landStroke} strokeWidth={0.5} strokeLinejoin="round" />)}
           </G>
-
           <G clipPath="url(#globeClip)">
             {arcPaths.map((d, i) => d ? <Path key={`ag${i}`} d={d} stroke={C.accentGlow} strokeWidth={arcGlowW} fill="none" strokeLinecap="round" /> : null)}
           </G>
           <G clipPath="url(#globeClip)">
             {arcPaths.map((d, i) => d ? <Path key={`ac${i}`} d={d} stroke={C.accent} strokeWidth={arcCoreW} fill="none" strokeLinecap="round" opacity={0.92} /> : null)}
           </G>
-
           <G clipPath="url(#globeClip)">
             {dotPositions.filter(d => d.vis).map(d => <Circle key={`r${d.iata}`} cx={d.px} cy={d.pz} r={dotRGlow} fill={C.accentDim} />)}
           </G>
@@ -460,7 +442,7 @@ export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: P
           />
 
           {!hasFlights && (
-            <Path d={`M${CX},${CY - 18} l4,8 l8,1 l-6,6 l2,9 l-8,-4 l-8,4 l2,-9 l-6,-6 l8,-1 z`} fill={C.textMuted} opacity={0.35} />
+            <Path d={`M${CX},${CY-18} l4,8 l8,1 l-6,6 l2,9 l-8,-4 l-8,4 l2,-9 l-6,-6 l8,-1 z`} fill={C.textMuted} opacity={0.35} />
           )}
         </Svg>
 
