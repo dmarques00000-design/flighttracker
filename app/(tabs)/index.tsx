@@ -17,6 +17,7 @@ import { LogbookLogo } from "@/components/LogbookLogo";
 import { getCO2FunFact } from "@/utils/co2FunFact";
 import { getRateLimiter, formatRetryAfter } from "@/lib/rate-limiter";
 import { getAirportInfo } from "@/utils/passport";
+import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 
 const percentileLimiter = getRateLimiter("percentile", { maxCalls: 10, windowMs: 60_000 });
 
@@ -367,6 +368,9 @@ export default function HomeScreen() {
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
   const showLoginPrompt = !isLoggedIn && !dismissedPrompt;
 
+  // Swipe left → flights, disabled while globe is being dragged
+  const swipeHandlers = useSwipeNavigation(0, !globeDragging);
+
   const years = useMemo(() => {
     const set = new Set<number>();
     flights.forEach((f) => { const y = parseInt(f.date.substring(0, 4), 10); if (!isNaN(y)) set.add(y); });
@@ -394,7 +398,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPadding }}>
+    <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPadding }} {...swipeHandlers}>
       <HamburgerMenu visible={menuOpen} onClose={() => setMenuOpen(false)} onSelect={handleMenuSelect} />
       <ScrollView
         ref={scrollRef}
@@ -473,7 +477,7 @@ export default function HomeScreen() {
               )}
             </Animated.View>
 
-            {/* ─── Globe preview — tap to expand full-screen ─── */}
+            {/* Globe preview */}
             <Animated.View entering={FadeInDown.delay(120).springify()} style={{ marginTop: 4, marginBottom: 24 }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase" }}>Your Flight Network</Text>
@@ -493,7 +497,7 @@ export default function HomeScreen() {
               />
             </Animated.View>
 
-            {/* ─── Statistics ─── */}
+            {/* Statistics */}
             <Animated.View entering={FadeInDown.delay(140).springify()} style={{ marginBottom: 24 }}>
               <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Statistics</Text>
               <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 10 }}>
