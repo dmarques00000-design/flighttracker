@@ -9,16 +9,14 @@
  *
  * Additional savings
  * ──────────────────
- * • Arc 3D unit-sphere points are pre-cached at flight-list change time;
- *   per-frame work is projection-only (multiply + add), not full slerp.
- * • Arc steps reduced 64 → 32 (imperceptible at globe scale).
+ * • Arc 3D unit-sphere points pre-cached at flight-list change time.
+ * • Arc steps reduced 64 → 32.
  *
  * Overflow / clipping
  * ───────────────────
- * compact mode  (no sizeProp) — overflow:hidden + borderRadius so the
- *   sphere is neatly masked to the card circle.
- * full-screen mode (sizeProp passed) — overflow:visible so the sphere
- *   can bleed past the square canvas boundary without top/bottom crops.
+ * compact (no sizeProp) — overflow:hidden + borderRadius clips to circle.
+ * full-screen (sizeProp set) — overflow:visible; caller controls canvas
+ *   size and passes rBase so the sphere fits the viewport exactly.
  */
 import React, { useRef, useMemo, useCallback } from "react";
 import {
@@ -79,7 +77,7 @@ function extractCountryRings(topo: TopoJSON): [number, number][][][] {
 }
 const COUNTRY_POLYGONS = extractCountryRings(worldTopo);
 
-// ─── Default size ──────────────────────────────────────────────────────────────
+// ─── Default (compact card) size ─────────────────────────────────────────────────────────
 const { width: SCREEN_W } = Dimensions.get("window");
 const DEFAULT_SIZE = Math.min(SCREEN_W - 40, 360);
 
@@ -205,23 +203,25 @@ function pinchDist(t: { pageX: number; pageY: number }[]): number {
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface Props {
   flights: Flight[];
+  /** Canvas side-length in px. Defaults to compact home-preview size. */
   size?: number;
+  /** Override the default R_BASE (SIZE * 0.44). Used by the full-screen
+   *  view to set the initial sphere radius to exactly half the screen. */
+  rBase?: number;
   onDragStart?: () => void;
   onDragEnd?: () => void;
   fullScreen?: boolean;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
-export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: Props) {
-  const SIZE   = sizeProp ?? DEFAULT_SIZE;
-  const CX     = SIZE / 2;
-  const CY     = SIZE / 2;
-  const R_BASE = SIZE * 0.44;
-  const R_MIN  = SIZE * 0.28;
-  const R_MAX  = SIZE * 1.8;
+export function GlobeView({ flights, size: sizeProp, rBase: rBaseProp, onDragStart, onDragEnd }: Props) {
+  const SIZE    = sizeProp ?? DEFAULT_SIZE;
+  const CX      = SIZE / 2;
+  const CY      = SIZE / 2;
+  const R_BASE  = rBaseProp ?? SIZE * 0.44;
+  const R_MIN   = R_BASE * 0.6;
+  const R_MAX   = R_BASE * 4;
 
-  // In full-screen mode (sizeProp provided) we allow the sphere to bleed
-  // outside the square canvas so the top and bottom are never cropped.
   const isFullScreen = sizeProp !== undefined;
 
   const C = useColors();
@@ -242,7 +242,6 @@ export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: P
     });
   }, []);
 
-  // ─── Gesture refs ──────────────────────────────────────────────────────
   const lastPage      = useRef<{ x: number; y: number } | null>(null);
   const pinchStartRef = useRef<{ dist: number; r: number } | null>(null);
 
@@ -319,7 +318,6 @@ export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: P
 
   const { lon: renderLon, lat: renderLat, radius } = renderState;
 
-  // ─── Per-frame derived geometry ────────────────────────────────────────
   const countryPaths = useMemo(() =>
     COUNTRY_POLYGONS
       .map((poly, pi) => { const d = ringToPath(poly[0], renderLon, renderLat, CX, CY, radius); return d ? { key: `c${pi}`, d } : null; })
@@ -367,8 +365,6 @@ export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: P
           height: SIZE,
           alignItems: "center",
           justifyContent: "center",
-          // compact card: clip to circle + shadow
-          // full-screen: no overflow clip so sphere never crops at top/bottom
           ...(isFullScreen
             ? { overflow: "visible" }
             : {

@@ -1,16 +1,10 @@
 /**
  * Full-screen interactive globe — no tab bar.
  *
- * GLOBE_SIZE is set to SCREEN_H (the taller dimension) so that
- * R_BASE = SIZE * 0.44 produces a sphere radius that fills the screen
- * vertically. Previously using SCREEN_W left the sphere too small on
- * tall phones, showing cropped/empty space top and bottom.
- *
- * GlobeView's canvas is a GLOBE_SIZE × GLOBE_SIZE square centred in the
- * viewport. With overflow:visible on both this wrapper and GlobeView's
- * inner View, the sphere bleeds freely in all directions — no clipping.
- * Only the outermost root View has overflow:hidden to prevent any bleed
- * past the physical screen boundary when the user zooms in.
+ * The canvas is SCREEN_H × SCREEN_H (a square as tall as the screen).
+ * We pass rBase={SCREEN_H / 2} so the sphere starts exactly touching
+ * all four edges of the screen with zero overflow and no clipping needed.
+ * The root View no longer needs overflow:hidden.
  */
 import React, { useState } from "react";
 import {
@@ -33,10 +27,11 @@ import GlobeView from "@/components/GlobeView";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
-// Use the larger dimension so the sphere always fills the viewport.
-// On portrait phones SCREEN_H > SCREEN_W, so the globe starts large
-// enough that the sphere edge meets the top and bottom of the screen.
-const GLOBE_SIZE = Math.max(SCREEN_W, SCREEN_H);
+// Canvas is a square as tall as the screen; the sphere radius is
+// exactly half the screen height so the sphere fills the viewport
+// edge-to-edge with no overflow and no clipping required.
+const GLOBE_SIZE = SCREEN_H;
+const GLOBE_R_BASE = SCREEN_H / 2;
 
 export default function GlobeScreen() {
   const C = useColors();
@@ -54,6 +49,7 @@ export default function GlobeScreen() {
         <GlobeView
           flights={flights}
           size={GLOBE_SIZE}
+          rBase={GLOBE_R_BASE}
           onDragStart={() => setDragging(true)}
           onDragEnd={() => setDragging(false)}
         />
@@ -83,7 +79,7 @@ export default function GlobeScreen() {
         </Animated.View>
       )}
 
-      {/* Hint label */}
+      {/* Hint */}
       {!dragging && (
         <Animated.View
           entering={FadeIn.delay(400).duration(300)}
@@ -106,7 +102,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
+    // No overflow:hidden needed — sphere fits exactly inside the screen
   },
   globeWrap: {
     width: SCREEN_W,
