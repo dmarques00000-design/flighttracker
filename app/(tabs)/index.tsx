@@ -360,12 +360,8 @@ export default function HomeScreen() {
   const { profile, isLoggedIn, dismissedPrompt, dismissPrompt } = useUser();
   const [period, setPeriod] = useState<"all" | number>(new Date().getFullYear());
   const [menuOpen, setMenuOpen] = useState(false);
-  // ─── Globe drag lock ───────────────────────────────────────────────────────
-  // When the user drags the globe we disable the parent ScrollView so the
-  // screen doesn't scroll at the same time.
   const [globeDragging, setGlobeDragging] = useState(false);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
-  // ──────────────────────────────────────────────────────────────────────────
   const today = useToday();
   const topPadding    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
@@ -477,9 +473,19 @@ export default function HomeScreen() {
               )}
             </Animated.View>
 
-            {/* ─── Globe — scroll locked while dragging ─── */}
+            {/* ─── Globe preview — tap to expand full-screen ─── */}
             <Animated.View entering={FadeInDown.delay(120).springify()} style={{ marginTop: 4, marginBottom: 24 }}>
-              <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Your Flight Network</Text>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase" }}>Your Flight Network</Text>
+                <Pressable
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/globe"); }}
+                  hitSlop={8}
+                  style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: 4, opacity: pressed ? 0.6 : 1 }]}
+                >
+                  <Text style={{ fontSize: 12, color: C.accent, fontFamily: "DMSans_500Medium" }}>Expand</Text>
+                  <Ionicons name="expand-outline" size={13} color={C.accent} />
+                </Pressable>
+              </View>
               <GlobeView
                 flights={flights}
                 onDragStart={() => setGlobeDragging(true)}
