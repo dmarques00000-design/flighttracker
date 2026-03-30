@@ -1,14 +1,11 @@
 /**
  * Full-screen interactive globe — no tab bar.
  *
- * GLOBE_SIZE = SCREEN_W  (portrait width, typically 390-430 px).
- * The SVG canvas is exactly that square, centred in the viewport.
- * Because GlobeView's R_BASE = SIZE * 0.44 and R_MAX = SIZE * 1.8,
- * the globe starts fitting the screen comfortably and the user can
- * pinch-zoom until it fills edge-to-edge — at which point the canvas
- * clips cleanly (overflow:hidden) so no empty border is ever visible.
- *
- * A floating back arrow returns to the home screen.
+ * GLOBE_SIZE = SCREEN_W (portrait width).
+ * GlobeView renders with overflow:visible in full-screen mode so the
+ * sphere can extend past the square canvas boundary — no top/bottom crop.
+ * The parent globeWrap also uses overflow:visible for the same reason;
+ * only the root View clips (so the sphere never bleeds off-screen edges).
  */
 import React, { useState } from "react";
 import {
@@ -30,11 +27,6 @@ import { useFlights } from "@/context/flights";
 import GlobeView from "@/components/GlobeView";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
-
-// The canvas is the screen width (portrait) so the globe starts at a
-// comfortable size. R_MAX inside GlobeView is SIZE*1.8, meaning the user
-// can zoom until the sphere fills the entire screen with no canvas edge
-// becoming visible.
 const GLOBE_SIZE = SCREEN_W;
 
 export default function GlobeScreen() {
@@ -49,6 +41,8 @@ export default function GlobeScreen() {
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <StatusBar barStyle="light-content" />
 
+      {/* overflow:visible lets the sphere bleed past the square canvas
+          so there is no hard crop at the top or bottom of the globe */}
       <Animated.View entering={FadeIn.duration(300)} style={styles.globeWrap}>
         <GlobeView
           flights={flights}
@@ -58,7 +52,7 @@ export default function GlobeScreen() {
         />
       </Animated.View>
 
-      {/* Back button — floating, hidden while dragging */}
+      {/* Back button */}
       {!dragging && (
         <Animated.View
           entering={FadeIn.duration(200)}
@@ -73,10 +67,7 @@ export default function GlobeScreen() {
           ]}
         >
           <Pressable
-            onPress={() => {
-              Haptics.selectionAsync();
-              router.back();
-            }}
+            onPress={() => { Haptics.selectionAsync(); router.back(); }}
             style={({ pressed }) => [styles.backPressable, { opacity: pressed ? 0.7 : 1 }]}
             hitSlop={10}
           >
@@ -108,7 +99,8 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    // Clip the globe when it's zoomed beyond the viewport
+    // Only the outermost View clips — prevents bleed past screen edges
+    // while still letting the sphere extend beyond the square canvas.
     overflow: "hidden",
   },
   globeWrap: {
@@ -116,7 +108,8 @@ const styles = StyleSheet.create({
     height: SCREEN_H,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
+    // Must be visible so the sphere is not double-clipped by this wrapper
+    overflow: "visible",
   },
   backBtn: {
     position: "absolute",

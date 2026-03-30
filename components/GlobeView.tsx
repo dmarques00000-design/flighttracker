@@ -3,27 +3,22 @@
  *
  * Performance architecture
  * ─────────────────────────
- * The original implementation routed every gesture frame through:
- *   PanResponder (JS) → Reanimated shared value (UI thread)
- *   → useAnimatedReaction → runOnJS(setState) (back to JS) → full re-render
- *
- * That bridge added ~2 frame latency and queued multiple re-renders per
- * gesture event batch. The rewrite removes Reanimated entirely for rotation
- * and uses:
- *   PanResponder (JS) → mutable refs → requestAnimationFrame gate → setState
- *
- * One rAF is scheduled per gesture move; if a new move arrives before the
- * previous frame fires, the pending frame is cancelled and a new one is
- * scheduled with the latest values — so we never queue more than one
- * re-render per display frame (~16 ms).
+ * PanResponder (JS) → mutable refs → requestAnimationFrame gate → setState
+ * One rAF per gesture move; stale frames are cancelled so we never queue
+ * more than one re-render per display frame (~16 ms).
  *
  * Additional savings
  * ──────────────────
  * • Arc 3D unit-sphere points are pre-cached at flight-list change time;
  *   per-frame work is projection-only (multiply + add), not full slerp.
  * • Arc steps reduced 64 → 32 (imperceptible at globe scale).
- * • Graticule step count left at 48 but paths are still memo-gated.
- * • All useMemo deps are the three render values (lon, lat, radius) only.
+ *
+ * Overflow / clipping
+ * ───────────────────
+ * compact mode  (no sizeProp) — overflow:hidden + borderRadius so the
+ *   sphere is neatly masked to the card circle.
+ * full-screen mode (sizeProp passed) — overflow:visible so the sphere
+ *   can bleed past the square canvas boundary without top/bottom crops.
  */
 import React, { useRef, useMemo, useCallback } from "react";
 import {
@@ -77,7 +72,7 @@ function extractCountryRings(topo: TopoJSON): [number, number][][][] {
   const obj = topo.objects["countries"] ?? topo.objects[Object.keys(topo.objects)[0]];
   const out: [number, number][][][] = [];
   for (const g of obj.geometries) {
-    if (g.type === "Polygon")      { out.push((g.arcs as number[][]).map(r => stitchRing(r, dec))); }
+    if (g.type === "Polygon")           { out.push((g.arcs as number[][]).map(r => stitchRing(r, dec))); }
     else if (g.type === "MultiPolygon") { for (const p of (g.arcs as number[][][])) out.push(p.map(r => stitchRing(r, dec))); }
   }
   return out;
@@ -123,8 +118,6 @@ const AIRPORTS: Record<string, [number, number]> = {
 // ─── Math ──────────────────────────────────────────────────────────────────────
 const D2R = Math.PI / 180;
 
-/** Rotate a lon/lat point and return its 3-D unit-sphere coords [x, y, z].
- *  y > 0 means the point faces the viewer (visible hemisphere). */
 function geoToXyz(lon: number, lat: number, rotLon: number, rotLat: number): [number, number, number] {
   const lam = (lon + rotLon) * D2R, phi = lat * D2R;
   const x = Math.cos(phi) * Math.cos(lam);
@@ -134,8 +127,6 @@ function geoToXyz(lon: number, lat: number, rotLon: number, rotLat: number): [nu
   return [x, y * cosT - z * sinT, y * sinT + z * cosT];
 }
 
-/** Build an SVG path from pre-computed 3-D unit-sphere points.
- *  pts[i] = [x, y, z] — y > 0 is visible. */
 function pts3dToPath(pts: [number, number, number][], CX: number, CY: number, r: number): string {
   let d = "", pen = false;
   for (const [x, y, z] of pts) {
@@ -148,8 +139,6 @@ function pts3dToPath(pts: [number, number, number][], CX: number, CY: number, r:
   return d;
 }
 
-/** Pre-compute great-circle 3-D points in geodetic space (rotLon=0, rotLat=0).
- *  Per-frame we only apply the rotation transform, not the slerp. */
 function precomputeArc(from: [number, number], to: [number, number], steps = 32): [number, number, number][] {
   const pts: [number, number, number][] = [];
   const [x1, y1, z1] = [Math.cos(from[1]*D2R)*Math.cos(from[0]*D2R), Math.cos(from[1]*D2R)*Math.sin(from[0]*D2R), Math.sin(from[1]*D2R)];
@@ -163,18 +152,13 @@ function precomputeArc(from: [number, number], to: [number, number], steps = 32)
   return pts;
 }
 
-/** Rotate pre-computed geodetic 3-D pts by (rotLon, rotLat). */
 function rotateArcPts(pts: [number, number, number][], rotLon: number, rotLat: number): [number, number, number][] {
   const lamOff = rotLon * D2R, cosT = Math.cos(rotLat * D2R), sinT = Math.sin(rotLat * D2R);
   return pts.map(([x, y, z]) => {
-    // Apply longitude rotation (around Z axis in geo-space → affects x,y differently)
-    // Re-derive from lon/lat is cheaper here; we store the original lon/lat equivalents.
-    // Instead: rotate the raw 3D point. Longitude offset = rotate around globe's Z axis.
     const cosL = Math.cos(lamOff), sinL = Math.sin(lamOff);
     const rx = x * cosL - y * sinL;
     const ry = x * sinL + y * cosL;
     const rz = z;
-    // Then latitude tilt (rotate around X axis)
     return [rx, ry * cosT - rz * sinT, ry * sinT + rz * cosT] as [number, number, number];
   });
 }
@@ -218,7 +202,7 @@ function pinchDist(t: { pageX: number; pageY: number }[]): number {
   return Math.sqrt(dx*dx + dy*dy);
 }
 
-// ─── Props ─────────────────────────────────────────────────────────────────────
+// ─── Props ────────────────────────────────────────────────────────────────────
 interface Props {
   flights: Flight[];
   size?: number;
@@ -236,28 +220,29 @@ export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: P
   const R_MIN  = SIZE * 0.28;
   const R_MAX  = SIZE * 1.8;
 
+  // In full-screen mode (sizeProp provided) we allow the sphere to bleed
+  // outside the square canvas so the top and bottom are never cropped.
+  const isFullScreen = sizeProp !== undefined;
+
   const C = useColors();
   const isDark = C.bg === "#0A0A0F" || C.bg.startsWith("#0");
 
-  // ─── Render state — only updated once per animation frame ────────────────
+  // ─── Render state — one update per animation frame ────────────────────
   const [renderState, setRenderState] = React.useState({ lon: 10, lat: 20, radius: R_BASE });
-
-  // Mutable refs hold the latest values; the rAF gate reads from them.
   const lonRef    = useRef(10);
   const latRef    = useRef(20);
   const radiusRef = useRef(R_BASE);
   const rafRef    = useRef<number | null>(null);
 
-  /** Schedule at most one re-render per display frame. */
   const scheduleRender = useCallback(() => {
-    if (rafRef.current !== null) return;          // already pending
+    if (rafRef.current !== null) return;
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
       setRenderState({ lon: lonRef.current, lat: latRef.current, radius: radiusRef.current });
     });
   }, []);
 
-  // ─── Gesture refs ─────────────────────────────────────────────────────────
+  // ─── Gesture refs ──────────────────────────────────────────────────────
   const lastPage      = useRef<{ x: number; y: number } | null>(null);
   const pinchStartRef = useRef<{ dist: number; r: number } | null>(null);
 
@@ -269,7 +254,6 @@ export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: P
       onMoveShouldSetPanResponder:  () => true,
 
       onPanResponderGrant: (evt) => {
-        // Cancel any pending frame so stale values don't fire after lift
         if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
         const touches = evt.nativeEvent.touches;
         if (touches.length >= 2) {
@@ -314,15 +298,15 @@ export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: P
     })
   ).current;
 
-  // ─── Pre-compute arc 3-D unit-sphere points (only when flights change) ────
+  // ─── Pre-compute arc 3D points (only when flights change) ─────────────
   const arcPts3d = useMemo(() => {
     const seen = new Set<string>();
-    const out: { pts: [number, number, number][]; from: [number, number]; to: [number, number] }[] = [];
+    const out: { pts: [number, number, number][] }[] = [];
     for (const f of flights) {
       const fc = AIRPORTS[f.departureAirport], tc = AIRPORTS[f.arrivalAirport];
       if (!fc || !tc) continue;
       const key = [f.departureAirport, f.arrivalAirport].sort().join("-");
-      if (!seen.has(key)) { seen.add(key); out.push({ pts: precomputeArc(fc, tc, 32), from: fc, to: tc }); }
+      if (!seen.has(key)) { seen.add(key); out.push({ pts: precomputeArc(fc, tc, 32) }); }
     }
     return out;
   }, [flights]);
@@ -335,7 +319,7 @@ export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: P
 
   const { lon: renderLon, lat: renderLat, radius } = renderState;
 
-  // ─── Per-frame derived geometry ───────────────────────────────────────────
+  // ─── Per-frame derived geometry ────────────────────────────────────────
   const countryPaths = useMemo(() =>
     COUNTRY_POLYGONS
       .map((poly, pi) => { const d = ringToPath(poly[0], renderLon, renderLat, CX, CY, radius); return d ? { key: `c${pi}`, d } : null; })
@@ -363,7 +347,6 @@ export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: P
 
   const hasFlights = arcPts3d.length > 0;
 
-  // ─── Arc stroke widths scale with zoom ───────────────────────────────────
   const arcGlowW = Math.max(4,  8   * (R_BASE / radius));
   const arcCoreW = Math.max(1,  1.8 * (R_BASE / radius));
   const dotRGlow = Math.max(4,  8   * (R_BASE / radius));
@@ -380,17 +363,24 @@ export function GlobeView({ flights, size: sizeProp, onDragStart, onDragEnd }: P
     <View style={{ alignItems: "center", paddingVertical: sizeProp ? 0 : 4 }}>
       <View
         style={{
-          width: SIZE, height: SIZE,
-          overflow: "hidden",
-          alignItems: "center", justifyContent: "center",
-          ...(sizeProp ? {} : {
-            borderRadius: SIZE / 2 + 8,
-            shadowColor: C.accent,
-            shadowOffset: { width: 0, height: 8 },
-            shadowOpacity: 0.22,
-            shadowRadius: 24,
-            elevation: 10,
-          }),
+          width: SIZE,
+          height: SIZE,
+          alignItems: "center",
+          justifyContent: "center",
+          // compact card: clip to circle + shadow
+          // full-screen: no overflow clip so sphere never crops at top/bottom
+          ...(isFullScreen
+            ? { overflow: "visible" }
+            : {
+                overflow: "hidden",
+                borderRadius: SIZE / 2 + 8,
+                shadowColor: C.accent,
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: 0.22,
+                shadowRadius: 24,
+                elevation: 10,
+              }
+          ),
         }}
         {...panResponder.panHandlers}
       >
