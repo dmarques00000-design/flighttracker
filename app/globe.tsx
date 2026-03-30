@@ -1,11 +1,16 @@
 /**
  * Full-screen interactive globe — no tab bar.
  *
- * GLOBE_SIZE = SCREEN_W (portrait width).
- * GlobeView renders with overflow:visible in full-screen mode so the
- * sphere can extend past the square canvas boundary — no top/bottom crop.
- * The parent globeWrap also uses overflow:visible for the same reason;
- * only the root View clips (so the sphere never bleeds off-screen edges).
+ * GLOBE_SIZE is set to SCREEN_H (the taller dimension) so that
+ * R_BASE = SIZE * 0.44 produces a sphere radius that fills the screen
+ * vertically. Previously using SCREEN_W left the sphere too small on
+ * tall phones, showing cropped/empty space top and bottom.
+ *
+ * GlobeView's canvas is a GLOBE_SIZE × GLOBE_SIZE square centred in the
+ * viewport. With overflow:visible on both this wrapper and GlobeView's
+ * inner View, the sphere bleeds freely in all directions — no clipping.
+ * Only the outermost root View has overflow:hidden to prevent any bleed
+ * past the physical screen boundary when the user zooms in.
  */
 import React, { useState } from "react";
 import {
@@ -27,7 +32,11 @@ import { useFlights } from "@/context/flights";
 import GlobeView from "@/components/GlobeView";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
-const GLOBE_SIZE = SCREEN_W;
+
+// Use the larger dimension so the sphere always fills the viewport.
+// On portrait phones SCREEN_H > SCREEN_W, so the globe starts large
+// enough that the sphere edge meets the top and bottom of the screen.
+const GLOBE_SIZE = Math.max(SCREEN_W, SCREEN_H);
 
 export default function GlobeScreen() {
   const C = useColors();
@@ -41,8 +50,6 @@ export default function GlobeScreen() {
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <StatusBar barStyle="light-content" />
 
-      {/* overflow:visible lets the sphere bleed past the square canvas
-          so there is no hard crop at the top or bottom of the globe */}
       <Animated.View entering={FadeIn.duration(300)} style={styles.globeWrap}>
         <GlobeView
           flights={flights}
@@ -99,8 +106,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    // Only the outermost View clips — prevents bleed past screen edges
-    // while still letting the sphere extend beyond the square canvas.
     overflow: "hidden",
   },
   globeWrap: {
@@ -108,7 +113,6 @@ const styles = StyleSheet.create({
     height: SCREEN_H,
     alignItems: "center",
     justifyContent: "center",
-    // Must be visible so the sphere is not double-clipped by this wrapper
     overflow: "visible",
   },
   backBtn: {
