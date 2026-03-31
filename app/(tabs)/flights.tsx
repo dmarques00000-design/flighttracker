@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Animated, {
-  FadeInDown, FadeIn, FadeOut, Layout,
+  FadeInDown, FadeIn, FadeOut, Layout, SlideInDown, SlideOutDown,
   useAnimatedStyle, useSharedValue, withSpring, withTiming,
 } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -31,7 +31,9 @@ const MONTHS = ["January","February","March","April","May","June","July","August
 type GroupBy = "month" | "year" | "all";
 type TimeFilter = "all" | "upcoming" | "past" | number;
 
-const SWIPE_DELETE_THRESHOLD = -80;
+// Raised from -80 → -120 to avoid accidental trigger on diagonal scrolls
+const SWIPE_DELETE_THRESHOLD = -120;
+const UNDO_DURATION_MS = 2500;
 
 const OFFSET_LABELS: Record<ReminderOffset, string> = {
   24: "24h before",
@@ -139,6 +141,80 @@ function PeriodDropdown({ value, options, onChange }: { value: TimeFilter; optio
         </TouchableWithoutFeedback>
       </Modal>
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Undo Toast
+// ---------------------------------------------------------------------------
+function UndoToast({
+  flight,
+  onUndo,
+  onCommit,
+}: {
+  flight: Flight;
+  onUndo: () => void;
+  onCommit: () => void;
+}) {
+  const C = useColors();
+  const insets = useSafeAreaInsets();
+  const progress = useSharedValue(1);
+
+  useEffect(() => {
+    progress.value = withTiming(0, { duration: UNDO_DURATION_MS });
+    const timer = setTimeout(() => { onCommit(); }, UNDO_DURATION_MS);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const barStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` as unknown as number }));
+
+  return (
+    <Animated.View
+      entering={SlideInDown.springify().damping(18)}
+      exiting={SlideOutDown.duration(200)}
+      style={{
+        position: "absolute",
+        bottom: (Platform.OS === "web" ? 34 : insets.bottom) + 88,
+        left: 16,
+        right: 16,
+        backgroundColor: C.card,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: C.border,
+        overflow: "hidden",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.14,
+        shadowRadius: 16,
+        elevation: 8,
+      }}
+    >
+      {/* Progress bar */}
+      <View style={{ height: 3, backgroundColor: C.border }}>
+        <Animated.View style={[barStyle, { height: 3, backgroundColor: C.red }]} />
+      </View>
+
+      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 12, gap: 10 }}>
+        <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: C.red + "18", alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="trash-outline" size={16} color={C.red} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 13, color: C.text, fontFamily: "DMSans_700Bold" }} numberOfLines={1}>
+            {flight.departureAirport} → {flight.arrivalAirport} deleted
+          </Text>
+          <Text style={{ fontSize: 11, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 1 }}>
+            {flight.flightCode}  ·  {formatDate(flight.date)}
+          </Text>
+        </View>
+        <Pressable
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onUndo(); }}
+          style={({ pressed }) => [{ backgroundColor: C.accent, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, opacity: pressed ? 0.8 : 1 }]}
+        >
+          <Text style={{ fontSize: 13, color: C.white, fontFamily: "DMSans_700Bold" }}>Undo</Text>
+        </Pressable>
+      </View>
+    </Animated.View>
   );
 }
 
@@ -335,17 +411,16 @@ function FlightReminderModal({
 // Swipeable Flight Card
 // ---------------------------------------------------------------------------
 function FlightItem({
-  flight, onDelete, onLongPress, index, query, hasIndividualReminder,
+  flight, onDeleteIntent, onLongPress, index, query, hasIndividualReminder,
 }: {
   flight: Flight;
-  onDelete: () => void;
+  onDeleteIntent: () => void;
   onLongPress: () => void;
   index: number;
   query: string;
   hasIndividualReminder: boolean;
 }) {
   const C = useColors();
-  const [confirming, setConfirming] = useState(false);
   const isUpcoming = flight.date >= TODAY;
 
   const translateX = useSharedValue(0);
@@ -364,12 +439,14 @@ function FlightItem({
     pillText  = flight.status === "delayed" ? "Delayed" : flight.status === "cancelled" ? "Cancelled" : "Completed";
   }
 
+  // Tightened activeOffsetX from [-10,10] → [-16,16] so diagonal scrolls
+  // don't accidentally arm the swipe-to-delete zone
   const panGesture = Gesture.Pan()
-    .activeOffsetX([-10, 10])
+    .activeOffsetX([-16, 16])
     .onUpdate((e) => {
       if (e.translationX < 0) {
         translateX.value = Math.max(e.translationX, -120);
-        deleteOpacity.value = Math.min(Math.abs(e.translationX) / 80, 1);
+        deleteOpacity.value = Math.min(Math.abs(e.translationX) / 120, 1);
       } else {
         translateX.value = withSpring(0);
         deleteOpacity.value = withTiming(0);
@@ -386,6 +463,11 @@ function FlightItem({
 
   const cardAnimStyle = useAnimatedStyle(() => ({ transform: [{ translateX: translateX.value }] }));
   const deleteRevealStyle = useAnimatedStyle(() => ({ opacity: deleteOpacity.value }));
+
+  function collapse() {
+    translateX.value = withSpring(0);
+    deleteOpacity.value = withTiming(0);
+  }
 
   function Highlight({ text, style }: { text: string; style: object }) {
     const term = query.toLowerCase().trim();
@@ -417,9 +499,8 @@ function FlightItem({
         <Pressable
           onPress={() => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            translateX.value = withSpring(0);
-            deleteOpacity.value = withTiming(0);
-            onDelete();
+            collapse();
+            onDeleteIntent();
           }}
           style={{ alignItems: "center", justifyContent: "center", gap: 4, width: "100%", height: "100%" }}
         >
@@ -432,10 +513,7 @@ function FlightItem({
       <GestureDetector gesture={panGesture}>
         <Animated.View style={cardAnimStyle}>
           <Pressable
-            onPress={() => {
-              if (confirming) { setConfirming(false); return; }
-              router.push({ pathname: "/flight/[id]", params: { id: flight.id } });
-            }}
+            onPress={() => { router.push({ pathname: "/flight/[id]", params: { id: flight.id } }); }}
             onLongPress={() => {
               if (!isUpcoming) return;
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -482,7 +560,6 @@ function FlightItem({
                       <Text style={{ fontSize: 10, color: C.amber, fontFamily: "DMSans_700Bold" }}>Estimated</Text>
                     </View>
                   )}
-                  {/* Bell icon — only shown when individual reminders are active */}
                   {isUpcoming && hasIndividualReminder && (
                     <View style={{ marginLeft: "auto" }}>
                       <Ionicons name="alarm-outline" size={13} color={C.accent} />
@@ -518,17 +595,45 @@ export default function FlightsScreen() {
   const [searchFocused, setSearchFocused]   = useState(false);
   const [reminderFlight, setReminderFlight] = useState<Flight | null>(null);
   const [reminderVisible, setReminderVisible] = useState(false);
-  // Map of flightId -> whether it has individual reminders set
   const [reminderFlags, setReminderFlags]   = useState<Record<string, boolean>>({});
-  const searchRef = useRef<TextInput>(null);
 
+  // Undo-delete state
+  const [pendingDelete, setPendingDelete]   = useState<Flight | null>(null);
+  const pendingDeleteRef = useRef<Flight | null>(null);
+
+  const searchRef = useRef<TextInput>(null);
   const isSearching = query.trim().length > 0;
 
-  // Swipe right → home, swipe left → profile
-  // Disabled while the search keyboard is open to avoid accidental navigation
   const swipeHandlers = useSwipeNavigation(1, !searchFocused);
 
-  // Load reminder flags for all upcoming flights on mount
+  // ── Undo helpers ──────────────────────────────────────────────────────────
+  // Called by the delete button on a card: stages the flight for deletion
+  // without actually removing it yet. The UndoToast handles the commit/cancel.
+  const handleDeleteIntent = useCallback((flight: Flight) => {
+    // If there is already a pending delete, commit it immediately before
+    // staging the new one so we never have two toasts at once.
+    if (pendingDeleteRef.current) {
+      removeFlight(pendingDeleteRef.current.id);
+    }
+    pendingDeleteRef.current = flight;
+    setPendingDelete(flight);
+    Keyboard.dismiss();
+  }, [removeFlight]);
+
+  const handleUndoDelete = useCallback(() => {
+    pendingDeleteRef.current = null;
+    setPendingDelete(null);
+  }, []);
+
+  const handleCommitDelete = useCallback(() => {
+    if (pendingDeleteRef.current) {
+      removeFlight(pendingDeleteRef.current.id);
+      pendingDeleteRef.current = null;
+      setPendingDelete(null);
+    }
+  }, [removeFlight]);
+  // ─────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     const upcomingFlights = flights.filter((f) => f.date >= TODAY);
     Promise.all(
@@ -566,15 +671,19 @@ export default function FlightsScreen() {
     ...years.map((y) => ({ key: y as TimeFilter, label: String(y) })),
   ], [hasUpcoming, hasPast, years]);
 
+  // Sections exclude the pending-delete flight so the card disappears immediately
   const sections = useMemo(() => {
+    const visibleFlights = pendingDelete
+      ? flights.filter((f) => f.id !== pendingDelete.id)
+      : flights;
     if (isSearching) {
-      const results = flights
+      const results = visibleFlights
         .filter((f) => matchesFlight(f, query))
         .sort((a, b) => b.date.localeCompare(a.date));
       return results.length > 0 ? [{ title: "Results", data: results }] : [];
     }
-    return groupFlights(flights, groupBy, timeFilter);
-  }, [flights, groupBy, timeFilter, query, isSearching]);
+    return groupFlights(visibleFlights, groupBy, timeFilter);
+  }, [flights, pendingDelete, groupBy, timeFilter, query, isSearching]);
 
   const totalShown = sections.reduce((s, sec) => s + sec.data.length, 0);
 
@@ -590,11 +699,8 @@ export default function FlightsScreen() {
     setReminderVisible(true);
   }, []);
 
-  const handleReminderClose = useCallback(() => {
-    setReminderVisible(false);
-  }, []);
+  const handleReminderClose = useCallback(() => { setReminderVisible(false); }, []);
 
-  // Called by the modal after a successful save so the bell updates immediately
   const handleReminderSaved = useCallback((flightId: string, hasReminders: boolean) => {
     setReminderFlags((prev) => ({ ...prev, [flightId]: hasReminders }));
   }, []);
@@ -720,7 +826,7 @@ export default function FlightsScreen() {
             index={index}
             query={query}
             hasIndividualReminder={!!reminderFlags[item.id]}
-            onDelete={() => { removeFlight(item.id); Keyboard.dismiss(); }}
+            onDeleteIntent={() => handleDeleteIntent(item)}
             onLongPress={() => handleLongPress(item)}
           />
         )}
@@ -742,6 +848,15 @@ export default function FlightsScreen() {
         >
           <Ionicons name="add" size={26} color={C.white} />
         </Pressable>
+      )}
+
+      {/* Undo-delete toast — rendered above the FAB */}
+      {pendingDelete && (
+        <UndoToast
+          flight={pendingDelete}
+          onUndo={handleUndoDelete}
+          onCommit={handleCommitDelete}
+        />
       )}
 
       {/* Individual flight reminder modal */}
