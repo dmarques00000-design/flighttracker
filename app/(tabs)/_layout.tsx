@@ -1,24 +1,13 @@
 /**
- * Custom animated tab pager.
+ * Custom animated tab pager — edge-swipe only.
  *
- * All three tab screens are rendered side-by-side in a single
- * Animated.View row. A PanResponder tracks horizontal drag in real
- * time, translating the row so screens slide physically under the
- * finger. On release the row spring-snaps to the nearest tab.
+ * The PanResponder is intentionally attached ONLY to two thin
+ * invisible overlay strips on the left and right screen edges
+ * (EDGE_ZONE_W = 40px). Nothing in the centre of the screen —
+ * including the GlobeView — can ever trigger a tab switch,
+ * because those Views never receive the pager's pan handlers.
  *
- * This gives the same feel as a native ViewPager / horizontal
- * ScrollView pager — the next screen is visible and follows the
- * finger as the user drags, with no cold router.navigate() jump.
- *
- * Conflict avoidance
- * ──────────────────
- * - Bails out immediately when gestureLockRef.current === true, which
- *   is set by any child that owns a gesture (e.g. GlobeView).
- * - Only captures when |dx| > |dy| * 1.8 (clearly horizontal)
- * - Requires |dx| > 16 to start
- * - Vertical scrolls inside each tab are unaffected because we
- *   use onMoveShouldSetPanResponder (not onStart) so the inner
- *   ScrollView wins on vertical-dominant gestures.
+ * Tab-bar icon taps still switch tabs as normal.
  */
 import React, { useRef, useState, useCallback } from "react";
 import {
@@ -34,15 +23,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/constants/colors";
-import { GestureLockProvider, useGestureLock } from "@/context/gesture-lock";
+import { GestureLockProvider } from "@/context/gesture-lock";
 
-// Lazy-load tab screens to keep initial bundle small
 import HomeScreen    from "./index";
 import FlightsScreen from "./flights";
 import ProfileScreen from "./profile";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-const NUM_TABS = 3;
+const NUM_TABS    = 3;
+const EDGE_ZONE_W = 40; // px — only swiping from within this strip triggers paging
 
 const TABS = [
   { key: "home",    label: "Home",    icon: "home-outline"    as const },
@@ -50,98 +39,94 @@ const TABS = [
   { key: "profile", label: "Profile", icon: "person-outline"  as const },
 ] as const;
 
-// Inner component has access to GestureLockProvider via context
 function TabPager() {
-  const C       = useColors();
-  const insets  = useSafeAreaInsets();
+  const C      = useColors();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState(0);
-  const { gestureLockRef } = useGestureLock();
 
-  // Animated x-offset of the 3-screen row.
-  // x = -activeTab * SCREEN_W when settled.
   const translateX = useRef(new Animated.Value(0)).current;
-  const activeRef  = useRef(0);  // mutable copy for use inside PanResponder closure
+  const activeRef  = useRef(0);
 
-  const snapTo = useCallback((index: number, velocity = 0) => {
-    const target = -index * SCREEN_W;
-    Animated.spring(translateX, {
-      toValue: target,
-      velocity,
-      tension: 68,
-      friction: 11,
-      useNativeDriver: true,
-    }).start();
-    activeRef.current = index;
-    setActiveTab(index);
-    Haptics.selectionAsync();
-  }, [translateX]);
+  const snapTo = useCallback(
+    (index: number, velocity = 0) => {
+      Animated.spring(translateX, {
+        toValue:  -index * SCREEN_W,
+        velocity,
+        tension:  68,
+        friction: 11,
+        useNativeDriver: true,
+      }).start();
+      activeRef.current = index;
+      setActiveTab(index);
+      Haptics.selectionAsync();
+    },
+    [translateX],
+  );
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder:        () => false,
-      onStartShouldSetPanResponderCapture: () => false,
+  // Build one reusable PanResponder for the edge zones.
+  // Because these Views sit on top of everything and cover only the
+  // 40px strips, there is zero risk of conflicting with the globe or
+  // any inner ScrollView.
+  const makePanResponder = useCallback(
+    () =>
+      PanResponder.create({
+        // Claim the gesture immediately on the edge strip
+        onStartShouldSetPanResponder:        () => true,
+        onStartShouldSetPanResponderCapture: () => true,
+        onMoveShouldSetPanResponder:         () => true,
+        onMoveShouldSetPanResponderCapture:  () => true,
 
-      // Bail out instantly if a child (e.g. the globe) owns this gesture.
-      // Also require a clearly horizontal drag (|dx| > 16, ratio > 1.8).
-      onMoveShouldSetPanResponder: (_, gs) => {
-        if (gestureLockRef.current) return false;
-        const ax = Math.abs(gs.dx), ay = Math.abs(gs.dy);
-        return ax > 16 && ax > ay * 1.8;
-      },
-      onMoveShouldSetPanResponderCapture: (_, gs) => {
-        if (gestureLockRef.current) return false;
-        const ax = Math.abs(gs.dx), ay = Math.abs(gs.dy);
-        return ax > 16 && ax > ay * 1.8;
-      },
+        onPanResponderGrant: () => {
+          translateX.stopAnimation();
+          translateX.setOffset(-activeRef.current * SCREEN_W);
+          translateX.setValue(0);
+        },
 
-      onPanResponderGrant: () => {
-        // Stop any in-progress spring so the row sticks to the finger
-        translateX.stopAnimation();
-        translateX.setOffset(-activeRef.current * SCREEN_W);
-        translateX.setValue(0);
-      },
+        onPanResponderMove: (_, gs) => {
+          const base   = -activeRef.current * SCREEN_W;
+          const minX   = -(NUM_TABS - 1) * SCREEN_W;
+          const maxX   = 0;
+          const target = base + gs.dx;
+          const rubber =
+            target < minX
+              ? minX - (minX - target) * 0.25
+              : target > maxX
+              ? (target - maxX) * 0.25
+              : gs.dx;
+          translateX.setValue(rubber);
+        },
 
-      onPanResponderMove: (_, gs) => {
-        // Rubber-band at the edges
-        const base   = -activeRef.current * SCREEN_W;
-        const raw    = gs.dx;
-        const minX   = -(NUM_TABS - 1) * SCREEN_W;
-        const maxX   = 0;
-        const target = base + raw;
-        const rubber = target < minX
-          ? minX - (minX - target) * 0.25
-          : target > maxX
-            ? (target - maxX) * 0.25
-            : raw;
-        translateX.setValue(rubber);
-      },
+        onPanResponderRelease: (_, gs) => {
+          translateX.flattenOffset();
+          const SWIPE_DIST = SCREEN_W * 0.25;
+          const SWIPE_VEL  = 0.5;
+          let next = activeRef.current;
+          if      (gs.dx < -SWIPE_DIST || gs.vx < -SWIPE_VEL) next = Math.min(next + 1, NUM_TABS - 1);
+          else if (gs.dx >  SWIPE_DIST || gs.vx >  SWIPE_VEL) next = Math.max(next - 1, 0);
+          snapTo(next, -gs.vx * 200);
+        },
 
-      onPanResponderRelease: (_, gs) => {
-        translateX.flattenOffset();
-        const SWIPE_DIST = SCREEN_W * 0.25;
-        const SWIPE_VEL  = 0.5;
-        let next = activeRef.current;
-        if      (gs.dx < -SWIPE_DIST || gs.vx < -SWIPE_VEL) next = Math.min(next + 1, NUM_TABS - 1);
-        else if (gs.dx >  SWIPE_DIST || gs.vx >  SWIPE_VEL) next = Math.max(next - 1, 0);
-        snapTo(next, -gs.vx * 200);
-      },
+        onPanResponderTerminate: () => {
+          translateX.flattenOffset();
+          snapTo(activeRef.current, 0);
+        },
+      }),
+    [translateX, snapTo],
+  );
 
-      onPanResponderTerminate: () => {
-        translateX.flattenOffset();
-        snapTo(activeRef.current, 0);
-      },
-    })
-  ).current;
+  // Two separate PanResponder instances — one per edge strip.
+  // Using two instances avoids any shared-state confusion.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const leftPR  = useRef(makePanResponder()).current;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const rightPR = useRef(makePanResponder()).current;
 
   const TAB_BAR_H = Platform.OS === "ios" ? 50 + insets.bottom : 54;
 
   return (
     <View style={styles.root}>
-      {/* ─── Pager ───────────────────────────────────────── */}
-      <View
-        style={[styles.pagerContainer, { bottom: TAB_BAR_H }]}
-        {...panResponder.panHandlers}
-      >
+      {/* ── Pager content — NO panHandlers here ─────────── */}
+      <View style={[styles.pagerContainer, { bottom: TAB_BAR_H }]}>
         <Animated.View
           style={[
             styles.pagerRow,
@@ -160,15 +145,27 @@ function TabPager() {
         </Animated.View>
       </View>
 
-      {/* ─── Tab bar ────────────────────────────────────── */}
+      {/* ── Left edge swipe zone ─────────────────────────── */}
+      <View
+        style={[styles.edgeZone, styles.edgeLeft, { bottom: TAB_BAR_H }]}
+        {...leftPR.panHandlers}
+      />
+
+      {/* ── Right edge swipe zone ────────────────────────── */}
+      <View
+        style={[styles.edgeZone, styles.edgeRight, { bottom: TAB_BAR_H }]}
+        {...rightPR.panHandlers}
+      />
+
+      {/* ── Tab bar ─────────────────────────────────────── */}
       <View
         style={[
           styles.tabBar,
           {
-            height: TAB_BAR_H,
-            paddingBottom: insets.bottom,
+            height:          TAB_BAR_H,
+            paddingBottom:   insets.bottom,
             backgroundColor: C.card,
-            borderTopColor: C.border,
+            borderTopColor:  C.border,
           },
         ]}
       >
@@ -225,6 +222,19 @@ const styles = StyleSheet.create({
   pagerRow: {
     flexDirection: "row",
     flex: 1,
+  },
+  // Invisible overlay strips — sit above all content, only on the edges
+  edgeZone: {
+    position: "absolute",
+    top: 0,
+    width: EDGE_ZONE_W,
+    // bottom is set inline per the current TAB_BAR_H
+  },
+  edgeLeft: {
+    left: 0,
+  },
+  edgeRight: {
+    right: 0,
   },
   tabBar: {
     position: "absolute",
