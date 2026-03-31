@@ -1,24 +1,4 @@
 /**
-<<<<<<< HEAD
- * GlobeView — interactive 3D SVG globe with orthographic projection.
- *
- * Performance architecture
- * ─────────────────────────
- * PanResponder (JS) → mutable refs → requestAnimationFrame gate → setState
- * One rAF per gesture move; stale frames are cancelled so we never queue
- * more than one re-render per display frame (~16 ms).
- *
- * Additional savings
- * ──────────────────
- * • Arc 3D unit-sphere points pre-cached at flight-list change time.
- * • Arc steps reduced 64 → 32.
- *
- * Overflow / clipping
- * ───────────────────
- * compact (no sizeProp) — overflow:hidden + borderRadius clips to circle.
- * full-screen (sizeProp set) — overflow:visible; caller controls canvas
- *   size and passes rBase so the sphere fits the viewport exactly.
-=======
  * GlobeView — Apple Maps-style 3D globe rendered in a WebView using
  * deck.gl GlobeView with a deep-navy/satellite aesthetic:
  *   • Black starfield background
@@ -31,69 +11,32 @@
  *   • Pinch-to-zoom
  *
  * Offline fallback: lightweight SVG flat-map shown when no connectivity.
->>>>>>> main
  */
-import React, { useRef, useMemo, useCallback } from "react";
+import React, { useRef, useMemo, useCallback, useState, useEffect } from "react";
 import {
   View,
   Text,
   Dimensions,
-  PanResponder,
+  StyleSheet,
+  Platform,
+  AppState,
 } from "react-native";
-import Svg, {
-  Circle,
-  Path,
-  G,
-  Defs,
-  RadialGradient,
-  Stop,
-  ClipPath,
-} from "react-native-svg";
-import { useColors } from "@/constants/colors";
+import type { AppStateStatus } from "react-native";
+import { WebView } from "react-native-webview";
+import Svg, { Circle, Line, Polyline, G, Text as SvgText } from "react-native-svg";
 import { Flight } from "@/context/flights";
-
-<<<<<<< HEAD
-// ─── World data ────────────────────────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const worldTopo = require("world-atlas/countries-110m.json") as TopoJSON;
-
-interface TopoJSON {
-  type: string;
-  objects: Record<string, TopoObject>;
-  arcs: number[][][];
-  transform?: { scale: [number, number]; translate: [number, number] };
-}
-interface TopoObject   { type: string; geometries: TopoGeometry[]; }
-interface TopoGeometry { type: string; arcs: ArcIndex; id?: number; properties?: Record<string, unknown>; }
-type ArcIndex = number | number[] | number[][] | number[][][];
-
-function decodeArcs(topo: TopoJSON): [number, number][][] {
-  const { arcs, transform } = topo;
-  const scale  = transform?.scale    ?? [1, 1];
-  const transl = transform?.translate ?? [0, 0];
-  return arcs.map((arc) => {
-    let x = 0, y = 0;
-    return arc.map(([dx, dy]) => { x += dx; y += dy; return [x * scale[0] + transl[0], y * scale[1] + transl[1]] as [number, number]; });
-  });
-}
-function stitchRing(idx: number[], dec: [number, number][][]): [number, number][] {
-  const pts: [number, number][] = [];
-  for (const i of idx) { const a = i < 0 ? [...dec[~i]].reverse() : dec[i]; pts.push(...a.slice(0, -1)); }
-  return pts;
-}
-function extractCountryRings(topo: TopoJSON): [number, number][][][] {
-  const dec = decodeArcs(topo);
-  const obj = topo.objects["countries"] ?? topo.objects[Object.keys(topo.objects)[0]];
-  const out: [number, number][][][] = [];
-  for (const g of obj.geometries) {
-    if (g.type === "Polygon")           { out.push((g.arcs as number[][]).map(r => stitchRing(r, dec))); }
-    else if (g.type === "MultiPolygon") { for (const p of (g.arcs as number[][][])) out.push(p.map(r => stitchRing(r, dec))); }
-=======
-import Svg2, { Circle, Line, Polyline, G, Text as SvgText } from "react-native-svg";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 const MAP_W = Math.min(SCREEN_W - 32, 600);
 const MAP_H = MAP_W; // square canvas so the sphere looks perfect
+
+const PADDING = 16;
+
+function project(lon: number, lat: number): [number, number] {
+  const x = PADDING + ((lon + 180) / 360) * (MAP_W - PADDING * 2);
+  const y = PADDING + ((90 - lat) / 180) * (MAP_H - PADDING * 2);
+  return [x, y];
+}
 
 // ─── Connectivity hook ────────────────────────────────────────────────────────
 const PING_URL = "https://connectivitycheck.gstatic.com/generate_204";
@@ -108,19 +51,9 @@ async function checkOnline(): Promise<boolean> {
     return res.status < 400;
   } catch {
     return false;
->>>>>>> main
   }
-  return out;
 }
-const COUNTRY_POLYGONS = extractCountryRings(worldTopo);
 
-<<<<<<< HEAD
-// ─── Default (compact card) size ─────────────────────────────────────────────────────────
-const { width: SCREEN_W } = Dimensions.get("window");
-const DEFAULT_SIZE = Math.min(SCREEN_W - 40, 360);
-
-// ─── Airport registry [lon, lat] ──────────────────────────────────────────────
-=======
 function useIsConnected(): boolean {
   const [connected, setConnected] = useState(true);
   const refresh = useCallback(async () => {
@@ -137,7 +70,6 @@ function useIsConnected(): boolean {
 }
 
 // ─── Airport registry (lng, lat) ──────────────────────────────────────────────
->>>>>>> main
 const AIRPORTS: Record<string, [number, number]> = {
   LIS:[-9.14,38.78],GVA:[6.11,46.24],ZRH:[8.55,47.46],
   ATL:[-84.43,33.64],MIA:[-80.29,25.80],JFK:[-73.78,40.64],
@@ -170,202 +102,6 @@ const AIRPORTS: Record<string, [number, number]> = {
 };
 
 // ─── Math ──────────────────────────────────────────────────────────────────────
-const D2R = Math.PI / 180;
-
-function geoToXyz(lon: number, lat: number, rotLon: number, rotLat: number): [number, number, number] {
-  const lam = (lon + rotLon) * D2R, phi = lat * D2R;
-  const x = Math.cos(phi) * Math.cos(lam);
-  const y = Math.cos(phi) * Math.sin(lam);
-  const z = Math.sin(phi);
-  const cosT = Math.cos(rotLat * D2R), sinT = Math.sin(rotLat * D2R);
-  return [x, y * cosT - z * sinT, y * sinT + z * cosT];
-}
-
-<<<<<<< HEAD
-function pts3dToPath(pts: [number, number, number][], CX: number, CY: number, r: number): string {
-  let d = "", pen = false;
-  for (const [x, y, z] of pts) {
-    if (y > 0) {
-      const px = (CX - x * r).toFixed(1), pz = (CY - z * r).toFixed(1);
-      d += pen ? `L${px},${pz}` : `M${px},${pz}`;
-      pen = true;
-    } else { pen = false; }
-  }
-  return d;
-}
-
-function precomputeArc(from: [number, number], to: [number, number], steps = 32): [number, number, number][] {
-  const pts: [number, number, number][] = [];
-  const [x1, y1, z1] = [Math.cos(from[1]*D2R)*Math.cos(from[0]*D2R), Math.cos(from[1]*D2R)*Math.sin(from[0]*D2R), Math.sin(from[1]*D2R)];
-  const [x2, y2, z2] = [Math.cos(to[1]*D2R)*Math.cos(to[0]*D2R),   Math.cos(to[1]*D2R)*Math.sin(to[0]*D2R),   Math.sin(to[1]*D2R)];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const bx = x1+(x2-x1)*t, by = y1+(y2-y1)*t, bz = z1+(z2-z1)*t;
-    const len = Math.sqrt(bx*bx+by*by+bz*bz);
-    pts.push([bx/len, by/len, bz/len]);
-  }
-  return pts;
-}
-
-function rotateArcPts(pts: [number, number, number][], rotLon: number, rotLat: number): [number, number, number][] {
-  const lamOff = rotLon * D2R, cosT = Math.cos(rotLat * D2R), sinT = Math.sin(rotLat * D2R);
-  return pts.map(([x, y, z]) => {
-    const cosL = Math.cos(lamOff), sinL = Math.sin(lamOff);
-    const rx = x * cosL - y * sinL;
-    const ry = x * sinL + y * cosL;
-    const rz = z;
-    return [rx, ry * cosT - rz * sinT, ry * sinT + rz * cosT] as [number, number, number];
-  });
-}
-
-function ringToPath(ring: [number, number][], rotLon: number, rotLat: number, CX: number, CY: number, r: number): string {
-  let d = "", pen = false;
-  for (const [lon, lat] of ring) {
-    const [x, y, z] = geoToXyz(lon, lat, rotLon, rotLat);
-    if (y > 0) {
-      const px = (CX - x * r).toFixed(1), pz = (CY - z * r).toFixed(1);
-      d += pen ? `L${px},${pz}` : `M${px},${pz}`;
-      pen = true;
-    } else { pen = false; }
-  }
-  return d;
-}
-
-function graticulePaths(rotLon: number, rotLat: number, CX: number, CY: number, r: number): string[] {
-  const out: string[] = []; const steps = 48;
-  for (const lat of [-60, -30, 0, 30, 60]) {
-    let d = "", pen = false;
-    for (let i = 0; i <= steps; i++) {
-      const [x, y, z] = geoToXyz(-180 + (360/steps)*i, lat, rotLon, rotLat);
-      if (y > 0) { d += pen ? `L${(CX-x*r).toFixed(1)},${(CY-z*r).toFixed(1)}` : `M${(CX-x*r).toFixed(1)},${(CY-z*r).toFixed(1)}`; pen = true; } else pen = false;
-    }
-    if (d) out.push(d);
-  }
-  for (let lon = -180; lon < 180; lon += 30) {
-    let d = "", pen = false;
-    for (let i = 0; i <= steps; i++) {
-      const [x, y, z] = geoToXyz(lon, -90+(180/steps)*i, rotLon, rotLat);
-      if (y > 0) { d += pen ? `L${(CX-x*r).toFixed(1)},${(CY-z*r).toFixed(1)}` : `M${(CX-x*r).toFixed(1)},${(CY-z*r).toFixed(1)}`; pen = true; } else pen = false;
-    }
-    if (d) out.push(d);
-  }
-  return out;
-}
-
-function pinchDist(t: { pageX: number; pageY: number }[]): number {
-  const dx = t[0].pageX - t[1].pageX, dy = t[0].pageY - t[1].pageY;
-  return Math.sqrt(dx*dx + dy*dy);
-}
-
-// ─── Props ────────────────────────────────────────────────────────────────────
-interface Props {
-  flights: Flight[];
-  /** Canvas side-length in px. Defaults to compact home-preview size. */
-  size?: number;
-  /** Override the default R_BASE (SIZE * 0.44). Used by the full-screen
-   *  view to set the initial sphere radius to exactly half the screen. */
-  rBase?: number;
-  onDragStart?: () => void;
-  onDragEnd?: () => void;
-  fullScreen?: boolean;
-}
-
-// ─── Component ────────────────────────────────────────────────────────────────
-export function GlobeView({ flights, size: sizeProp, rBase: rBaseProp, onDragStart, onDragEnd }: Props) {
-  const SIZE    = sizeProp ?? DEFAULT_SIZE;
-  const CX      = SIZE / 2;
-  const CY      = SIZE / 2;
-  const R_BASE  = rBaseProp ?? SIZE * 0.44;
-  const R_MIN   = R_BASE * 0.6;
-  const R_MAX   = R_BASE * 4;
-
-  const isFullScreen = sizeProp !== undefined;
-
-  const C = useColors();
-  const isDark = C.bg === "#0A0A0F" || C.bg.startsWith("#0");
-
-  // ─── Render state — one update per animation frame ────────────────────
-  const [renderState, setRenderState] = React.useState({ lon: 10, lat: 20, radius: R_BASE });
-  const lonRef    = useRef(10);
-  const latRef    = useRef(20);
-  const radiusRef = useRef(R_BASE);
-  const rafRef    = useRef<number | null>(null);
-
-  const scheduleRender = useCallback(() => {
-    if (rafRef.current !== null) return;
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = null;
-      setRenderState({ lon: lonRef.current, lat: latRef.current, radius: radiusRef.current });
-    });
-  }, []);
-
-  const lastPage      = useRef<{ x: number; y: number } | null>(null);
-  const pinchStartRef = useRef<{ dist: number; r: number } | null>(null);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponderCapture: () => true,
-      onMoveShouldSetPanResponderCapture:  () => true,
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder:  () => true,
-
-      onPanResponderGrant: (evt) => {
-        if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
-        const touches = evt.nativeEvent.touches;
-        if (touches.length >= 2) {
-          pinchStartRef.current = { dist: pinchDist(touches as unknown as { pageX: number; pageY: number }[]), r: radiusRef.current };
-          lastPage.current = null;
-        } else {
-          lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
-          pinchStartRef.current = null;
-        }
-        onDragStart?.();
-      },
-
-      onPanResponderMove: (evt) => {
-        const touches = evt.nativeEvent.touches;
-        if (touches.length >= 2) {
-          if (!pinchStartRef.current) {
-            pinchStartRef.current = { dist: pinchDist(touches as unknown as { pageX: number; pageY: number }[]), r: radiusRef.current };
-          }
-          const scale = pinchDist(touches as unknown as { pageX: number; pageY: number }[]) / pinchStartRef.current.dist;
-          radiusRef.current = Math.max(R_MIN, Math.min(R_MAX, pinchStartRef.current.r * scale));
-          lastPage.current  = null;
-        } else {
-          pinchStartRef.current = null;
-          if (!lastPage.current) { lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY }; return; }
-          const dx = evt.nativeEvent.pageX - lastPage.current.x;
-          const dy = evt.nativeEvent.pageY - lastPage.current.y;
-          lonRef.current = lonRef.current + dx * 0.5;
-          latRef.current = Math.max(-60, Math.min(60, latRef.current - dy * 0.4));
-          lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
-        }
-        scheduleRender();
-      },
-
-      onPanResponderRelease: () => {
-        lastPage.current = null; pinchStartRef.current = null;
-        onDragEnd?.();
-      },
-      onPanResponderTerminate: () => {
-        lastPage.current = null; pinchStartRef.current = null;
-        onDragEnd?.();
-      },
-    })
-  ).current;
-
-  // ─── Pre-compute arc 3D points (only when flights change) ─────────────
-  const arcPts3d = useMemo(() => {
-    const seen = new Set<string>();
-    const out: { pts: [number, number, number][] }[] = [];
-    for (const f of flights) {
-      const fc = AIRPORTS[f.departureAirport], tc = AIRPORTS[f.arrivalAirport];
-      if (!fc || !tc) continue;
-      const key = [f.departureAirport, f.arrivalAirport].sort().join("-");
-      if (!seen.has(key)) { seen.add(key); out.push({ pts: precomputeArc(fc, tc, 32) }); }
-    }
-    return out;
-=======
 function greatCirclePoints(from: [number,number], to: [number,number], steps = 30): string {
   const [lon1, lat1] = from.map(d => (d * Math.PI) / 180);
   const [lon2, lat2] = to.map(d => (d * Math.PI) / 180);
@@ -393,144 +129,14 @@ function OfflineFallback({ flights }: { flights: Flight[] }) {
       arcList.push({ from: fc, to: tc });
     }
     return { arcs: arcList, airports: Array.from(apSet).filter(k=>AIRPORTS[k]).map(k=>({iata:k,coords:AIRPORTS[k]})) };
->>>>>>> main
   }, [flights]);
-
-  const airportList = useMemo(() => {
-    const set = new Set<string>();
-    for (const f of flights) { if (AIRPORTS[f.departureAirport]) set.add(f.departureAirport); if (AIRPORTS[f.arrivalAirport]) set.add(f.arrivalAirport); }
-    return Array.from(set).map(k => ({ iata: k, coords: AIRPORTS[k] }));
-  }, [flights]);
-
-  const { lon: renderLon, lat: renderLat, radius } = renderState;
-
-  const countryPaths = useMemo(() =>
-    COUNTRY_POLYGONS
-      .map((poly, pi) => { const d = ringToPath(poly[0], renderLon, renderLat, CX, CY, radius); return d ? { key: `c${pi}`, d } : null; })
-      .filter(Boolean) as { key: string; d: string }[],
-    [renderLon, renderLat, radius, CX, CY] // eslint-disable-line react-hooks/exhaustive-deps
-  );
-
-  const arcPaths = useMemo(() =>
-    arcPts3d.map(({ pts }) => pts3dToPath(rotateArcPts(pts, renderLon, renderLat), CX, CY, radius)),
-    [arcPts3d, renderLon, renderLat, radius, CX, CY] // eslint-disable-line react-hooks/exhaustive-deps
-  );
-
-  const graticuleLines = useMemo(() =>
-    graticulePaths(renderLon, renderLat, CX, CY, radius),
-    [renderLon, renderLat, radius, CX, CY] // eslint-disable-line react-hooks/exhaustive-deps
-  );
-
-  const dotPositions = useMemo(() =>
-    airportList.map(ap => {
-      const [x, y, z] = geoToXyz(ap.coords[0], ap.coords[1], renderLon, renderLat);
-      return { iata: ap.iata, px: CX - x * radius, pz: CY - z * radius, vis: y > 0 };
-    }),
-    [airportList, renderLon, renderLat, radius, CX, CY] // eslint-disable-line react-hooks/exhaustive-deps
-  );
-
-  const hasFlights = arcPts3d.length > 0;
-
-  const arcGlowW = Math.max(4,  8   * (R_BASE / radius));
-  const arcCoreW = Math.max(1,  1.8 * (R_BASE / radius));
-  const dotRGlow = Math.max(4,  8   * (R_BASE / radius));
-  const dotRCore = Math.max(2,  4   * (R_BASE / radius));
-
-  const sphereDeep = isDark ? "#0D1B3E" : "#D6E8FF";
-  const sphereMid  = isDark ? "#0F2654" : "#EAF3FF";
-  const sphereEdge = isDark ? "#061228" : "#B8D4F8";
-  const gridColor  = isDark ? "rgba(120,160,255,0.10)" : "rgba(79,142,240,0.10)";
-  const landFill   = isDark ? "#1C3566" : "#B8D0F0";
-  const landStroke = isDark ? "#2A4A80" : "#8AB0D8";
 
   return (
-<<<<<<< HEAD
-    <View style={{ alignItems: "center", paddingVertical: sizeProp ? 0 : 4 }}>
-      <View
-        style={{
-          width: SIZE,
-          height: SIZE,
-          alignItems: "center",
-          justifyContent: "center",
-          ...(isFullScreen
-            ? { overflow: "visible" }
-            : {
-                overflow: "hidden",
-                borderRadius: SIZE / 2 + 8,
-                shadowColor: C.accent,
-                shadowOffset: { width: 0, height: 8 },
-                shadowOpacity: 0.22,
-                shadowRadius: 24,
-                elevation: 10,
-              }
-          ),
-        }}
-        {...panResponder.panHandlers}
-      >
-        <Svg width={SIZE} height={SIZE} style={{ overflow: "visible" }}>
-          <Defs>
-            <RadialGradient id="sphereGrad" cx="38%" cy="32%" r="68%" fx="38%" fy="32%">
-              <Stop offset="0%"   stopColor={sphereMid}  stopOpacity="1" />
-              <Stop offset="60%"  stopColor={sphereDeep} stopOpacity="1" />
-              <Stop offset="100%" stopColor={sphereEdge} stopOpacity="1" />
-            </RadialGradient>
-            <RadialGradient id="atmosGrad" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
-              <Stop offset="72%"  stopColor="transparent" stopOpacity="0" />
-              <Stop offset="88%"  stopColor={isDark ? "#2A5BA8" : "#4F8EF0"} stopOpacity={isDark ? "0.18" : "0.14"} />
-              <Stop offset="100%" stopColor={isDark ? "#1E3A7A" : "#4F8EF0"} stopOpacity={isDark ? "0.28" : "0.20"} />
-            </RadialGradient>
-            <RadialGradient id="specular" cx="35%" cy="28%" r="32%">
-              <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity={isDark ? "0.10" : "0.22"} />
-              <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
-            </RadialGradient>
-            <ClipPath id="globeClip"><Circle cx={CX} cy={CY} r={radius} /></ClipPath>
-          </Defs>
-
-          <Circle cx={CX} cy={CY} r={radius} fill="url(#sphereGrad)" />
-
-          <G clipPath="url(#globeClip)">
-            {graticuleLines.map((d, i) => <Path key={`g${i}`} d={d} stroke={gridColor} strokeWidth={0.7} fill="none" />)}
-          </G>
-          <G clipPath="url(#globeClip)">
-            {countryPaths.map(({ key, d }) => <Path key={key} d={d} fill={landFill} stroke={landStroke} strokeWidth={0.5} strokeLinejoin="round" />)}
-          </G>
-          <G clipPath="url(#globeClip)">
-            {arcPaths.map((d, i) => d ? <Path key={`ag${i}`} d={d} stroke={C.accentGlow} strokeWidth={arcGlowW} fill="none" strokeLinecap="round" /> : null)}
-          </G>
-          <G clipPath="url(#globeClip)">
-            {arcPaths.map((d, i) => d ? <Path key={`ac${i}`} d={d} stroke={C.accent} strokeWidth={arcCoreW} fill="none" strokeLinecap="round" opacity={0.92} /> : null)}
-          </G>
-          <G clipPath="url(#globeClip)">
-            {dotPositions.filter(d => d.vis).map(d => <Circle key={`r${d.iata}`} cx={d.px} cy={d.pz} r={dotRGlow} fill={C.accentDim} />)}
-          </G>
-          <G clipPath="url(#globeClip)">
-            {dotPositions.filter(d => d.vis).map(d => <Circle key={`f${d.iata}`} cx={d.px} cy={d.pz} r={dotRCore} fill={C.accent} stroke="#FFFFFF" strokeWidth={1.2} />)}
-          </G>
-
-          <Circle cx={CX} cy={CY} r={radius} fill="url(#atmosGrad)" />
-          <Circle cx={CX} cy={CY} r={radius} fill="url(#specular)" clipPath="url(#globeClip)" />
-          <Circle cx={CX} cy={CY} r={radius} fill="none"
-            stroke={isDark ? "rgba(79,142,240,0.18)" : "rgba(79,142,240,0.20)"}
-            strokeWidth={1.5}
-          />
-
-          {!hasFlights && (
-            <Path d={`M${CX},${CY-18} l4,8 l8,1 l-6,6 l2,9 l-8,-4 l-8,4 l2,-9 l-6,-6 l8,-1 z`} fill={C.textMuted} opacity={0.35} />
-          )}
-        </Svg>
-
-        {!hasFlights && (
-          <View style={{ position: "absolute", bottom: SIZE * 0.12, left: 0, right: 0, alignItems: "center" }} pointerEvents="none">
-            <Text style={{ fontSize: 12, fontFamily: "DMSans_500Medium", letterSpacing: 0.3, color: C.textMuted }}>Add flights to see your network</Text>
-          </View>
-        )}
-      </View>
-=======
     <View style={styles.fallbackContainer}>
       <View style={styles.offlineBanner}>
         <Text style={styles.offlineBannerText}>✈︎  Offline — showing cached routes</Text>
       </View>
-      <Svg2 width={MAP_W} height={MAP_H} style={styles.svg}>
+      <Svg width={MAP_W} height={MAP_H} style={styles.svg}>
         {[-60,-30,0,30,60].map(lat => {
           const [,y] = project(0,lat);
           return <Line key={`lat-${lat}`} x1={PADDING} y1={y} x2={MAP_W-PADDING} y2={y} stroke="#C8D4E0" strokeWidth={0.5} strokeDasharray="4 4"/>;
@@ -544,14 +150,11 @@ function OfflineFallback({ flights }: { flights: Flight[] }) {
         {airports.map(ap => { const [x,y]=project(ap.coords[0],ap.coords[1]); return <Circle key={`ring-${ap.iata}`} cx={x} cy={y} r={6} fill="rgba(79,142,240,0.22)"/>; })}
         {airports.map(ap => { const [x,y]=project(ap.coords[0],ap.coords[1]); return <Circle key={`dot-${ap.iata}`} cx={x} cy={y} r={3.5} fill="#1E64DC" stroke="white" strokeWidth={1.2}/>; })}
         {airports.length===0 && <SvgText x={MAP_W/2} y={MAP_H/2} textAnchor="middle" fontSize={13} fill="rgba(60,80,120,0.45)" fontFamily="-apple-system,sans-serif">Add flights to see your network</SvgText>}
-      </Svg2>
->>>>>>> main
+      </Svg>
     </View>
   );
 }
 
-<<<<<<< HEAD
-=======
 // ─── buildHTML ────────────────────────────────────────────────────────────────
 function buildHTML(flights: Flight[]): string {
   const seen = new Set<string>();
@@ -729,27 +332,6 @@ function buildLayers(scale){
   return layers;
 }
 
-// Natural Earth style JSON (deep navy ocean, muted teal land)
-const MAP_STYLE = {
-  version:8,
-  sources:{
-    "ne-tiles":{
-      type:"vector",
-      tiles:["https://basemaps.cartocdn.com/gl/dark-matter-gl-style/{z}/{x}/{y}.pbf"],
-      maxzoom:6
-    }
-  },
-  layers:[
-    {id:"bg",type:"background",paint:{"background-color":"#0B1F3A"}},
-    {id:"water",type:"fill",source:"ne-tiles","source-layer":"water",paint:{"fill-color":"#0B1F3A"}},
-    {id:"land",type:"fill",source:"ne-tiles","source-layer":"landcover",paint:{"fill-color":"#1C4D45","fill-opacity":0.9}},
-    {id:"land2",type:"fill",source:"ne-tiles","source-layer":"land",paint:{"fill-color":"#1E5248","fill-opacity":0.85}},
-    {id:"country-border",type:"line",source:"ne-tiles","source-layer":"admin",paint:{"line-color":"rgba(150,210,200,0.25)","line-width":0.5}},
-    {id:"state-border",type:"line",source:"ne-tiles","source-layer":"admin",filter:["==","admin_level",4],paint:{"line-color":"rgba(150,210,200,0.12)","line-width":0.25}},
-  ]
-};
-
-// Fallback: use Carto dark-matter tile style URL (supports GlobeView natively)
 const STYLE_URL = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 
 let deckInstance = null;
@@ -874,5 +456,4 @@ const styles = StyleSheet.create({
   svg: { backgroundColor: "#030A14" },
 });
 
->>>>>>> main
 export default GlobeView;
