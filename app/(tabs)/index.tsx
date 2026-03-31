@@ -321,10 +321,10 @@ function PeriodDropdown({ period, years, onChange }: { period: "all" | number; y
   return (
     <>
       <Pressable onPress={() => { Haptics.selectionAsync(); setOpen(true); }}
-        style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", backgroundColor: C.card, borderRadius: 20, borderWidth: 1, borderColor: C.accent + "55", paddingHorizontal: 14, paddingVertical: 9, opacity: pressed ? 0.8 : 1 }]}>
-        <Ionicons name="calendar-outline" size={14} color={C.accent} />
+        style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", backgroundColor: C.accentDim, borderRadius: 20, borderWidth: 1, borderColor: C.accent + "55", paddingHorizontal: 12, paddingVertical: 6, opacity: pressed ? 0.8 : 1 }]}>
+        <Ionicons name="calendar-outline" size={13} color={C.accent} />
         <Text style={{ fontSize: 13, color: C.accent, fontFamily: "DMSans_700Bold" }}>{label}</Text>
-        <Ionicons name="chevron-down" size={14} color={C.accent} />
+        <Ionicons name="chevron-down" size={13} color={C.accent} />
       </Pressable>
       <Modal transparent animationType="fade" visible={open} onRequestClose={() => setOpen(false)}>
         <TouchableWithoutFeedback onPress={() => setOpen(false)}>
@@ -442,22 +442,26 @@ export default function HomeScreen() {
           <>
             {nextFlight && <NextFlightCard flight={nextFlight} today={today} />}
 
-            <Animated.View entering={FadeInDown.delay(40).springify()} style={{ marginBottom: 16 }}>
-              <PeriodDropdown period={period} years={years} onChange={(p) => { Haptics.selectionAsync(); setPeriod(p); }} />
-            </Animated.View>
-
-            <Animated.View entering={FadeInDown.delay(80).springify()} style={{ backgroundColor: C.card, borderRadius: 20, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: C.border }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            {/* Stats card — period dropdown lives here as its header control */}
+            <Animated.View entering={FadeInDown.delay(40).springify()} style={{ backgroundColor: C.card, borderRadius: 20, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: C.border }}>
+              {/* Card header: label + period picker inline */}
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                 <View>
                   <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_400Regular", letterSpacing: 0.2, marginBottom: 2 }}>{period === "all" ? "All time flights" : `Flights in ${period}`}</Text>
                   <Text style={{ fontSize: 52, color: C.text, fontFamily: "DMSans_700Bold", lineHeight: 60 }}>{stats.count}</Text>
                 </View>
-                <View style={{ width: 52, height: 52, borderRadius: 14, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="airplane" size={28} color={C.accent} />
+                <View style={{ alignItems: "flex-end", gap: 10 }}>
+                  <PeriodDropdown period={period} years={years} onChange={(p) => { Haptics.selectionAsync(); setPeriod(p); }} />
+                  <View style={{ width: 52, height: 52, borderRadius: 14, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="airplane" size={28} color={C.accent} />
+                  </View>
                 </View>
               </View>
-              <View style={{ height: 1, backgroundColor: C.border, marginVertical: 14 }} />
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+
+              <View style={{ height: 1, backgroundColor: C.border, marginBottom: 14 }} />
+
+              {/* Miles + CO₂ summary row */}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: stats.co2 > 0 ? 10 : 0 }}>
                 <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_500Medium" }}>{formatNumber(stats.miles)} mi</Text>
                 <View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: C.border }} />
                 <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_500Medium" }}>{stats.co2.toFixed(0)}{" kg CO\u2082"}</Text>
@@ -467,10 +471,12 @@ export default function HomeScreen() {
                   </View>
                 )}
               </View>
+
+              {/* CO₂ fun fact — promoted to its own tinted row */}
               {stats.co2 > 0 && (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 6 }}>
-                  <Ionicons name="leaf-outline" size={11} color={C.green} />
-                  <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular", fontStyle: "italic", flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.green + "12", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 }}>
+                  <Ionicons name="leaf" size={14} color={C.green} />
+                  <Text style={{ fontSize: 13, color: C.green, fontFamily: "DMSans_500Medium", flex: 1, lineHeight: 18 }}>
                     {"That\u2019s like "}{getCO2FunFact(stats.co2)}
                   </Text>
                 </View>
@@ -479,15 +485,16 @@ export default function HomeScreen() {
 
             {/* Globe preview */}
             <Animated.View entering={FadeInDown.delay(120).springify()} style={{ marginTop: 4, marginBottom: 24 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase" }}>Your Flight Network</Text>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                {/* Promoted heading — no all-caps, larger + bolder */}
+                <Text style={{ fontSize: 17, color: C.text, fontFamily: "DMSans_700Bold" }}>Flight Network</Text>
                 <Pressable
                   onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/globe"); }}
                   hitSlop={8}
                   style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: 4, opacity: pressed ? 0.6 : 1 }]}
                 >
-                  <Text style={{ fontSize: 12, color: C.accent, fontFamily: "DMSans_500Medium" }}>Expand</Text>
-                  <Ionicons name="expand-outline" size={13} color={C.accent} />
+                  <Text style={{ fontSize: 13, color: C.accent, fontFamily: "DMSans_500Medium" }}>Expand</Text>
+                  <Ionicons name="expand-outline" size={14} color={C.accent} />
                 </Pressable>
               </View>
               <GlobeView
