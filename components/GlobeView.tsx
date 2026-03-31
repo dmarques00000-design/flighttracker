@@ -1,6 +1,16 @@
 /**
  * GlobeView — interactive 3D SVG globe with orthographic projection.
  *
+ * Gesture isolation
+ * ─────────────────
+ * The outermost View uses onStartShouldSetResponderCapture and
+ * onMoveShouldSetResponderCapture (both returning true) so that ANY
+ * touch sequence that begins inside the globe's bounding box is
+ * claimed by this component at the capture phase — before the parent
+ * pager's PanResponder ever has a chance to evaluate it.
+ * This means swiping anywhere on the globe (including near the edges)
+ * rotates the globe and never triggers a tab switch.
+ *
  * Performance architecture
  * ─────────────────────────
  * PanResponder (JS) → mutable refs → requestAnimationFrame gate → setState
@@ -203,10 +213,7 @@ function pinchDist(t: { pageX: number; pageY: number }[]): number {
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface Props {
   flights: Flight[];
-  /** Canvas side-length in px. Defaults to compact home-preview size. */
   size?: number;
-  /** Override the default R_BASE (SIZE * 0.44). Used by the full-screen
-   *  view to set the initial sphere radius to exactly half the screen. */
   rBase?: number;
   onDragStart?: () => void;
   onDragEnd?: () => void;
@@ -215,19 +222,18 @@ interface Props {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export function GlobeView({ flights, size: sizeProp, rBase: rBaseProp, onDragStart, onDragEnd }: Props) {
-  const SIZE    = sizeProp ?? DEFAULT_SIZE;
-  const CX      = SIZE / 2;
-  const CY      = SIZE / 2;
-  const R_BASE  = rBaseProp ?? SIZE * 0.44;
-  const R_MIN   = R_BASE * 0.6;
-  const R_MAX   = R_BASE * 4;
+  const SIZE   = sizeProp ?? DEFAULT_SIZE;
+  const CX     = SIZE / 2;
+  const CY     = SIZE / 2;
+  const R_BASE = rBaseProp ?? SIZE * 0.44;
+  const R_MIN  = R_BASE * 0.6;
+  const R_MAX  = R_BASE * 4;
 
   const isFullScreen = sizeProp !== undefined;
 
   const C = useColors();
   const isDark = C.bg === "#0A0A0F" || C.bg.startsWith("#0");
 
-  // ─── Render state — one update per animation frame ────────────────────
   const [renderState, setRenderState] = React.useState({ lon: 10, lat: 20, radius: R_BASE });
   const lonRef    = useRef(10);
   const latRef    = useRef(20);
@@ -247,10 +253,10 @@ export function GlobeView({ flights, size: sizeProp, rBase: rBaseProp, onDragSta
 
   const panResponder = useRef(
     PanResponder.create({
+      onStartShouldSetPanResponder:        () => true,
       onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder:         () => true,
       onMoveShouldSetPanResponderCapture:  () => true,
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder:  () => true,
 
       onPanResponderGrant: (evt) => {
         if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
@@ -297,7 +303,6 @@ export function GlobeView({ flights, size: sizeProp, rBase: rBaseProp, onDragSta
     })
   ).current;
 
-  // ─── Pre-compute arc 3D points (only when flights change) ─────────────
   const arcPts3d = useMemo(() => {
     const seen = new Set<string>();
     const out: { pts: [number, number, number][] }[] = [];
@@ -358,85 +363,100 @@ export function GlobeView({ flights, size: sizeProp, rBase: rBaseProp, onDragSta
   const landStroke = isDark ? "#2A4A80" : "#8AB0D8";
 
   return (
-    <View style={{ alignItems: "center", paddingVertical: sizeProp ? 0 : 4 }}>
-      <View
-        style={{
-          width: SIZE,
-          height: SIZE,
-          alignItems: "center",
-          justifyContent: "center",
-          ...(isFullScreen
-            ? { overflow: "visible" }
-            : {
-                overflow: "hidden",
-                borderRadius: SIZE / 2 + 8,
-                shadowColor: C.accent,
-                shadowOffset: { width: 0, height: 8 },
-                shadowOpacity: 0.22,
-                shadowRadius: 24,
-                elevation: 10,
-              }
-          ),
-        }}
-        {...panResponder.panHandlers}
-      >
-        <Svg width={SIZE} height={SIZE} style={{ overflow: "visible" }}>
-          <Defs>
-            <RadialGradient id="sphereGrad" cx="38%" cy="32%" r="68%" fx="38%" fy="32%">
-              <Stop offset="0%"   stopColor={sphereMid}  stopOpacity="1" />
-              <Stop offset="60%"  stopColor={sphereDeep} stopOpacity="1" />
-              <Stop offset="100%" stopColor={sphereEdge} stopOpacity="1" />
-            </RadialGradient>
-            <RadialGradient id="atmosGrad" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
-              <Stop offset="72%"  stopColor="transparent" stopOpacity="0" />
-              <Stop offset="88%"  stopColor={isDark ? "#2A5BA8" : "#4F8EF0"} stopOpacity={isDark ? "0.18" : "0.14"} />
-              <Stop offset="100%" stopColor={isDark ? "#1E3A7A" : "#4F8EF0"} stopOpacity={isDark ? "0.28" : "0.20"} />
-            </RadialGradient>
-            <RadialGradient id="specular" cx="35%" cy="28%" r="32%">
-              <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity={isDark ? "0.10" : "0.22"} />
-              <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
-            </RadialGradient>
-            <ClipPath id="globeClip"><Circle cx={CX} cy={CY} r={radius} /></ClipPath>
-          </Defs>
+    // ── Gesture isolation wrapper ──────────────────────────────────────────
+    // onStartShouldSetResponderCapture + onMoveShouldSetResponderCapture
+    // both return true so this View wins the responder at the capture phase
+    // (top-down, before any ancestor PanResponder runs its checks).
+    // The result: any touch that begins inside the globe's bounding box is
+    // owned by the globe. The parent tab pager never sees it.
+    <View
+      onStartShouldSetResponderCapture={() => true}
+      onMoveShouldSetResponderCapture={() => true}
+      // Also set the non-capture versions so nested children can still
+      // bubble up to us if needed.
+      onStartShouldSetResponder={() => true}
+      onMoveShouldSetResponder={() => true}
+    >
+      <View style={{ alignItems: "center", paddingVertical: sizeProp ? 0 : 4 }}>
+        <View
+          style={{
+            width: SIZE,
+            height: SIZE,
+            alignItems: "center",
+            justifyContent: "center",
+            ...(isFullScreen
+              ? { overflow: "visible" }
+              : {
+                  overflow: "hidden",
+                  borderRadius: SIZE / 2 + 8,
+                  shadowColor: C.accent,
+                  shadowOffset: { width: 0, height: 8 },
+                  shadowOpacity: 0.22,
+                  shadowRadius: 24,
+                  elevation: 10,
+                }
+            ),
+          }}
+          {...panResponder.panHandlers}
+        >
+          <Svg width={SIZE} height={SIZE} style={{ overflow: "visible" }}>
+            <Defs>
+              <RadialGradient id="sphereGrad" cx="38%" cy="32%" r="68%" fx="38%" fy="32%">
+                <Stop offset="0%"   stopColor={sphereMid}  stopOpacity="1" />
+                <Stop offset="60%"  stopColor={sphereDeep} stopOpacity="1" />
+                <Stop offset="100%" stopColor={sphereEdge} stopOpacity="1" />
+              </RadialGradient>
+              <RadialGradient id="atmosGrad" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+                <Stop offset="72%"  stopColor="transparent" stopOpacity="0" />
+                <Stop offset="88%"  stopColor={isDark ? "#2A5BA8" : "#4F8EF0"} stopOpacity={isDark ? "0.18" : "0.14"} />
+                <Stop offset="100%" stopColor={isDark ? "#1E3A7A" : "#4F8EF0"} stopOpacity={isDark ? "0.28" : "0.20"} />
+              </RadialGradient>
+              <RadialGradient id="specular" cx="35%" cy="28%" r="32%">
+                <Stop offset="0%"   stopColor="#FFFFFF" stopOpacity={isDark ? "0.10" : "0.22"} />
+                <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
+              </RadialGradient>
+              <ClipPath id="globeClip"><Circle cx={CX} cy={CY} r={radius} /></ClipPath>
+            </Defs>
 
-          <Circle cx={CX} cy={CY} r={radius} fill="url(#sphereGrad)" />
+            <Circle cx={CX} cy={CY} r={radius} fill="url(#sphereGrad)" />
 
-          <G clipPath="url(#globeClip)">
-            {graticuleLines.map((d, i) => <Path key={`g${i}`} d={d} stroke={gridColor} strokeWidth={0.7} fill="none" />)}
-          </G>
-          <G clipPath="url(#globeClip)">
-            {countryPaths.map(({ key, d }) => <Path key={key} d={d} fill={landFill} stroke={landStroke} strokeWidth={0.5} strokeLinejoin="round" />)}
-          </G>
-          <G clipPath="url(#globeClip)">
-            {arcPaths.map((d, i) => d ? <Path key={`ag${i}`} d={d} stroke={C.accentGlow} strokeWidth={arcGlowW} fill="none" strokeLinecap="round" /> : null)}
-          </G>
-          <G clipPath="url(#globeClip)">
-            {arcPaths.map((d, i) => d ? <Path key={`ac${i}`} d={d} stroke={C.accent} strokeWidth={arcCoreW} fill="none" strokeLinecap="round" opacity={0.92} /> : null)}
-          </G>
-          <G clipPath="url(#globeClip)">
-            {dotPositions.filter(d => d.vis).map(d => <Circle key={`r${d.iata}`} cx={d.px} cy={d.pz} r={dotRGlow} fill={C.accentDim} />)}
-          </G>
-          <G clipPath="url(#globeClip)">
-            {dotPositions.filter(d => d.vis).map(d => <Circle key={`f${d.iata}`} cx={d.px} cy={d.pz} r={dotRCore} fill={C.accent} stroke="#FFFFFF" strokeWidth={1.2} />)}
-          </G>
+            <G clipPath="url(#globeClip)">
+              {graticuleLines.map((d, i) => <Path key={`g${i}`} d={d} stroke={gridColor} strokeWidth={0.7} fill="none" />)}
+            </G>
+            <G clipPath="url(#globeClip)">
+              {countryPaths.map(({ key, d }) => <Path key={key} d={d} fill={landFill} stroke={landStroke} strokeWidth={0.5} strokeLinejoin="round" />)}
+            </G>
+            <G clipPath="url(#globeClip)">
+              {arcPaths.map((d, i) => d ? <Path key={`ag${i}`} d={d} stroke={C.accentGlow} strokeWidth={arcGlowW} fill="none" strokeLinecap="round" /> : null)}
+            </G>
+            <G clipPath="url(#globeClip)">
+              {arcPaths.map((d, i) => d ? <Path key={`ac${i}`} d={d} stroke={C.accent} strokeWidth={arcCoreW} fill="none" strokeLinecap="round" opacity={0.92} /> : null)}
+            </G>
+            <G clipPath="url(#globeClip)">
+              {dotPositions.filter(d => d.vis).map(d => <Circle key={`r${d.iata}`} cx={d.px} cy={d.pz} r={dotRGlow} fill={C.accentDim} />)}
+            </G>
+            <G clipPath="url(#globeClip)">
+              {dotPositions.filter(d => d.vis).map(d => <Circle key={`f${d.iata}`} cx={d.px} cy={d.pz} r={dotRCore} fill={C.accent} stroke="#FFFFFF" strokeWidth={1.2} />)}
+            </G>
 
-          <Circle cx={CX} cy={CY} r={radius} fill="url(#atmosGrad)" />
-          <Circle cx={CX} cy={CY} r={radius} fill="url(#specular)" clipPath="url(#globeClip)" />
-          <Circle cx={CX} cy={CY} r={radius} fill="none"
-            stroke={isDark ? "rgba(79,142,240,0.18)" : "rgba(79,142,240,0.20)"}
-            strokeWidth={1.5}
-          />
+            <Circle cx={CX} cy={CY} r={radius} fill="url(#atmosGrad)" />
+            <Circle cx={CX} cy={CY} r={radius} fill="url(#specular)" clipPath="url(#globeClip)" />
+            <Circle cx={CX} cy={CY} r={radius} fill="none"
+              stroke={isDark ? "rgba(79,142,240,0.18)" : "rgba(79,142,240,0.20)"}
+              strokeWidth={1.5}
+            />
+
+            {!hasFlights && (
+              <Path d={`M${CX},${CY-18} l4,8 l8,1 l-6,6 l2,9 l-8,-4 l-8,4 l2,-9 l-6,-6 l8,-1 z`} fill={C.textMuted} opacity={0.35} />
+            )}
+          </Svg>
 
           {!hasFlights && (
-            <Path d={`M${CX},${CY-18} l4,8 l8,1 l-6,6 l2,9 l-8,-4 l-8,4 l2,-9 l-6,-6 l8,-1 z`} fill={C.textMuted} opacity={0.35} />
+            <View style={{ position: "absolute", bottom: SIZE * 0.12, left: 0, right: 0, alignItems: "center" }} pointerEvents="none">
+              <Text style={{ fontSize: 12, fontFamily: "DMSans_500Medium", letterSpacing: 0.3, color: C.textMuted }}>Add flights to see your network</Text>
+            </View>
           )}
-        </Svg>
-
-        {!hasFlights && (
-          <View style={{ position: "absolute", bottom: SIZE * 0.12, left: 0, right: 0, alignItems: "center" }} pointerEvents="none">
-            <Text style={{ fontSize: 12, fontFamily: "DMSans_500Medium", letterSpacing: 0.3, color: C.textMuted }}>Add flights to see your network</Text>
-          </View>
-        )}
+        </View>
       </View>
     </View>
   );
