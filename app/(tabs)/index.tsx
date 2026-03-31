@@ -377,16 +377,15 @@ export default function HomeScreen() {
     return Array.from(set).sort((a, b) => b - a);
   }, [flights]);
 
-<<<<<<< HEAD
   const nextFlight = useMemo(() =>
     flights.filter((f) => f.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0] ?? null,
     [flights, today]
-=======
+  );
+
   // Flights filtered to the selected period — used for both stats AND the globe
   const filteredFlights = useMemo(
     () => period === "all" ? flights : flights.filter((f) => f.date.startsWith(String(period))),
     [flights, period],
->>>>>>> main
   );
 
   const upcomingFlights = useMemo(() => flights.filter((f) => f.date >= today).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3), [flights, today]);
@@ -484,8 +483,7 @@ export default function HomeScreen() {
               )}
             </Animated.View>
 
-<<<<<<< HEAD
-            {/* Globe preview */}
+            {/* Globe preview (filtered by selected period) */}
             <Animated.View entering={FadeInDown.delay(120).springify()} style={{ marginTop: 4, marginBottom: 24 }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase" }}>Your Flight Network</Text>
@@ -499,16 +497,10 @@ export default function HomeScreen() {
                 </Pressable>
               </View>
               <GlobeView
-                flights={flights}
+                flights={filteredFlights}
                 onDragStart={() => setGlobeDragging(true)}
                 onDragEnd={() => setGlobeDragging(false)}
               />
-=======
-            {/* ─── Globe (filtered by selected period) ─── */}
-            <Animated.View entering={FadeInDown.delay(120).springify()} style={{ marginTop: 4, marginBottom: 24 }}>
-              <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Your Flight Network</Text>
-              <GlobeView flights={filteredFlights} />
->>>>>>> main
             </Animated.View>
 
             {/* Statistics */}
