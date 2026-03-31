@@ -382,12 +382,6 @@ export default function HomeScreen() {
     [flights, today]
   );
 
-  // Flights filtered to the selected period — used for both stats AND the globe
-  const filteredFlights = useMemo(
-    () => period === "all" ? flights : flights.filter((f) => f.date.startsWith(String(period))),
-    [flights, period],
-  );
-
   const upcomingFlights = useMemo(() => flights.filter((f) => f.date >= today).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3), [flights, today]);
   const pastFlights     = useMemo(() => flights.filter((f) => f.date < today).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3), [flights, today]);
   const stats = useFilteredStats(flights, period);
@@ -483,7 +477,7 @@ export default function HomeScreen() {
               )}
             </Animated.View>
 
-            {/* Globe preview (filtered by selected period) */}
+            {/* Globe preview */}
             <Animated.View entering={FadeInDown.delay(120).springify()} style={{ marginTop: 4, marginBottom: 24 }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase" }}>Your Flight Network</Text>
@@ -497,7 +491,7 @@ export default function HomeScreen() {
                 </Pressable>
               </View>
               <GlobeView
-                flights={filteredFlights}
+                flights={flights}
                 onDragStart={() => setGlobeDragging(true)}
                 onDragEnd={() => setGlobeDragging(false)}
               />
