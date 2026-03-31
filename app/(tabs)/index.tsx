@@ -12,6 +12,7 @@ import Animated, { FadeInDown, FadeIn, useAnimatedStyle, useSharedValue, withSpr
 import { useColors } from "@/constants/colors";
 import { useFlights, Flight } from "@/context/flights";
 import { useUser } from "@/context/user";
+import { useGestureLock } from "@/context/gesture-lock";
 import GlobeView from "@/components/GlobeView";
 import { LogbookLogo } from "@/components/LogbookLogo";
 import { getCO2FunFact } from "@/utils/co2FunFact";
@@ -361,6 +362,7 @@ export default function HomeScreen() {
   const { profile, isLoggedIn, dismissedPrompt, dismissPrompt } = useUser();
   const [period, setPeriod] = useState<"all" | number>(new Date().getFullYear());
   const [menuOpen, setMenuOpen] = useState(false);
+  // globeDragging is still used to pause the ScrollView while the globe is rotating
   const [globeDragging, setGlobeDragging] = useState(false);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
   const today = useToday();
@@ -368,8 +370,22 @@ export default function HomeScreen() {
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
   const showLoginPrompt = !isLoggedIn && !dismissedPrompt;
 
-  // Swipe left → flights, disabled while globe is being dragged
-  const swipeHandlers = useSwipeNavigation(0, !globeDragging);
+  // Swipe left → flights (deprecated hook, kept for compile compat)
+  const swipeHandlers = useSwipeNavigation(0);
+
+  // Shared gesture lock — tells the parent pager to not claim touches
+  // that originate on the globe.
+  const { setGestureLocked } = useGestureLock();
+
+  const handleGlobeDragStart = () => {
+    setGlobeDragging(true);
+    setGestureLocked(true);
+  };
+
+  const handleGlobeDragEnd = () => {
+    setGlobeDragging(false);
+    setGestureLocked(false);
+  };
 
   const years = useMemo(() => {
     const set = new Set<number>();
@@ -499,8 +515,8 @@ export default function HomeScreen() {
               </View>
               <GlobeView
                 flights={flights}
-                onDragStart={() => setGlobeDragging(true)}
-                onDragEnd={() => setGlobeDragging(false)}
+                onDragStart={handleGlobeDragStart}
+                onDragEnd={handleGlobeDragEnd}
               />
             </Animated.View>
 

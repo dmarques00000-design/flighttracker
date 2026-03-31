@@ -12,8 +12,10 @@
  *
  * Conflict avoidance
  * ──────────────────
+ * - Bails out immediately when gestureLockRef.current === true, which
+ *   is set by any child that owns a gesture (e.g. GlobeView).
  * - Only captures when |dx| > |dy| * 1.8 (clearly horizontal)
- * - Requires |dx| > 8 to start
+ * - Requires |dx| > 16 to start
  * - Vertical scrolls inside each tab are unaffected because we
  *   use onMoveShouldSetPanResponder (not onStart) so the inner
  *   ScrollView wins on vertical-dominant gestures.
@@ -32,6 +34,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/constants/colors";
+import { GestureLockProvider, useGestureLock } from "@/context/gesture-lock";
 
 // Lazy-load tab screens to keep initial bundle small
 import HomeScreen    from "./index";
@@ -47,10 +50,12 @@ const TABS = [
   { key: "profile", label: "Profile", icon: "person-outline"  as const },
 ] as const;
 
-export default function TabLayout() {
+// Inner component has access to GestureLockProvider via context
+function TabPager() {
   const C       = useColors();
   const insets  = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState(0);
+  const { gestureLockRef } = useGestureLock();
 
   // Animated x-offset of the 3-screen row.
   // x = -activeTab * SCREEN_W when settled.
@@ -76,14 +81,17 @@ export default function TabLayout() {
       onStartShouldSetPanResponder:        () => false,
       onStartShouldSetPanResponderCapture: () => false,
 
-      // Capture once we’re sure it’s a horizontal drag
+      // Bail out instantly if a child (e.g. the globe) owns this gesture.
+      // Also require a clearly horizontal drag (|dx| > 16, ratio > 1.8).
       onMoveShouldSetPanResponder: (_, gs) => {
+        if (gestureLockRef.current) return false;
         const ax = Math.abs(gs.dx), ay = Math.abs(gs.dy);
-        return ax > 8 && ax > ay * 1.8;
+        return ax > 16 && ax > ay * 1.8;
       },
       onMoveShouldSetPanResponderCapture: (_, gs) => {
+        if (gestureLockRef.current) return false;
         const ax = Math.abs(gs.dx), ay = Math.abs(gs.dy);
-        return ax > 8 && ax > ay * 1.8;
+        return ax > 16 && ax > ay * 1.8;
       },
 
       onPanResponderGrant: () => {
@@ -118,7 +126,7 @@ export default function TabLayout() {
         snapTo(next, -gs.vx * 200);
       },
 
-      onPanResponderTerminate: (_, gs) => {
+      onPanResponderTerminate: () => {
         translateX.flattenOffset();
         snapTo(activeRef.current, 0);
       },
@@ -191,6 +199,14 @@ export default function TabLayout() {
         })}
       </View>
     </View>
+  );
+}
+
+export default function TabLayout() {
+  return (
+    <GestureLockProvider>
+      <TabPager />
+    </GestureLockProvider>
   );
 }
 
