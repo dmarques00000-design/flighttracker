@@ -3,17 +3,17 @@
  * Shows countries, airports, continents collected from all logged flights.
  * Includes a shareable story-card via ViewShot.
  */
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   Pressable,
   Platform,
   ActivityIndicator,
   Alert,
   Linking,
+  useWindowDimensions,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,7 +21,12 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
-import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
+import Animated, {
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import ViewShot from "react-native-view-shot";
 import { useColors } from "@/constants/colors";
 import { useFlights } from "@/context/flights";
@@ -36,8 +41,187 @@ import PassportCard, {
   PASSPORT_CARD_WIDTH,
   PASSPORT_CARD_HEIGHT,
 } from "@/components/PassportCard";
+import { Flag } from "@/components/Flag";
 
 const SCREEN_PAD = 20;
+const TOTAL_COUNTRIES = 195;
+
+// ─── Explorer rank tiers ──────────────────────────────────────────────────────
+interface Rank {
+  min: number;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+}
+const RANKS: Rank[] = [
+  { min: 0,   label: "First Timer",     icon: "leaf-outline",          color: "#6BCB77" },
+  { min: 5,   label: "Wanderer",        icon: "bag-handle-outline",    color: "#4D96FF" },
+  { min: 15,  label: "Explorer",        icon: "map-outline",           color: "#845EC2" },
+  { min: 30,  label: "Globetrotter",    icon: "earth-outline",         color: "#F9A825" },
+  { min: 60,  label: "World Traveller", icon: "airplane-outline",      color: "#FF6F61" },
+  { min: 100, label: "Century Club",    icon: "ribbon-outline",        color: "#FF3D71" },
+  { min: 150, label: "Legend",          icon: "trophy-outline",        color: "#FFD700" },
+  { min: 195, label: "World Conqueror", icon: "star-outline",          color: "#FF9500" },
+];
+function getRank(count: number): Rank {
+  let rank = RANKS[0];
+  for (const r of RANKS) { if (count >= r.min) rank = r; }
+  return rank;
+}
+
+const MILESTONES = [10, 25, 50, 100, 150, 195];
+
+// ─── Gamified Progress Bar ────────────────────────────────────────────────────
+function CountryProgressBar({ visited }: { visited: number }) {
+  const C = useColors();
+  const { width: screenW } = useWindowDimensions();
+  const barWidth = screenW - SCREEN_PAD * 2 - 40;
+
+  const rank        = getRank(visited);
+  const nextRank    = RANKS.find((r) => r.min > visited) ?? null;
+  const pct         = Math.min((visited / TOTAL_COUNTRIES) * 100, 100);
+  const nextMilestone = MILESTONES.find((m) => m > visited) ?? TOTAL_COUNTRIES;
+  const toNext      = nextMilestone - visited;
+
+  const fillWidth = useSharedValue(0);
+  useEffect(() => {
+    fillWidth.value = withSpring((pct / 100) * barWidth, { stiffness: 60, damping: 18 });
+  }, [pct, barWidth]);
+  const fillStyle = useAnimatedStyle(() => ({ width: fillWidth.value }));
+
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(40).springify()}
+      style={{
+        backgroundColor: C.card,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: C.border,
+        padding: 20,
+        gap: 14,
+      }}
+    >
+      {/* Header: count + rank badge */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <View>
+          <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.6, textTransform: "uppercase" }}>
+            Countries Visited
+          </Text>
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6, marginTop: 2 }}>
+            <Text style={{ fontSize: 40, color: rank.color, fontFamily: "DMSans_700Bold", lineHeight: 46 }}>
+              {visited}
+            </Text>
+            <Text style={{ fontSize: 18, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>
+              / {TOTAL_COUNTRIES}
+            </Text>
+          </View>
+        </View>
+
+        {/* Rank badge — icon + label, no emoji */}
+        <View style={{
+          alignItems: "center", gap: 6,
+          backgroundColor: rank.color + "18",
+          borderWidth: 1, borderColor: rank.color + "44",
+          borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10,
+        }}>
+          <Ionicons name={rank.icon} size={22} color={rank.color} />
+          <Text style={{ fontSize: 11, color: rank.color, fontFamily: "DMSans_700Bold", textAlign: "center" }}>
+            {rank.label}
+          </Text>
+        </View>
+      </View>
+
+      {/* Animated bar + milestone ticks */}
+      <View>
+        <View style={{ height: 12, backgroundColor: C.accentDim, borderRadius: 6, overflow: "hidden" }}>
+          <Animated.View style={[fillStyle, {
+            height: 12, borderRadius: 6,
+            backgroundColor: rank.color,
+            shadowColor: rank.color,
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.45,
+            shadowRadius: 6,
+            elevation: 3,
+          }]} />
+        </View>
+
+        <View style={{ position: "relative", marginTop: 8, height: 20 }}>
+          {MILESTONES.map((m) => {
+            const pos = (m / TOTAL_COUNTRIES) * barWidth;
+            const reached = visited >= m;
+            return (
+              <View key={m} style={{ position: "absolute", left: pos - 1, alignItems: "center", gap: 2 }}>
+                <View style={{
+                  width: 2, height: 6,
+                  backgroundColor: reached ? rank.color : C.border,
+                  borderRadius: 1,
+                }} />
+                <Text style={{
+                  fontSize: 9,
+                  color: reached ? rank.color : C.textMuted,
+                  fontFamily: reached ? "DMSans_700Bold" : "DMSans_400Regular",
+                }}>
+                  {m}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Motivational line — icon instead of emoji */}
+      <View style={{
+        flexDirection: "row", alignItems: "center", gap: 10,
+        backgroundColor: rank.color + "10",
+        borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+      }}>
+        <Ionicons
+          name={visited === TOTAL_COUNTRIES ? "checkmark-circle" : "location-outline"}
+          size={16}
+          color={rank.color}
+        />
+        {visited === TOTAL_COUNTRIES ? (
+          <Text style={{ fontSize: 13, color: rank.color, fontFamily: "DMSans_700Bold", flex: 1 }}>
+            You've visited every country in the world!
+          </Text>
+        ) : (
+          <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_400Regular", flex: 1 }}>
+            <Text style={{ color: rank.color, fontFamily: "DMSans_700Bold" }}>
+              {toNext} more {toNext === 1 ? "country" : "countries"}
+            </Text>
+            {" to reach "}
+            <Text style={{ color: C.text, fontFamily: "DMSans_700Bold" }}>{nextMilestone}</Text>
+            {nextRank && visited < nextRank.min
+              ? ` · unlock ${nextRank.label}`
+              : ""}
+          </Text>
+        )}
+      </View>
+
+      {/* Next rank mini-bar */}
+      {nextRank && visited < TOTAL_COUNTRIES && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>Next rank:</Text>
+          <View style={{ flex: 1, height: 4, backgroundColor: C.surface, borderRadius: 2, overflow: "hidden" }}>
+            <View style={{
+              height: 4, borderRadius: 2, backgroundColor: nextRank.color,
+              width: `${Math.min(
+                ((visited - getRank(visited).min) / (nextRank.min - getRank(visited).min)) * 100,
+                100
+              )}%`,
+            }} />
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Ionicons name={nextRank.icon} size={12} color={nextRank.color} />
+            <Text style={{ fontSize: 11, color: nextRank.color, fontFamily: "DMSans_700Bold" }}>
+              {nextRank.label}
+            </Text>
+          </View>
+        </View>
+      )}
+    </Animated.View>
+  );
+}
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
 function HeroStat({ value, label, color }: { value: string | number; label: string; color: string }) {
@@ -53,14 +237,18 @@ function HeroStat({ value, label, color }: { value: string | number; label: stri
 function ContinentChip({ name, count, color }: { name: string; count: number; color: string }) {
   const C = useColors();
   return (
-    <View style={[{ flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1 }, { borderColor: color + "55", backgroundColor: color + "12" }]}>
+    <View style={[{
+      flexDirection: "row", alignItems: "center", gap: 6,
+      paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1,
+    }, { borderColor: color + "55", backgroundColor: color + "12" }]}>
       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }} />
       <Text style={{ fontSize: 12, fontFamily: "DMSans_500Medium", color }}>{name}</Text>
-      <Text style={{ fontSize: 12, color: C.textMuted, fontFamily: "DMSans_700Bold" }}>{count}</Text>
+      <Text style={{ fontSize: 12, color, fontFamily: "DMSans_700Bold" }}>{count}</Text>
     </View>
   );
 }
 
+// ─── CountryRow — real flag, no left-border anti-pattern ─────────────────────
 function CountryRow({ entry }: { entry: CountryEntry }) {
   const C = useColors();
   const [expanded, setExpanded] = useState(false);
@@ -68,33 +256,42 @@ function CountryRow({ entry }: { entry: CountryEntry }) {
   return (
     <Pressable
       onPress={() => { Haptics.selectionAsync(); setExpanded((v) => !v); }}
-      style={({ pressed }) => [{
-        flexDirection: "row",
-        backgroundColor: C.card,
+      style={({ pressed }) => ({
+        backgroundColor: pressed ? C.surface : C.card,
         borderRadius: 14,
         borderWidth: 1,
         borderColor: C.border,
         marginBottom: 8,
         overflow: "hidden",
-        opacity: pressed ? 0.85 : 1,
-      }]}
+      })}
     >
-      <View style={{ width: 3, backgroundColor: color }} />
       <View style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 13 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <Text style={{ fontSize: 26 }}>{entry.flag}</Text>
+          {/* Real country flag replaces emoji */}
+          <Flag iso={entry.countryCode} size={28} rounded />
+
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_700Bold" }}>{entry.country}</Text>
-            <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 1 }}>
-              {entry.airports.length} {entry.airports.length === 1 ? "airport" : "airports"}
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
+              {/* Continent dot */}
+              <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: color }} />
+              <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular" }}>
+                {entry.continent} · {entry.airports.length} {entry.airports.length === 1 ? "airport" : "airports"}
+              </Text>
+            </View>
           </View>
+
           <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={14} color={C.textMuted} />
         </View>
+
+        {/* Expanded airport chips */}
         {expanded && (
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
             {entry.airportCities.map((a, i) => (
-              <View key={i} style={[{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1 }, { borderColor: color + "44", backgroundColor: color + "0F" }]}>
+              <View key={i} style={[
+                { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
+                { borderColor: color + "44", backgroundColor: color + "0F" },
+              ]}>
                 <Text style={{ fontSize: 11, fontFamily: "DMSans_500Medium", color }}>{a}</Text>
               </View>
             ))}
@@ -113,10 +310,10 @@ const CONTINENT_ORDER: ContinentKey[] = [
 // ─── Main screen ─────────────────────────────────────────────────────────────
 export default function PassportScreen() {
   const C = useColors();
-  const insets   = useSafeAreaInsets();
+  const insets      = useSafeAreaInsets();
   const { flights } = useFlights();
   const { profile } = useUser();
-  const cardRef  = useRef<ViewShot>(null);
+  const cardRef     = useRef<ViewShot>(null);
   const [capturing, setCapturing] = useState(false);
 
   const topPad    = Platform.OS === "web" ? 67 : insets.top + 8;
@@ -236,7 +433,11 @@ export default function PassportScreen() {
         paddingHorizontal: SCREEN_PAD, paddingBottom: 10,
         borderBottomWidth: 1, borderBottomColor: C.border,
       }}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
+        <Pressable
+          onPress={() => router.back()}
+          hitSlop={12}
+          style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
+        >
           <Ionicons name="chevron-back" size={22} color={C.textSec} />
         </Pressable>
         <View style={{ flex: 1, alignItems: "center", gap: 1 }}>
@@ -246,8 +447,10 @@ export default function PassportScreen() {
         <Pressable
           onPress={handleShare}
           disabled={capturing || isEmpty}
-          style={({ pressed }) => [{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }, { opacity: capturing || isEmpty || pressed ? 0.5 : 1 }]}
           hitSlop={8}
+          style={({ pressed }) => [{
+            width: 36, height: 36, alignItems: "center", justifyContent: "center",
+          }, { opacity: capturing || isEmpty || pressed ? 0.5 : 1 }]}
         >
           {capturing
             ? <ActivityIndicator size="small" color={C.accent} />
@@ -270,7 +473,9 @@ export default function PassportScreen() {
             </Text>
             <Pressable
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-flight"); }}
-              style={({ pressed }) => [{ backgroundColor: C.accent, paddingHorizontal: 28, paddingVertical: 15, borderRadius: 28, marginTop: 8 }, { opacity: pressed ? 0.8 : 1 }]}
+              style={({ pressed }) => [{
+                backgroundColor: C.accent, paddingHorizontal: 28, paddingVertical: 15, borderRadius: 28, marginTop: 8,
+              }, { opacity: pressed ? 0.8 : 1 }]}
             >
               <Text style={{ fontSize: 15, color: C.white, fontFamily: "DMSans_700Bold" }}>Add First Flight</Text>
             </Pressable>
@@ -284,60 +489,39 @@ export default function PassportScreen() {
               borderWidth: 1, borderColor: C.border,
               paddingVertical: 20, paddingHorizontal: 16,
             }}>
-              <HeroStat value={stats.totalCountries}  label="countries"   color={C.accent} />
+              <HeroStat value={stats.totalCountries}  label="countries"  color={C.accent} />
               <View style={{ width: 1, height: 40, backgroundColor: C.border }} />
-              <HeroStat value={stats.totalAirports}   label="airports"    color={C.green} />
+              <HeroStat value={stats.totalAirports}   label="airports"   color={C.green} />
               <View style={{ width: 1, height: 40, backgroundColor: C.border }} />
-              <HeroStat value={stats.totalContinents} label="continents"  color="#F5C842" />
+              <HeroStat value={stats.totalContinents} label="continents" color="#F5C842" />
             </Animated.View>
 
-            {/* ── WORLD COVERAGE PROGRESS ── */}
-            <Animated.View entering={FadeInDown.delay(40).springify()} style={{
-              backgroundColor: C.card, borderRadius: 20,
-              borderWidth: 1, borderColor: C.border,
-              padding: 20, gap: 10,
-            }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" }}>
-                <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.5, textTransform: "uppercase" }}>World Coverage</Text>
-                <Text style={{ fontSize: 28, color: C.accent, fontFamily: "DMSans_700Bold" }}>{stats.worldCoveragePercent}%</Text>
-              </View>
-              <View style={{ height: 8, backgroundColor: C.accentDim, borderRadius: 4, overflow: "hidden" }}>
-                <Animated.View
-                  style={[{ height: 8, backgroundColor: C.accent, borderRadius: 4 }, { width: `${Math.min(stats.worldCoveragePercent, 100)}%` as any }]}
-                />
-              </View>
-              <Text style={{ fontSize: 12, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>
-                {stats.totalCountries} of 195 sovereign nations
-              </Text>
-            </Animated.View>
+            {/* ── GAMIFIED PROGRESS BAR ── */}
+            <CountryProgressBar visited={stats.totalCountries} />
 
             {/* ── CONTINENT CHIPS ── */}
             <Animated.View entering={FadeInDown.delay(70).springify()} style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               {CONTINENT_ORDER.filter((c) => (stats.continentCounts[c] ?? 0) > 0).map((c) => (
-                <ContinentChip
-                  key={c}
-                  name={c}
-                  count={stats.continentCounts[c]}
-                  color={CONTINENT_COLORS[c]}
-                />
+                <ContinentChip key={c} name={c} count={stats.continentCounts[c]} color={CONTINENT_COLORS[c]} />
               ))}
             </Animated.View>
 
             {/* ── COUNTRY LIST grouped by continent ── */}
             {grouped.map((group, gi) => (
-              <Animated.View
-                key={group.continent}
-                entering={FadeInDown.delay(100 + gi * 30).springify()}
-              >
+              <Animated.View key={group.continent} entering={FadeInDown.delay(100 + gi * 30).springify()}>
                 <View style={{
                   flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-                  borderLeftWidth: 3, borderLeftColor: group.color,
-                  paddingLeft: 10, marginBottom: 8, marginTop: 4,
+                  paddingLeft: 4, marginBottom: 8, marginTop: 4,
                 }}>
-                  <Text style={{ fontSize: 11, fontFamily: "DMSans_700Bold", letterSpacing: 1.2, color: group.color }}>
-                    {group.continent.toUpperCase()}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <View style={{ width: 3, height: 14, borderRadius: 2, backgroundColor: group.color }} />
+                    <Text style={{ fontSize: 11, fontFamily: "DMSans_700Bold", letterSpacing: 1.2, color: group.color }}>
+                      {group.continent.toUpperCase()}
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>
+                    {group.entries.length} {group.entries.length === 1 ? "country" : "countries"}
                   </Text>
-                  <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>{group.entries.length} countries</Text>
                 </View>
                 {group.entries.map((entry) => (
                   <CountryRow key={entry.countryCode} entry={entry} />
@@ -360,24 +544,19 @@ export default function PassportScreen() {
                     shadowOpacity: 0.25, shadowRadius: 28, elevation: 14,
                   }}
                 >
-                  <View
-                    style={{
-                      width: PASSPORT_CARD_WIDTH,
-                      height: PASSPORT_CARD_HEIGHT,
-                      transform: [{ scale }],
-                      transformOrigin: "top left",
-                    }}
-                  >
-                    <PassportCard
-                      stats={stats}
-                      username={profile?.username ?? undefined}
-                    />
+                  <View style={{
+                    width: PASSPORT_CARD_WIDTH,
+                    height: PASSPORT_CARD_HEIGHT,
+                    transform: [{ scale }],
+                    transformOrigin: "top left",
+                  }}>
+                    <PassportCard stats={stats} username={profile?.username ?? undefined} />
                   </View>
                 </ViewShot>
               </View>
 
               <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", textAlign: "center" }}>
-                📐 9:16 story format — perfect for Instagram Stories
+                9:16 story format — perfect for Instagram Stories
               </Text>
 
               <Pressable

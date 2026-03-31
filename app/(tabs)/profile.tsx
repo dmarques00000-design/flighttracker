@@ -27,6 +27,7 @@ import {
   requestNotificationPermission,
   syncGlobalReminders,
 } from "@/utils/notifications";
+import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 
 const SEAT_OPTIONS: { value: UserProfile["seatPreference"]; label: string; icon: string }[] = [
   { value: "window", label: "Window", icon: "partly-sunny-outline" },
@@ -189,6 +190,9 @@ export default function ProfileScreen() {
   const topPadding    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
+  // Swipe right → flights (profile is the last tab, no left swipe target)
+  const swipeHandlers = useSwipeNavigation(2);
+
   const TODAY           = new Date().toISOString().substring(0, 10);
   const totalFlights    = flights.length;
   const upcomingFlights = flights.filter((f) => f.date >= TODAY).length;
@@ -257,7 +261,7 @@ export default function ProfileScreen() {
   const S = styles(C);
 
   return (
-    <View style={[S.container, { paddingTop: topPadding }]}>
+    <View style={[S.container, { paddingTop: topPadding }]} {...swipeHandlers}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[S.scroll, { paddingBottom: bottomPadding + 110 }]}>
 
         {/* Header */}
@@ -349,7 +353,7 @@ export default function ProfileScreen() {
                   {flightStats.topAirline && flights.length > 1 && (
                     <HighlightRow
                       icon="briefcase-outline"
-                      accent="#8B5CF6"
+                      accent={C.secondary}
                       title={flightStats.topAirline.name}
                       subtitle="Most-flown airline"
                       badge={`${flightStats.topAirline.count}\u00d7`}

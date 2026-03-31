@@ -7,6 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useColors } from "@/constants/colors";
 import AIRPORTS_RAW from "@/assets/data/airports.json";
+import { Flag } from "@/components/Flag";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface AirportEntry {
@@ -16,37 +17,21 @@ interface AirportEntry {
 }
 
 const AIRPORTS: AirportEntry[] = AIRPORTS_RAW as AirportEntry[];
-
-// Max suggestions shown at once
 const MAX_SUGGESTIONS = 6;
 
-/**
- * Score a candidate against a query string.
- * Returns a number — higher is a better match.
- * Returns -1 if the entry should be excluded entirely.
- */
 function score(entry: AirportEntry, q: string): number {
   const query = q.toUpperCase();
   const iata  = entry.iata.toUpperCase();
   const city  = entry.city.toUpperCase();
   const name  = entry.name.toUpperCase();
-
-  // Exact IATA match → top priority
-  if (iata === query) return 100;
-  // IATA starts-with
+  if (iata === query)   return 100;
   if (iata.startsWith(query)) return 90;
-  // City starts-with
   if (city.startsWith(query)) return 80;
-  // City contains word starting with query
   if (city.split(" ").some((w) => w.startsWith(query))) return 70;
-  // Name starts-with
   if (name.startsWith(query)) return 60;
-  // Name contains word starting with query
   if (name.split(" ").some((w) => w.startsWith(query))) return 50;
-  // Substring anywhere in city or name
   if (city.includes(query) || name.includes(query)) return 30;
-
-  return -1; // no match
+  return -1;
 }
 
 function getSuggestions(query: string): AirportEntry[] {
@@ -82,9 +67,9 @@ export function AirportInput({
   const C = useColors();
   const inputRef = useRef<TextInput>(null);
 
-  const [query, setQuery]           = useState(value);
-  const [showList, setShowList]     = useState(false);
-  const [isFocused, setIsFocused]   = useState(false);
+  const [query, setQuery]         = useState(value);
+  const [showList, setShowList]   = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
 
   const suggestions = getSuggestions(query);
   const isConfirmed = value.length === 3 && query === value;
@@ -92,7 +77,6 @@ export function AirportInput({
   const handleChange = useCallback((text: string) => {
     const sanitised = text.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
     setQuery(sanitised);
-    // If user clears or changes a confirmed value, clear the parent value too
     onChange(sanitised.length === 3 ? sanitised : "");
     setShowList(sanitised.length > 0);
   }, [onChange]);
@@ -138,14 +122,18 @@ export function AirportInput({
           onFocus={() => { setIsFocused(true); if (query.length > 0) setShowList(true); }}
           onBlur={() => {
             setIsFocused(false);
-            // Small delay so tapping a suggestion registers before blur hides the list
             setTimeout(() => setShowList(false), 150);
           }}
         />
 
-        {/* Confirmed badge OR clear button */}
+        {/* Confirmed badge with real flag + IATA code */}
         {isConfirmed ? (
-          <Pressable onPress={handleClear} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: C.accentDim, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}>
+          <Pressable
+            onPress={handleClear}
+            hitSlop={8}
+            style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.accentDim, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}
+          >
+            <Flag iata={value} size={14} />
             <Text style={{ fontSize: 13, color: C.accent, fontFamily: "DMSans_700Bold", letterSpacing: 0.5 }}>{value}</Text>
             <Ionicons name="close-circle" size={14} color={C.accent} />
           </Pressable>
@@ -167,7 +155,6 @@ export function AirportInput({
             borderWidth: 1,
             borderColor: C.border,
             overflow: "hidden",
-            // Elevation so the list floats above sibling views
             ...(Platform.OS === "android" ? { elevation: 8 } : {
               shadowColor: C.shadow,
               shadowOffset: { width: 0, height: 4 },
@@ -192,12 +179,8 @@ export function AirportInput({
                   borderTopColor: C.border,
                 })}
               >
-                {/* IATA badge */}
-                <View style={{ width: 42, height: 28, borderRadius: 8, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center" }}>
-                  <Text style={{ fontSize: 12, color: C.accent, fontFamily: "DMSans_700Bold", letterSpacing: 0.5 }}>
-                    {airport.iata}
-                  </Text>
-                </View>
+                {/* Real country flag */}
+                <Flag iata={airport.iata} size={22} />
 
                 {/* City + name */}
                 <View style={{ flex: 1 }}>
@@ -206,6 +189,13 @@ export function AirportInput({
                   </Text>
                   <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 1 }} numberOfLines={1}>
                     {airport.name}
+                  </Text>
+                </View>
+
+                {/* IATA code badge */}
+                <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: C.accentDim }}>
+                  <Text style={{ fontSize: 11, color: C.accent, fontFamily: "DMSans_700Bold", letterSpacing: 0.5 }}>
+                    {airport.iata}
                   </Text>
                 </View>
 

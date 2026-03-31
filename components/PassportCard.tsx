@@ -2,15 +2,18 @@
  * PassportCard.tsx
  * Shareable 9:16 story card — dark edition.
  * Exported with PASSPORT_CARD_WIDTH / PASSPORT_CARD_HEIGHT for ViewShot.
+ * Uses react-native-country-flag directly (no wrapper) since this renders
+ * at 1080×1920 and needs high-resolution flag images.
  */
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
+import CountryFlag from "react-native-country-flag";
 import { PassportStats, CONTINENT_COLORS, ContinentKey } from "@/utils/passport";
 
 export const PASSPORT_CARD_WIDTH  = 1080;
 export const PASSPORT_CARD_HEIGHT = 1920;
 
-const BG       = "#08111F"; // near-black navy
+const BG       = "#08111F";
 const ACCENT   = "#4F8EF0";
 const GOLD     = "#F5C842";
 const SURFACE  = "rgba(255,255,255,0.06)";
@@ -47,7 +50,8 @@ function ContinentBar({ continent, count, total }: { continent: ContinentKey; co
 }
 
 export default function PassportCard({ stats, username }: Props) {
-  const flagsToShow = stats.countries.slice(0, 30).map((c) => c.flag);
+  // Up to 24 countries for the flag mosaic — fits cleanly in 4 rows of 6
+  const flagEntries = stats.countries.slice(0, 24);
   const maxContinent = Math.max(...Object.values(stats.continentCounts), 1);
 
   const continentOrder: ContinentKey[] = [
@@ -57,7 +61,7 @@ export default function PassportCard({ stats, username }: Props) {
 
   return (
     <View style={card.container}>
-      {/* ── decorative globe ring ── */}
+      {/* ── decorative globe rings ── */}
       <View style={card.globeOuter}>
         <View style={card.globeInner} />
       </View>
@@ -84,14 +88,21 @@ export default function PassportCard({ stats, username }: Props) {
         <StatPill value={stats.totalContinents} label="continents" color={GOLD}  />
       </View>
 
-      {/* ── flag mosaic ── */}
-      {flagsToShow.length > 0 && (
+      {/* ── flag mosaic — real flags instead of emoji ── */}
+      {flagEntries.length > 0 && (
         <View style={card.flagsSection}>
           <Text style={card.sectionTitle}>FLAGS COLLECTED</Text>
           <View style={card.flagGrid}>
-            {flagsToShow.map((f, i) => (
+            {flagEntries.map((entry, i) => (
               <View key={i} style={card.flagCell}>
-                <Text style={card.flagEmoji}>{f}</Text>
+                <View style={{
+                  borderRadius: 10,
+                  overflow: "hidden",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.12)",
+                }}>
+                  <CountryFlag isoCode={entry.countryCode} size={48} />
+                </View>
               </View>
             ))}
           </View>
@@ -133,7 +144,6 @@ const card = StyleSheet.create({
     justifyContent: "space-between",
     overflow: "hidden",
   },
-  // decorative globe
   globeOuter: {
     position: "absolute",
     width: 900, height: 900,
@@ -150,7 +160,6 @@ const card = StyleSheet.create({
     borderColor: "rgba(79,142,240,0.08)",
     top: 150, left: 150,
   },
-  // header
   header: { alignItems: "center", marginTop: 20, gap: 16 },
   wordmark: {
     fontSize: 52, color: TEXT, letterSpacing: 14,
@@ -165,7 +174,6 @@ const card = StyleSheet.create({
     fontSize: 24, color: TEXT_SEC, letterSpacing: 8,
     fontWeight: "400",
   },
-  // hero
   hero: { alignItems: "center", marginTop: 40 },
   heroNum: {
     fontSize: 200, color: TEXT, lineHeight: 210,
@@ -181,30 +189,32 @@ const card = StyleSheet.create({
     fontWeight: "600", letterSpacing: 1,
     marginTop: 16,
   },
-  // pills
   pillRow: {
     flexDirection: "row", justifyContent: "center",
     gap: 32, marginTop: 32,
   },
-  // flags
   flagsSection: { marginTop: 40 },
   sectionTitle: {
     fontSize: 20, color: TEXT_SEC,
     letterSpacing: 6, fontWeight: "500",
     textTransform: "uppercase", marginBottom: 20,
   },
-  flagGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  flagGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 14,
+  },
   flagCell: {
-    width: 76, height: 76,
+    width: 130,
+    height: 88,
     backgroundColor: SURFACE,
     borderRadius: 16,
-    borderWidth: 1, borderColor: BORDER,
-    alignItems: "center", justifyContent: "center",
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  flagEmoji: { fontSize: 38 },
-  // bars
   barsSection: { marginTop: 40 },
-  // footer
   footer: { alignItems: "center", gap: 8 },
   footerUser: { fontSize: 28, color: TEXT_SEC, fontWeight: "400" },
   footerApp: { fontSize: 22, color: ACCENT, letterSpacing: 2, fontWeight: "600" },
