@@ -34,11 +34,11 @@ function RootLayoutNav() {
             name="add-flight"
             options={{
               presentation: "formSheet",
-              sheetAllowedDetents: [0.6, 1],
+              // Always open at full height so the result card + Add button are reachable
+              sheetAllowedDetents: [1],
+              sheetInitialDetentIndex: 0,
               sheetGrabberVisible: true,
               headerShown: false,
-              // Both the sheet content area and the dead zone below it
-              // are painted with the app surface colour, matching light + dark.
               contentStyle: { backgroundColor: C.surface },
             }}
           />
