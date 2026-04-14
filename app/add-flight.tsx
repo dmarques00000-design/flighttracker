@@ -310,6 +310,10 @@ export default function AddFlightScreen() {
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
   const topPad    = Platform.OS === "web" ? 67 : insets.top + 8;
 
+  // Extra bottom padding when results are shown so the last card's button is reachable
+  const hasResults = (searchMode === "code" && preview !== null) || (searchMode === "airport" && airportResults.length > 0);
+  const scrollBottomPad = bottomPad + (hasResults ? 120 : 24);
+
   function switchMode(mode: SearchMode) {
     setSearchMode(mode);
     setPreview(null);
@@ -405,6 +409,7 @@ export default function AddFlightScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       style={{ flex: 1, backgroundColor: C.surface }}
     >
       {/* Fill the area below the sheet with the surface colour so no black shows through */}
@@ -420,7 +425,8 @@ export default function AddFlightScreen() {
         <ScrollView
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ padding: 24, paddingBottom: bottomPad + 24 }}
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={{ padding: 24, paddingBottom: scrollBottomPad }}
         >
           {/* Header */}
           <Animated.View entering={FadeInDown.delay(0).springify()}>
