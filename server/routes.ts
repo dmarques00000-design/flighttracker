@@ -1,6 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "node:http";
 import { lookupFlight, lookupFlightsByAirport } from "./storage";
+import { upsertUser, getUserById } from "./userStorage";
+import { getFlightsByUser, createFlight, deleteFlight, updateFlight } from "./flightStorage";
+import { insertUserSchema, insertFlightSchema } from "../shared/schema";
 
 // ─── Empirical annual flights-per-person CDF ──────────────────────────────────
 const CDF: [number, number][] = [
@@ -95,26 +98,28 @@ async function createNotionFeedbackEntry(payload: {
   const token = process.env.NOTION_TOKEN;
   if (!token) throw new Error("NOTION_TOKEN env var not set");
 
-  const title = `[${payload.category}] ${payload.message.slice(0, 60)}${payload.message.length > 60 ? "…" : ""}`;
+  const title = `[${payload.category}] ${payload.message.slice(0, 60)}${
+    payload.message.length > 60 ? "\u2026" : ""
+  }`;
 
   const body = {
     parent: { database_id: NOTION_FEEDBACK_DB_ID },
     properties: {
-      Title:        { title: [{ text: { content: title } }] },
-      Category:     { select: { name: payload.category } },
-      Message:      { rich_text: [{ text: { content: payload.message } }] },
-      "User Name":  { rich_text: [{ text: { content: payload.userName  ?? "" } }] },
-      "User Email": { rich_text: [{ text: { content: payload.userEmail ?? "" } }] },
-      "App Version":{ rich_text: [{ text: { content: payload.appVersion ?? "" } }] },
-      Platform:     { select: { name: payload.platform ?? "ios" } },
-      Status:       { select: { name: "New" } },
+      Title:         { title: [{ text: { content: title } }] },
+      Category:      { select: { name: payload.category } },
+      Message:       { rich_text: [{ text: { content: payload.message } }] },
+      "User Name":   { rich_text: [{ text: { content: payload.userName  ?? "" } }] },
+      "User Email":  { rich_text: [{ text: { content: payload.userEmail ?? "" } }] },
+      "App Version": { rich_text: [{ text: { content: payload.appVersion ?? "" } }] },
+      Platform:      { select: { name: payload.platform ?? "ios" } },
+      Status:        { select: { name: "New" } },
     },
   };
 
   const res = await fetch("https://api.notion.com/v1/pages", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       "Notion-Version": "2022-06-28",
     },
@@ -128,27 +133,134 @@ async function createNotionFeedbackEntry(payload: {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+
+  // ── Auth: upsert user on social sign-in ─────────────────────────────────
+  //
+  // POST /api/auth/upsert
+  // Body: { id, email, name?, avatarUrl?, provider? }
+  // Creates the user row if new, updates name/avatar if existing.
+  // Returns the full user record.
+  app.post("/api/auth/upsert", async (req, res) => {
+    console.log("[Route] POST /api/auth/upsert");
+    const parsed = insertUserSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+    try {
+      const user = await upsertUser(parsed.data);
+      return res.json(user);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Upsert failed";
+      console.error("[Route] upsertUser error:", err);
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // ── Auth: get user by id ─────────────────────────────────────────────────
+  //
+  // GET /api/users/:id
+  app.get("/api/users/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const user = await getUserById(id);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      return res.json(user);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Fetch failed";
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // ── Flights: list all flights for a user ─────────────────────────────────
+  //
+  // GET /api/users/:userId/flights
+  app.get("/api/users/:userId/flights", async (req, res) => {
+    const { userId } = req.params;
+    console.log(`[Route] GET /api/users/${userId}/flights`);
+    try {
+      const userFlights = await getFlightsByUser(userId);
+      return res.json(userFlights);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Fetch failed";
+      console.error("[Route] getFlightsByUser error:", err);
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // ── Flights: save a new flight ────────────────────────────────────────────
+  //
+  // POST /api/flights
+  // Body: InsertFlight (must include userId)
+  app.post("/api/flights", async (req, res) => {
+    console.log("[Route] POST /api/flights");
+    const parsed = insertFlightSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+    try {
+      const flight = await createFlight(parsed.data);
+      return res.status(201).json(flight);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Create failed";
+      console.error("[Route] createFlight error:", err);
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // ── Flights: update a flight ──────────────────────────────────────────────
+  //
+  // PATCH /api/flights/:id
+  // Body: Partial<InsertFlight> + userId (for ownership check)
+  app.patch("/api/flights/:id", async (req, res) => {
+    const { id } = req.params;
+    const { userId, ...rest } = req.body ?? {};
+    if (!userId) return res.status(400).json({ error: "userId is required" });
+    console.log(`[Route] PATCH /api/flights/${id}`);
+    try {
+      const updated = await updateFlight(id, userId, rest);
+      if (!updated) return res.status(404).json({ error: "Flight not found or unauthorised" });
+      return res.json(updated);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Update failed";
+      console.error("[Route] updateFlight error:", err);
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // ── Flights: delete a flight ──────────────────────────────────────────────
+  //
+  // DELETE /api/flights/:id?userId=...
+  app.delete("/api/flights/:id", async (req, res) => {
+    const { id } = req.params;
+    const userId = req.query.userId as string | undefined;
+    if (!userId) return res.status(400).json({ error: "userId query param is required" });
+    console.log(`[Route] DELETE /api/flights/${id}`);
+    try {
+      const ok = await deleteFlight(id, userId);
+      if (!ok) return res.status(404).json({ error: "Flight not found or unauthorised" });
+      return res.json({ ok: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Delete failed";
+      console.error("[Route] deleteFlight error:", err);
+      return res.status(500).json({ error: msg });
+    }
+  });
+
   // ── Flight-lookup endpoint ───────────────────────────────────────────────
   app.get("/api/flights/lookup", async (req, res) => {
     const { code, date, dep, arr } = req.query;
-    console.log("[Route] /api/flights/lookup called");
-    console.log("[Route] Query params:", { code, date, dep, arr });
     if (!code || !date || typeof code !== "string" || typeof date !== "string") {
-      console.log("[Route] Missing or invalid params — returning 400");
       return res.status(400).json({ error: "Missing flight code or date" });
     }
     try {
-      console.log(`[Route] Calling lookupFlight(${code}, ${date}, ${dep}, ${arr})`);
       const result = await lookupFlight(
         code.toUpperCase(), date,
         typeof dep === "string" ? dep.toUpperCase() : undefined,
         typeof arr === "string" ? arr.toUpperCase() : undefined,
       );
-      console.log(`[Route] lookupFlight result — isMock: ${result.isMock}, flight: ${result.flightCode}, status: ${result.status}`);
       return res.json(result);
-    } catch (err: unknown) {
+    } catch (err) {
       const msg = err instanceof Error ? err.message : "Lookup failed";
-      console.error("[Route] Error in lookupFlight:", err);
       return res.status(500).json({ error: msg });
     }
   });
@@ -156,8 +268,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Airport schedule search endpoint ────────────────────────────────────
   app.get("/api/flights/search", async (req, res) => {
     const { date, dep, arr } = req.query;
-    console.log("[Route] /api/flights/search called");
-    console.log("[Route] Query params:", { date, dep, arr });
     if (!date || typeof date !== "string") return res.status(400).json({ error: "Missing date parameter (YYYY-MM-DD)" });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "Invalid date format — use YYYY-MM-DD" });
     const depStr = typeof dep === "string" && dep.trim() ? dep.trim().toUpperCase() : undefined;
@@ -167,11 +277,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (arrStr && !/^[A-Z]{3}$/.test(arrStr)) return res.status(400).json({ error: `Invalid arrival airport code: ${arrStr}` });
     try {
       const results = await lookupFlightsByAirport(depStr, arrStr, date);
-      console.log(`[Route] /api/flights/search returning ${results.length} flight(s)`);
       return res.json(results);
-    } catch (err: unknown) {
+    } catch (err) {
       const msg = err instanceof Error ? err.message : "Search failed";
-      console.error("[Route] Error in lookupFlightsByAirport:", err);
       return res.status(500).json({ error: msg });
     }
   });
@@ -183,26 +291,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (isNaN(count) || count < 0) return res.status(400).json({ error: "count must be a non-negative integer" });
     const percentile = flightCountToPercentile(count);
     const topPercent = Math.max(0.1, Math.round((100 - percentile) * 10) / 10);
-    console.log(`[Route] /api/percentile count=${count} → percentile=${percentile} topPercent=${topPercent}`);
     return res.json({ percentile, topPercent });
   });
 
   // ── Beta feedback endpoint ───────────────────────────────────────────────
-  //
-  // POST /api/feedback
-  // Body: { category, message, userName?, userEmail?, appVersion?, platform? }
-  // Stores a new row in the "Beta Feedback" Notion database.
   app.post("/api/feedback", async (req, res) => {
-    console.log("[Route] POST /api/feedback called");
     const { category, message, userName, userEmail, appVersion, platform } = req.body ?? {};
-
     if (!message || typeof message !== "string" || message.trim().length < 3) {
       return res.status(400).json({ error: "message must be at least 3 characters" });
     }
-
     const validCategories = ["Bug", "Suggestion", "General", "Performance", "UI/UX"];
     const resolvedCategory = validCategories.includes(category) ? category : "General";
-
     try {
       await createNotionFeedbackEntry({
         category: resolvedCategory,
@@ -212,11 +311,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         appVersion: typeof appVersion === "string" ? appVersion.trim() : undefined,
         platform:   typeof platform   === "string" ? platform          : "ios",
       });
-      console.log(`[Route] Feedback stored in Notion — category: ${resolvedCategory}`);
       return res.json({ ok: true });
-    } catch (err: unknown) {
+    } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to store feedback";
-      console.error("[Route] Error storing feedback:", err);
       return res.status(500).json({ error: msg });
     }
   });
