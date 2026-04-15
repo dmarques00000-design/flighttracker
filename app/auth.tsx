@@ -181,11 +181,16 @@ export default function AuthScreen() {
     if (!isExpoGo()) {
       const g = getGoogleSignin();
       if (g) {
-        g.GoogleSignin.configure({
-          webClientId: GOOGLE_WEB_CLIENT_ID,
+        // Only pass offlineAccess when the web client ID is available —
+        // passing it without a webClientId throws a native crash.
+        const config: Record<string, unknown> = {
           iosClientId: GOOGLE_IOS_CLIENT_ID,
-          offlineAccess: true,
-        });
+        };
+        if (GOOGLE_WEB_CLIENT_ID) {
+          config.webClientId = GOOGLE_WEB_CLIENT_ID;
+          config.offlineAccess = true;
+        }
+        g.GoogleSignin.configure(config as any);
       }
     }
     if (Platform.OS === "ios") AppleAuthentication.isAvailableAsync().then(setApple);
@@ -236,7 +241,7 @@ export default function AuthScreen() {
       const fullName  = [cred.fullName?.givenName ?? "", cred.fullName?.familyName ?? ""].filter(Boolean).join(" ").trim();
       const userEmail = cred.email ?? "apple-user@privaterelay.appleid.com";
       await login({
-        id: cred.user,                          // Apple's stable unique user ID
+        id: cred.user,
         name: fullName || userEmail.split("@")[0],
         email: userEmail,
         provider: "apple",
@@ -266,7 +271,7 @@ export default function AuthScreen() {
       const googleUser = (userInfo as any).data?.user ?? (userInfo as any).user;
       if (!googleUser) throw new Error("No user data returned from Google.");
       await login({
-        id: googleUser.id,                      // Google's stable sub / user ID
+        id: googleUser.id,
         name: googleUser.name ?? googleUser.email.split("@")[0],
         email: googleUser.email,
         provider: "google",
