@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, Pressable, Image,
-  ActivityIndicator, ScrollView, Platform, Alert, KeyboardAvoidingView,
-  AppState, AppStateStatus, TextInput,
+  ActivityIndicator, ScrollView, Platform, Alert, TextInput,
+  AppState, AppStateStatus,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -307,12 +307,7 @@ export default function AddFlightScreen() {
   const [arrIATA, setArrIATA]           = useState("");
   const [airportResults, setAirportResults] = useState<FlightLookupResult[]>([]);
 
-  const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
-  const topPad    = Platform.OS === "web" ? 67 : insets.top + 8;
-
-  // Extra bottom padding when results are shown so the last card's button is reachable
-  const hasResults = (searchMode === "code" && preview !== null) || (searchMode === "airport" && airportResults.length > 0);
-  const scrollBottomPad = bottomPad + (hasResults ? 120 : 24);
+  const topPad = Platform.OS === "web" ? 67 : insets.top + 8;
 
   function switchMode(mode: SearchMode) {
     setSearchMode(mode);
@@ -407,13 +402,12 @@ export default function AddFlightScreen() {
   const activeSearch = searchMode === "code" ? handleCodeLookup : handleAirportSearch;
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
-      style={{ flex: 1, backgroundColor: C.surface }}
-    >
-      {/* Fill the area below the sheet with the surface colour so no black shows through */}
+    // No KeyboardAvoidingView — iOS formSheet manages the keyboard offset natively.
+    // The ScrollView fills the full sheet and scrolls to reveal every card and button.
+    <View style={{ flex: 1, backgroundColor: C.surface }}>
+      {/* Colour fill behind the sheet grabber area */}
       <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 300, backgroundColor: C.surface }} />
+
       <View style={{
         flex: 1,
         backgroundColor: C.surface,
@@ -423,10 +417,15 @@ export default function AddFlightScreen() {
         paddingTop: topPad,
       }}>
         <ScrollView
+          style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          contentContainerStyle={{ padding: 24, paddingBottom: scrollBottomPad }}
+          bounces={true}
+          alwaysBounceVertical={true}
+          // Large bottom padding guarantees even the tallest result card + button
+          // can be scrolled fully into view regardless of sheet height.
+          contentContainerStyle={{ padding: 24, paddingBottom: 120 }}
         >
           {/* Header */}
           <Animated.View entering={FadeInDown.delay(0).springify()}>
@@ -568,6 +567,6 @@ export default function AddFlightScreen() {
           )}
         </ScrollView>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
