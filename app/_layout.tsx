@@ -34,7 +34,6 @@ function RootLayoutNav() {
             name="add-flight"
             options={{
               presentation: "formSheet",
-              // Always open at full height so the result card + Add button are reachable
               sheetAllowedDetents: [1],
               sheetInitialDetentIndex: 0,
               sheetGrabberVisible: true,
@@ -88,11 +87,12 @@ export default function RootLayout() {
     <ErrorBoundary>
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
-          <FlightsProvider>
-            <UserProvider>
+          {/* UserProvider must wrap FlightsProvider — flights context reads profile.id */}
+          <UserProvider>
+            <FlightsProvider>
               <RootLayoutNav />
-            </UserProvider>
-          </FlightsProvider>
+            </FlightsProvider>
+          </UserProvider>
         </QueryClientProvider>
       </ThemeProvider>
     </ErrorBoundary>
