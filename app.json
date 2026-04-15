@@ -31,7 +31,8 @@
         {
           "iosUrlScheme": "com.googleusercontent.apps.749556370596-18p2ib5us29ft62g2638kcfrpbk2njbu"
         }
-      ]
+      ],
+      "./modules/wallet-plugin"
     ],
     "experiments": {
       "typedRoutes": true,
