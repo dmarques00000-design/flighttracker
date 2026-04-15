@@ -4,10 +4,14 @@ import {
   NotificationPrefs,
   DEFAULT_NOTIFICATION_PREFS,
 } from "@/utils/notifications";
+import { API_BASE } from "@/constants/api";
 
 export interface UserProfile {
+  id: string;           // real provider ID (Google sub / Apple user ID)
   name: string;
   email: string;
+  provider: "google" | "apple" | "email" | "";
+  avatarUrl: string;
   homeCityCode: string;
   nationality: string;
   frequentFlyerNumber: string;
@@ -17,8 +21,11 @@ export interface UserProfile {
 }
 
 const DEFAULT_PROFILE: UserProfile = {
+  id: "",
   name: "",
   email: "",
+  provider: "",
+  avatarUrl: "",
   homeCityCode: "",
   nationality: "",
   frequentFlyerNumber: "",
@@ -38,10 +45,19 @@ interface UserContextType {
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   updateNotifPrefs: (updates: Partial<NotificationPrefs>) => Promise<void>;
   clearProfile: () => Promise<void>;
-  login: (name: string, email: string) => Promise<void>;
+  login: (params: LoginParams) => Promise<void>;
   logout: () => Promise<void>;
   dismissedPrompt: boolean;
   dismissPrompt: () => void;
+}
+
+export interface LoginParams {
+  /** Stable provider user ID (Google sub, Apple user ID). Falls back to email for test/email logins. */
+  id: string;
+  name: string;
+  email: string;
+  provider: "google" | "apple" | "email";
+  avatarUrl?: string;
 }
 
 const UserContext = createContext<UserContextType | null>(null);
@@ -91,11 +107,35 @@ export function UserProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.multiRemove([STORAGE_KEY, AUTH_KEY]);
   }
 
-  async function login(name: string, email: string) {
+  async function login(params: LoginParams) {
+    const { id, name, email, provider, avatarUrl } = params;
+
+    // Persist user to DB via backend upsert
+    try {
+      await fetch(`${API_BASE}/api/auth/upsert`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, email, name, avatarUrl, provider }),
+      });
+    } catch (err) {
+      console.warn("[UserContext] Failed to upsert user on server:", err);
+      // Non-fatal: user can still use the app locally
+    }
+
     const initials = name.trim()
       ? name.trim().split(" ").filter(Boolean).map((p) => p[0].toUpperCase()).slice(0, 2).join("")
       : email[0]?.toUpperCase() ?? "?";
-    const updated = { ...profile, name: name.trim(), email: email.trim(), avatarInitials: initials };
+
+    const updated: UserProfile = {
+      ...profile,
+      id,
+      name: name.trim(),
+      email: email.trim(),
+      provider,
+      avatarUrl: avatarUrl ?? "",
+      avatarInitials: initials,
+    };
+
     setProfile(updated);
     setIsLoggedIn(true);
     await AsyncStorage.multiSet([
