@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode, useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { API_BASE } from "@/constants/api";
+import { useUser } from "@/context/user";
 
 export interface Flight {
   id: string;
@@ -20,15 +22,12 @@ export interface Flight {
   delayMinutes: number;
   aircraft: string;
   addedAt: string;
-  /** true when the flight was enriched from a real API source */
   verified: boolean;
-  /** true when the flight data was generated/estimated rather than fetched from a real API */
   isMock?: boolean;
-  // Optional fields from API enrichment
-  tailNumber?: string;         // e.g. "HB-JHF"
-  departureTerminal?: string;  // e.g. "2"
+  tailNumber?: string;
+  departureTerminal?: string;
   arrivalTerminal?: string;
-  departureGate?: string;      // e.g. "B42"
+  departureGate?: string;
   arrivalGate?: string;
 }
 
@@ -52,12 +51,11 @@ interface FlightsContextValue {
   removeFlight: (id: string) => Promise<void>;
 }
 
-const STORAGE_KEY = "@logbook_flights";
+const LOCAL_STORAGE_KEY = "@logbook_flights";
 
 function computeStats(flights: Flight[]): FlightStats {
   const currentYear = new Date().getFullYear();
   const yearFlights = flights.filter((f) => f.date.startsWith(String(currentYear)));
-
   const totalFlights = flights.length;
   const totalMiles = flights.reduce((s, f) => s + f.distanceMiles, 0);
   const totalCo2Kg = flights.reduce((s, f) => s + f.co2Kg, 0);
@@ -66,18 +64,7 @@ function computeStats(flights: Flight[]): FlightStats {
   const yearMiles = yearFlights.reduce((s, f) => s + f.distanceMiles, 0);
   const yearCo2 = yearFlights.reduce((s, f) => s + f.co2Kg, 0);
   const rankPercentile = computeRank(yearFlights.length);
-
-  return {
-    totalFlights,
-    totalMiles,
-    totalCo2Kg,
-    totalFlightMinutes,
-    totalDelayMinutes,
-    rankPercentile,
-    yearFlights: yearFlights.length,
-    yearMiles,
-    yearCo2,
-  };
+  return { totalFlights, totalMiles, totalCo2Kg, totalFlightMinutes, totalDelayMinutes, rankPercentile, yearFlights: yearFlights.length, yearMiles, yearCo2 };
 }
 
 function computeRank(flightsThisYear: number): number {
@@ -95,33 +82,66 @@ function computeRank(flightsThisYear: number): number {
 const FlightsContext = createContext<FlightsContextValue | null>(null);
 
 export function FlightsProvider({ children }: { children: ReactNode }) {
+  const { profile, isLoggedIn } = useUser();
   const [flights, setFlights] = useState<Flight[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // ── Load flights: API when logged in, AsyncStorage as fallback/guest ────────
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      if (raw) {
+    let cancelled = false;
+    async function load() {
+      setIsLoading(true);
+      if (isLoggedIn && profile.id) {
         try {
-          const parsed = JSON.parse(raw) as Flight[];
-          const migrated = parsed.map((f) => ({
-            ...f,
-            verified: f.verified ?? false,
-            isMock: f.isMock ?? false,
-          }));
-          setFlights(migrated);
-        } catch {
-          setFlights([]);
+          const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(profile.id)}/flights`);
+          if (res.ok) {
+            const data: Flight[] = await res.json();
+            if (!cancelled) setFlights(data);
+            setIsLoading(false);
+            return;
+          }
+        } catch (err) {
+          console.warn("[FlightsContext] API fetch failed, falling back to local storage:", err);
         }
       }
-      setIsLoading(false);
-    });
-  }, []);
+      // Guest / offline fallback
+      const raw = await AsyncStorage.getItem(LOCAL_STORAGE_KEY);
+      if (!cancelled && raw) {
+        try {
+          const parsed = JSON.parse(raw) as Flight[];
+          setFlights(parsed.map((f) => ({ ...f, verified: f.verified ?? false, isMock: f.isMock ?? false })));
+        } catch { setFlights([]); }
+      }
+      if (!cancelled) setIsLoading(false);
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [isLoggedIn, profile.id]);
 
-  const persist = useCallback(async (updated: Flight[]) => {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-  }, []);
+  // ── Persist locally for guest mode ──────────────────────────────────────────
+  const persistLocal = useCallback(async (updated: Flight[]) => {
+    if (!isLoggedIn) await AsyncStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+  }, [isLoggedIn]);
 
+  // ── Add flight ───────────────────────────────────────────────────────────────
   const addFlight = useCallback(async (data: Omit<Flight, "id" | "addedAt">) => {
+    if (isLoggedIn && profile.id) {
+      try {
+        const res = await fetch(`${API_BASE}/api/flights`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...data, userId: profile.id }),
+        });
+        if (res.ok) {
+          const saved: Flight = await res.json();
+          setFlights((prev) => [saved, ...prev]);
+          return;
+        }
+      } catch (err) {
+        console.warn("[FlightsContext] Failed to save flight to API:", err);
+      }
+    }
+    // Guest / offline fallback
     const flight: Flight = {
       ...data,
       id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
@@ -129,27 +149,31 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
     };
     setFlights((prev) => {
       const next = [flight, ...prev];
-      persist(next);
+      persistLocal(next);
       return next;
     });
-  }, [persist]);
+  }, [isLoggedIn, profile.id, persistLocal]);
 
+  // ── Remove flight ────────────────────────────────────────────────────────────
   const removeFlight = useCallback(async (id: string) => {
+    if (isLoggedIn && profile.id) {
+      try {
+        await fetch(`${API_BASE}/api/flights/${encodeURIComponent(id)}`, { method: "DELETE" });
+      } catch (err) {
+        console.warn("[FlightsContext] Failed to delete flight from API:", err);
+      }
+    }
     setFlights((prev) => {
       const next = prev.filter((f) => f.id !== id);
-      persist(next);
+      persistLocal(next);
       return next;
     });
-  }, [persist]);
+  }, [isLoggedIn, profile.id, persistLocal]);
 
   const stats = useMemo(() => computeStats(flights), [flights]);
 
   const value = useMemo(() => ({
-    flights,
-    stats,
-    isLoading,
-    addFlight,
-    removeFlight,
+    flights, stats, isLoading, addFlight, removeFlight,
   }), [flights, stats, isLoading, addFlight, removeFlight]);
 
   return (
@@ -161,6 +185,6 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
 
 export function useFlights() {
   const ctx = useContext(FlightsContext);
-  if (!ctx) throw new Error("useFlights must be used within FlightsProvider");
+  if (!ctx) throw new Error("useFlights must be within FlightsProvider");
   return ctx;
 }

@@ -18,6 +18,7 @@ import { BlurView } from "expo-blur";
 import Svg, { Path, Circle, Defs, RadialGradient, Stop, Rect } from "react-native-svg";
 import { useColors } from "@/constants/colors";
 import { useUser } from "@/context/user";
+import type { LoginParams } from "@/context/user";
 import * as AppleAuthentication from "expo-apple-authentication";
 
 // ─── Google Sign-In lazy loader ─────────────────────────────────────────────────────
@@ -31,15 +32,16 @@ function isExpoGo(): boolean {
   try { const C = require("expo-constants").default; return C.executionEnvironment === "storeClient"; } catch { return false; }
 }
 
-const GOOGLE_WEB_CLIENT_ID = "REPLACE_WITH_YOUR_WEB_CLIENT_ID";
-const TEST_USER = { name: "Diogo Marques", email: "diogo.test@logbook.app", password: "test1234" };
+const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "";
+const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? "";
+
+const TEST_USER = { id: "test-user-001", name: "Diogo Marques", email: "diogo.test@logbook.app", password: "test1234" };
 type Tab = "login" | "signup";
 
 const { width: SW, height: SH } = Dimensions.get("window");
 
 // ─── Background scene ─────────────────────────────────────────────────────────────────
 const STARS = [
-  // [x%, y%, r, opacity]
   [8,  6,  1.8, 0.9], [18, 11, 1.2, 0.7], [32,  4, 2.2, 0.8], [47,  9, 1.5, 0.6],
   [61,  3, 1.8, 0.9], [75,  8, 1.2, 0.7], [88,  5, 2.0, 0.8], [94, 14, 1.5, 0.6],
   [5,  18, 1.0, 0.5], [22, 22, 2.0, 0.8], [38, 16, 1.5, 0.7], [54, 20, 1.0, 0.5],
@@ -50,7 +52,6 @@ const STARS = [
 function AviationBackground() {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {/* Base gradient: deep space navy at top, dark indigo horizon at bottom */}
       <LinearGradient
         colors={["#04061A", "#080C2E", "#0D1545", "#111D5E", "#0A1535"]}
         locations={[0, 0.25, 0.5, 0.72, 1]}
@@ -58,15 +59,11 @@ function AviationBackground() {
         start={{ x: 0.3, y: 0 }}
         end={{ x: 0.7, y: 1 }}
       />
-
-      {/* Warm horizon glow (sunrise/sunset haze at 70%) */}
       <LinearGradient
         colors={["transparent", "transparent", "#1A2860", "#243070", "#1C264A"]}
         locations={[0, 0.55, 0.72, 0.85, 1]}
         style={StyleSheet.absoluteFill}
       />
-
-      {/* Subtle accent glow top-right (like a distant city or moon) */}
       <LinearGradient
         colors={["#1A3A8A44", "transparent"]}
         locations={[0, 1]}
@@ -74,8 +71,6 @@ function AviationBackground() {
         end={{ x: 0.2, y: 0.4 }}
         style={StyleSheet.absoluteFill}
       />
-
-      {/* Stars + flight arc SVG */}
       <Svg width={SW} height={SH} style={StyleSheet.absoluteFill}>
         <Defs>
           <RadialGradient id="moonGlow" cx="80%" cy="12%" r="18%">
@@ -84,11 +79,7 @@ function AviationBackground() {
             <Stop offset="100%" stopColor="transparent" stopOpacity="0" />
           </RadialGradient>
         </Defs>
-
-        {/* Moon halo */}
         <Rect x={0} y={0} width={SW} height={SH} fill="url(#moonGlow)" />
-
-        {/* Stars */}
         {STARS.map(([xp, yp, r, o], i) => (
           <Circle
             key={i}
@@ -99,8 +90,6 @@ function AviationBackground() {
             opacity={o as number}
           />
         ))}
-
-        {/* Flight path arc — a gentle Bezier from bottom-left to top-right */}
         <Path
           d={`M ${SW * 0.05},${SH * 0.82} Q ${SW * 0.42},${SH * 0.28} ${SW * 0.92},${SH * 0.08}`}
           fill="none"
@@ -109,23 +98,8 @@ function AviationBackground() {
           strokeDasharray="6 8"
           opacity={0.25}
         />
-        {/* Plane dot at 60% along arc */}
-        <Circle
-          cx={SW * 0.58}
-          cy={SH * 0.31}
-          r={3.5}
-          fill="#4F8EF7"
-          opacity={0.55}
-        />
-        <Circle
-          cx={SW * 0.58}
-          cy={SH * 0.31}
-          r={7}
-          fill="#4F8EF7"
-          opacity={0.12}
-        />
-
-        {/* Horizon shimmer line */}
+        <Circle cx={SW * 0.58} cy={SH * 0.31} r={3.5} fill="#4F8EF7" opacity={0.55} />
+        <Circle cx={SW * 0.58} cy={SH * 0.31} r={7}   fill="#4F8EF7" opacity={0.12} />
         <Path
           d={`M 0,${SH * 0.68} Q ${SW * 0.5},${SH * 0.65} ${SW},${SH * 0.68}`}
           fill="none"
@@ -138,34 +112,25 @@ function AviationBackground() {
   );
 }
 
-// ─── Glassmorphism wrapper ────────────────────────────────────────────────────────
 function GlassCard({ children, style }: { children: React.ReactNode; style?: object }) {
   return (
     <BlurView
       intensity={28}
       tint="dark"
       style={[
-        {
-          borderRadius: 20,
-          overflow: "hidden",
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.10)",
-        },
+        { borderRadius: 20, overflow: "hidden", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)" },
         style,
       ]}
     >
-      {/* Subtle inner tint */}
       <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(10,18,60,0.45)", borderRadius: 20 }]} />
       <View style={{ position: "relative" }}>{children}</View>
     </BlurView>
   );
 }
 
-// ─── Floating label text input ────────────────────────────────────────────────────
 function GlassInput({
   label, icon, value, onChangeText, placeholder, secureTextEntry,
-  keyboardType, autoCapitalize, autoCorrect, returnKeyType, onSubmitEditing,
-  rightElement,
+  keyboardType, autoCapitalize, autoCorrect, returnKeyType, onSubmitEditing, rightElement,
 }: {
   label: string; icon: string; value: string;
   onChangeText: (v: string) => void; placeholder: string;
@@ -213,7 +178,16 @@ export default function AuthScreen() {
   const [appleAvailable, setApple] = useState(false);
 
   useEffect(() => {
-    if (!isExpoGo()) { const g = getGoogleSignin(); if (g) g.GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID, offlineAccess: true }); }
+    if (!isExpoGo()) {
+      const g = getGoogleSignin();
+      if (g) {
+        g.GoogleSignin.configure({
+          webClientId: GOOGLE_WEB_CLIENT_ID,
+          iosClientId: GOOGLE_IOS_CLIENT_ID,
+          offlineAccess: true,
+        });
+      }
+    }
     if (Platform.OS === "ios") AppleAuthentication.isAvailableAsync().then(setApple);
   }, []);
 
@@ -225,46 +199,81 @@ export default function AuthScreen() {
     if (tab === "signup" && !name.trim()) { Alert.alert("Name required",  "Please enter your name."); return; }
     setLoading(true);
     await new Promise((r) => setTimeout(r, 600));
-    await login(tab === "signup" ? name : email.split("@")[0], email);
+    await login({
+      id: email.trim().toLowerCase(),
+      name: tab === "signup" ? name : email.split("@")[0],
+      email: email.trim(),
+      provider: "email",
+    });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setLoading(false); router.back();
+    setLoading(false);
+    router.back();
   }
 
   async function handleTestLogin() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLoading(true);
     await new Promise((r) => setTimeout(r, 400));
-    await login(TEST_USER.name, TEST_USER.email);
+    await login({
+      id: TEST_USER.id,
+      name: TEST_USER.name,
+      email: TEST_USER.email,
+      provider: "email",
+    });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setLoading(false); router.back();
+    setLoading(false);
+    router.back();
   }
 
   async function handleAppleSignIn() {
     try {
       const cred = await AppleAuthentication.signInAsync({
-        requestedScopes: [AppleAuthentication.AppleAuthenticationScope.FULL_NAME, AppleAuthentication.AppleAuthenticationScope.EMAIL],
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
       });
       const fullName  = [cred.fullName?.givenName ?? "", cred.fullName?.familyName ?? ""].filter(Boolean).join(" ").trim();
       const userEmail = cred.email ?? "apple-user@privaterelay.appleid.com";
-      await login(fullName || userEmail.split("@")[0], userEmail);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); router.back();
+      await login({
+        id: cred.user,                          // Apple's stable unique user ID
+        name: fullName || userEmail.split("@")[0],
+        email: userEmail,
+        provider: "apple",
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.back();
     } catch (e: any) {
       if (e.code !== "ERR_REQUEST_CANCELED") Alert.alert("Apple Sign In failed", e.message ?? "An error occurred.");
     }
   }
 
   async function handleGoogleSignIn() {
-    if (isExpoGo()) { Alert.alert("Not available in Expo Go", "Use email sign-in or the Test Account for now."); return; }
-    if (GOOGLE_WEB_CLIENT_ID === "REPLACE_WITH_YOUR_WEB_CLIENT_ID") { Alert.alert("Setup required", "Add your Google Web Client ID to auth.tsx."); return; }
-    const g = getGoogleSignin(); if (!g) { Alert.alert("Error", "Google Sign In module could not be loaded."); return; }
+    if (isExpoGo()) {
+      Alert.alert("Not available in Expo Go", "Use email sign-in or the Test Account for now.");
+      return;
+    }
+    if (!GOOGLE_WEB_CLIENT_ID) {
+      Alert.alert("Setup required", "Add EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID to your .env file.");
+      return;
+    }
+    const g = getGoogleSignin();
+    if (!g) { Alert.alert("Error", "Google Sign In module could not be loaded."); return; }
     const { GoogleSignin, statusCodes } = g;
     try {
       await GoogleSignin.hasPlayServices();
       const userInfo   = await GoogleSignin.signIn();
       const googleUser = (userInfo as any).data?.user ?? (userInfo as any).user;
       if (!googleUser) throw new Error("No user data returned from Google.");
-      await login(googleUser.name ?? googleUser.email.split("@")[0], googleUser.email);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); router.back();
+      await login({
+        id: googleUser.id,                      // Google's stable sub / user ID
+        name: googleUser.name ?? googleUser.email.split("@")[0],
+        email: googleUser.email,
+        provider: "google",
+        avatarUrl: googleUser.photo ?? "",
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.back();
     } catch (e: any) {
       if (e.code === statusCodes.SIGN_IN_CANCELLED || e.code === statusCodes.IN_PROGRESS) return;
       if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) Alert.alert("Google Sign In", "Google Play Services not available.");
@@ -277,17 +286,13 @@ export default function AuthScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-
-      {/* ── FULL-BLEED AVIATION BACKGROUND ── */}
       <AviationBackground />
-
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <ScrollView
           contentContainerStyle={{ paddingHorizontal: 20, paddingTop: insets.top + 12, paddingBottom: insets.bottom + 36 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-
           {/* ── TOP BAR: Close button ── */}
           <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: 4 }}>
             <Pressable
@@ -299,13 +304,9 @@ export default function AuthScreen() {
             </Pressable>
           </View>
 
-          {/* ── HERO: Logo + tagline (no card, sits on the background) ── */}
+          {/* ── HERO ── */}
           <Animated.View entering={FadeInDown.delay(0).springify()} style={s.hero}>
-            <Image
-              source={require("@/assets/images/icon.png")}
-              style={s.logo}
-              resizeMode="cover"
-            />
+            <Image source={require("@/assets/images/icon.png")} style={s.logo} resizeMode="cover" />
             <Text style={s.heroTitle}>
               {tab === "signup" ? "Start your journey" : "Welcome back"}
             </Text>
@@ -318,11 +319,7 @@ export default function AuthScreen() {
 
           {/* ── TEST ACCOUNT BANNER ── */}
           <Animated.View entering={FadeInDown.delay(40).springify()} style={{ marginBottom: 14 }}>
-            <Pressable
-              onPress={handleTestLogin}
-              disabled={loading}
-              style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}
-            >
+            <Pressable onPress={handleTestLogin} disabled={loading} style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}>
               <BlurView intensity={22} tint="dark" style={s.testBanner}>
                 <View style={[StyleSheet.absoluteFill, s.testBannerTint]} />
                 <View style={s.testBannerInner}>
@@ -350,10 +347,7 @@ export default function AuthScreen() {
                 onPress={handleAppleSignIn}
               />
             ) : (
-              <Pressable
-                onPress={handleAppleSignIn}
-                style={({ pressed }) => [s.socialBtn, { opacity: pressed ? 0.85 : 1 }]}
-              >
+              <Pressable onPress={handleAppleSignIn} style={({ pressed }) => [s.socialBtn, { opacity: pressed ? 0.85 : 1 }]}>
                 <BlurView intensity={22} tint="dark" style={s.socialBlur}>
                   <View style={[StyleSheet.absoluteFill, s.socialTint]} />
                   <Ionicons name="logo-apple" size={20} color="#fff" />
@@ -362,15 +356,10 @@ export default function AuthScreen() {
               </Pressable>
             )}
 
-            <Pressable
-              onPress={handleGoogleSignIn}
-              style={({ pressed }) => [s.socialBtn, { opacity: pressed ? 0.85 : 1 }]}
-            >
+            <Pressable onPress={handleGoogleSignIn} style={({ pressed }) => [s.socialBtn, { opacity: pressed ? 0.85 : 1 }]}>
               <BlurView intensity={22} tint="dark" style={s.socialBlur}>
                 <View style={[StyleSheet.absoluteFill, s.socialTintLight]} />
-                <View style={s.googleG}>
-                  <Text style={s.googleGText}>G</Text>
-                </View>
+                <View style={s.googleG}><Text style={s.googleGText}>G</Text></View>
                 <Text style={[s.socialLabel, { color: "#fff" }]}>Continue with Google</Text>
               </BlurView>
             </Pressable>
@@ -387,70 +376,35 @@ export default function AuthScreen() {
           <Animated.View entering={FadeInUp.delay(120).springify()}>
             <GlassCard style={{ marginBottom: 16 }}>
               <View style={{ padding: 18, gap: 0 }}>
-
-                {/* Tab switcher inside card */}
                 <View style={s.tabRow}>
-                  <Pressable
-                    onPress={() => switchTab("signup")}
-                    style={[s.tabBtn, tab === "signup" && s.tabBtnActive]}
-                  >
+                  <Pressable onPress={() => switchTab("signup")} style={[s.tabBtn, tab === "signup" && s.tabBtnActive]}>
                     <Text style={[s.tabLabel, tab === "signup" && s.tabLabelActive]}>Sign Up</Text>
                   </Pressable>
-                  <Pressable
-                    onPress={() => switchTab("login")}
-                    style={[s.tabBtn, tab === "login" && s.tabBtnActive]}
-                  >
+                  <Pressable onPress={() => switchTab("login")} style={[s.tabBtn, tab === "login" && s.tabBtnActive]}>
                     <Text style={[s.tabLabel, tab === "login" && s.tabLabelActive]}>Log In</Text>
                   </Pressable>
                 </View>
 
                 {tab === "signup" && (
-                  <GlassInput
-                    label="FULL NAME"
-                    icon="person-outline"
-                    value={name}
-                    onChangeText={setName}
-                    placeholder="e.g. Diogo Marques"
-                    autoCapitalize="words"
-                    returnKeyType="next"
-                  />
+                  <GlassInput label="FULL NAME" icon="person-outline" value={name} onChangeText={setName}
+                    placeholder="e.g. Diogo Marques" autoCapitalize="words" returnKeyType="next" />
                 )}
 
-                <GlassInput
-                  label="EMAIL"
-                  icon="mail-outline"
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="your@email.com"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="next"
-                />
+                <GlassInput label="EMAIL" icon="mail-outline" value={email} onChangeText={setEmail}
+                  placeholder="your@email.com" keyboardType="email-address" autoCapitalize="none"
+                  autoCorrect={false} returnKeyType="next" />
 
-                <GlassInput
-                  label="PASSWORD"
-                  icon="lock-closed-outline"
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="At least 6 characters"
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                  returnKeyType="done"
-                  onSubmitEditing={handleSubmit}
+                <GlassInput label="PASSWORD" icon="lock-closed-outline" value={password} onChangeText={setPassword}
+                  placeholder="At least 6 characters" secureTextEntry={!showPassword} autoCapitalize="none"
+                  returnKeyType="done" onSubmitEditing={handleSubmit}
                   rightElement={
                     <Pressable onPress={() => setShow((v) => !v)} hitSlop={8}>
-                      <Ionicons
-                        name={showPassword ? "eye-off-outline" : "eye-outline"}
-                        size={18}
-                        color="rgba(255,255,255,0.45)"
-                        style={{ marginRight: 14 }}
-                      />
+                      <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={18}
+                        color="rgba(255,255,255,0.45)" style={{ marginRight: 14 }} />
                     </Pressable>
                   }
                 />
 
-                {/* Submit */}
                 <Pressable
                   onPress={handleSubmit}
                   disabled={loading}
@@ -480,17 +434,13 @@ export default function AuthScreen() {
   );
 }
 
-// ─── Styles ────────────────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  // Close button
   closeBtn: {
     width: 34, height: 34, borderRadius: 17,
     backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1, borderColor: "rgba(255,255,255,0.15)",
     alignItems: "center", justifyContent: "center",
   },
-
-  // Hero
   hero: { alignItems: "center", paddingTop: 12, paddingBottom: 28, gap: 0 },
   logo: {
     width: 76, height: 76, borderRadius: 20, marginBottom: 16,
@@ -506,16 +456,12 @@ const s = StyleSheet.create({
     fontSize: 14, color: "rgba(255,255,255,0.62)", fontFamily: "DMSans_400Regular",
     textAlign: "center", lineHeight: 20, paddingHorizontal: 12,
   },
-
-  // Test banner
   testBanner:   { borderRadius: 14, overflow: "hidden", borderWidth: 1, borderColor: "rgba(245,158,11,0.30)" },
   testBannerTint: { backgroundColor: "rgba(245,158,11,0.08)", borderRadius: 14 },
   testBannerInner: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 13 },
   testIconWrap: { width: 34, height: 34, borderRadius: 10, backgroundColor: "rgba(245,158,11,0.15)", alignItems: "center", justifyContent: "center" },
   testTitle: { fontSize: 14, color: "#F59E0B", fontFamily: "DMSans_700Bold" },
   testEmail: { fontSize: 11, color: "rgba(245,158,11,0.70)", fontFamily: "DMSans_400Regular", marginTop: 1 },
-
-  // Social buttons
   socialBtn:   { borderRadius: 14, overflow: "hidden" },
   socialBlur:  { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, height: 52, borderRadius: 14, borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" },
   socialTint:  { backgroundColor: "rgba(10,18,60,0.55)", borderRadius: 14 },
@@ -523,35 +469,19 @@ const s = StyleSheet.create({
   socialLabel: { fontSize: 15, color: "#FFFFFF", fontFamily: "DMSans_700Bold" },
   googleG:     { width: 24, height: 24, borderRadius: 12, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
   googleGText: { fontSize: 14, fontFamily: "DMSans_700Bold", color: "#4285F4" },
-
-  // Divider
   divider:     { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },
   dividerLine: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.12)" },
   dividerText: { fontSize: 12, color: "rgba(255,255,255,0.38)", fontFamily: "DMSans_400Regular" },
-
-  // Tab switcher
-  tabRow:       { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.07)", borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", padding: 3, marginBottom: 16, gap: 3 },
-  tabBtn:       { flex: 1, paddingVertical: 9, borderRadius: 9, alignItems: "center" },
-  tabBtnActive: { backgroundColor: "rgba(79,142,247,0.85)" },
-  tabLabel:     { fontSize: 14, fontFamily: "DMSans_500Medium", color: "rgba(255,255,255,0.50)" },
-  tabLabelActive:{ fontFamily: "DMSans_700Bold", color: "#FFFFFF" },
-
-  // Input
-  inputLabel: { fontSize: 10, color: "rgba(255,255,255,0.50)", fontFamily: "DMSans_500Medium", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 5 },
-  inputBlur:  { flexDirection: "row", alignItems: "center", borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" },
-  inputTint:  { backgroundColor: "rgba(10,18,60,0.40)", borderRadius: 12 },
-  textInput:  { flex: 1, paddingHorizontal: 10, paddingVertical: 13, fontSize: 15, color: "#FFFFFF", fontFamily: "DMSans_400Regular" },
-
-  // Submit
-  submitBtn: {
-    backgroundColor: "#3A7BF7",
-    borderRadius: 14, paddingVertical: 16,
-    alignItems: "center", marginTop: 6,
-    shadowColor: "#3A7BF7", shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.40, shadowRadius: 14, elevation: 6,
-  },
-  submitLabel: { fontSize: 16, color: "#FFFFFF", fontFamily: "DMSans_700Bold" },
-
-  // Guest
-  guestLink: { fontSize: 14, color: "rgba(255,255,255,0.55)", fontFamily: "DMSans_500Medium" },
+  tabRow:      { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.06)", borderRadius: 10, padding: 3, marginBottom: 18 },
+  tabBtn:      { flex: 1, paddingVertical: 8, alignItems: "center", borderRadius: 8 },
+  tabBtnActive:{ backgroundColor: "rgba(255,255,255,0.12)" },
+  tabLabel:    { fontSize: 13, color: "rgba(255,255,255,0.45)", fontFamily: "DMSans_600SemiBold" },
+  tabLabelActive: { color: "#FFFFFF" },
+  inputLabel:  { fontSize: 10, color: "rgba(255,255,255,0.40)", fontFamily: "DMSans_700Bold", letterSpacing: 0.8, marginBottom: 6 },
+  inputBlur:   { flexDirection: "row", alignItems: "center", borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", minHeight: 48 },
+  inputTint:   { backgroundColor: "rgba(255,255,255,0.04)", borderRadius: 12 },
+  textInput:   { flex: 1, color: "#FFFFFF", fontFamily: "DMSans_400Regular", fontSize: 15, paddingHorizontal: 12, paddingVertical: 12 },
+  submitBtn:   { backgroundColor: "#3B6FE8", borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 4 },
+  submitLabel: { fontSize: 15, color: "#FFFFFF", fontFamily: "DMSans_700Bold" },
+  guestLink:   { fontSize: 13, color: "rgba(255,255,255,0.38)", fontFamily: "DMSans_400Regular" },
 });
