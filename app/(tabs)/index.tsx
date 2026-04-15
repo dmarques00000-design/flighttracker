@@ -259,7 +259,8 @@ const MENU_ITEMS = [
   { id: "add",           icon: "add-circle-outline",    label: "Add Flight",        sub: "Log a flight manually" },
 ];
 
-function HamburgerMenu({ visible, onClose, onSelect }: { visible: boolean; onClose: () => void; onSelect: (id: string) => void }) {
+// topOffset = safeAreaTop + headerHeight (paddingTop:16 + logo:38 + paddingBottom:20 = 74)
+function HamburgerMenu({ visible, onClose, onSelect, topOffset }: { visible: boolean; onClose: () => void; onSelect: (id: string) => void; topOffset: number }) {
   const C = useColors();
   if (!visible) return null;
   return (
@@ -267,7 +268,7 @@ function HamburgerMenu({ visible, onClose, onSelect }: { visible: boolean; onClo
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.18)" }}>
           <TouchableWithoutFeedback>
-            <Animated.View entering={FadeIn.duration(150)} style={{ position: "absolute", top: 90, right: 20, width: 260, backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 24, elevation: 10 }}>
+            <Animated.View entering={FadeIn.duration(150)} style={{ position: "absolute", top: topOffset, right: 20, width: 260, backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 24, elevation: 10 }}>
               {MENU_ITEMS.map((item, i) => (
                 <Pressable key={item.id} onPress={() => { onSelect(item.id); onClose(); }}
                   style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 12, backgroundColor: pressed ? C.surface : C.card },
@@ -370,6 +371,10 @@ export default function HomeScreen() {
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
   const showLoginPrompt = !isLoggedIn && !dismissedPrompt;
 
+  // Menu dropdown sits just below the header row:
+  // topPadding (safe area) + paddingTop:16 + logo height:38 + paddingBottom:20 = +74
+  const menuTopOffset = topPadding + 74;
+
   // Swipe left → flights (deprecated hook, kept for compile compat)
   const swipeHandlers = useSwipeNavigation(0);
 
@@ -415,7 +420,7 @@ export default function HomeScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPadding }} {...swipeHandlers}>
-      <HamburgerMenu visible={menuOpen} onClose={() => setMenuOpen(false)} onSelect={handleMenuSelect} />
+      <HamburgerMenu visible={menuOpen} onClose={() => setMenuOpen(false)} onSelect={handleMenuSelect} topOffset={menuTopOffset} />
       <ScrollView
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
