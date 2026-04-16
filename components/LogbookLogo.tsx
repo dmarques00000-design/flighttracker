@@ -1,11 +1,12 @@
 /**
  * LogbookLogo
  * -----------
- * Renders the real app icon (assets/images/icon.png) as the in-app logo mark.
+ * Renders the app name wordmark, optionally with the icon mark.
  *
  * Usage:
- *   <LogbookLogo size={48} />           — icon only
- *   <LogbookLogo size={36} showName />  — icon + "Logbook" wordmark
+ *   <LogbookLogo size={48} />                    — icon only
+ *   <LogbookLogo size={36} showName />           — icon + "Logbook" wordmark
+ *   <LogbookLogo size={36} showName hideIcon />  — wordmark only (no icon)
  */
 import React from "react";
 import { View, Text, Image, StyleSheet } from "react-native";
@@ -14,10 +15,11 @@ import { useColors } from "@/constants/colors";
 interface Props {
   size?: number;
   showName?: boolean;
+  hideIcon?: boolean;
   textColor?: string;
 }
 
-export function LogbookLogo({ size = 40, showName = false, textColor }: Props) {
+export function LogbookLogo({ size = 40, showName = false, hideIcon = false, textColor }: Props) {
   const C = useColors();
   const radius = size * 0.22;
   const textCol    = textColor ?? C.text;
@@ -25,16 +27,18 @@ export function LogbookLogo({ size = 40, showName = false, textColor }: Props) {
 
   return (
     <View style={styles.root}>
-      <Image
-        source={require("@/assets/images/icon.png")}
-        style={[
-          styles.icon,
-          { width: size, height: size, borderRadius: radius },
-        ]}
-        resizeMode="cover"
-      />
+      {!hideIcon && (
+        <Image
+          source={require("@/assets/images/icon.png")}
+          style={[
+            styles.icon,
+            { width: size, height: size, borderRadius: radius },
+          ]}
+          resizeMode="cover"
+        />
+      )}
       {showName && (
-        <View style={styles.nameWrap}>
+        <View style={[styles.nameWrap, hideIcon && { marginLeft: 0 }]}>
           <Text style={[styles.name, { color: textCol, fontSize: size * 0.72 }]}>
             Logbook
           </Text>
