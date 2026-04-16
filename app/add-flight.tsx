@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View, Text, Pressable, Image,
   ActivityIndicator, ScrollView, Platform, Alert, TextInput,
@@ -293,6 +293,11 @@ export default function AddFlightScreen() {
   const { addFlight, flights } = useFlights();
   const isOnline = useIsOnline();
 
+  // Ref used to auto-scroll the sheet down after results appear,
+  // ensuring the FlightCard and "Add to Logbook" button are visible
+  // without the user having to manually discover they can scroll.
+  const scrollRef = useRef<ScrollView>(null);
+
   const [searchMode, setSearchMode]   = useState<SearchMode>("code");
   const [date, setDate]               = useState(todayStr());
   const [loading, setLoading]         = useState(false);
@@ -342,6 +347,9 @@ export default function AddFlightScreen() {
       const updated = await lookupLimiter.check();
       setRemainingCalls(updated.remainingCalls);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Scroll to bottom so the FlightCard and Add to Logbook button are
+      // immediately visible — the formSheet won't grow to accommodate them.
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (err) {
       setLookupErr(classifyError(err, isOnline));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -370,6 +378,9 @@ export default function AddFlightScreen() {
       const updated = await lookupLimiter.check();
       setRemainingCalls(updated.remainingCalls);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Scroll to bottom so the first FlightCard result and its Add to Logbook
+      // button are immediately visible without the user needing to discover scroll.
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (err) {
       setLookupErr(classifyError(err, isOnline));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -417,15 +428,16 @@ export default function AddFlightScreen() {
         paddingTop: topPad,
       }}>
         <ScrollView
+          ref={scrollRef}
           style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           bounces={true}
           alwaysBounceVertical={true}
-          // Large bottom padding guarantees even the tallest result card + button
-          // can be scrolled fully into view regardless of sheet height.
-          contentContainerStyle={{ padding: 24, paddingBottom: 120 }}
+          // paddingBottom 200 guarantees the Add to Logbook button clears the
+          // bottom of the formSheet even on smaller phones with the keyboard open.
+          contentContainerStyle={{ padding: 24, paddingBottom: 200 }}
         >
           {/* Header */}
           <Animated.View entering={FadeInDown.delay(0).springify()}>
