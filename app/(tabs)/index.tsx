@@ -19,9 +19,8 @@ import { useGestureLock } from "@/context/gesture-lock";
 import GlobeView from "@/components/GlobeView";
 import { LogbookLogo } from "@/components/LogbookLogo";
 import { getCO2FunFact } from "@/utils/co2FunFact";
-import { getRateLimiter, formatRetryAfter } from "@/lib/rate-limiter";
+import { getRateLimiter } from "@/lib/rate-limiter";
 import { getAirportInfo } from "@/utils/passport";
-import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 
 const percentileLimiter = getRateLimiter("percentile", { maxCalls: 10, windowMs: 60_000 });
 
@@ -498,8 +497,6 @@ export default function HomeScreen() {
 
   const menuTopOffset = topPadding + 74;
 
-  const swipeHandlers = useSwipeNavigation(0);
-
   const { setGestureLocked } = useGestureLock();
 
   const handleGlobeDragStart = () => {
@@ -539,10 +536,9 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPadding }} {...swipeHandlers}>
+    <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPadding }}>
       <HamburgerMenu visible={menuOpen} onClose={() => setMenuOpen(false)} onSelect={handleMenuSelect} topOffset={menuTopOffset} />
 
-      {/* Show skeleton while the flights context is fetching from the API */}
       {isLoading ? (
         <HomeSkeleton />
       ) : (
