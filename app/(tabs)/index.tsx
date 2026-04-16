@@ -171,7 +171,7 @@ function HomeSkeleton() {
     >
       {/* Header */}
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 20 }}>
-        <LogbookLogo size={38} showName />
+        <LogbookLogo size={38} showName hideIcon />
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <SkeletonBox width={36} height={36} borderRadius={18} />
           <SkeletonBox width={36} height={36} borderRadius={10} />
@@ -551,7 +551,7 @@ export default function HomeScreen() {
         >
           {/* Header */}
           <Animated.View entering={FadeInDown.delay(0).springify()} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 20 }}>
-            <LogbookLogo size={38} showName />
+            <LogbookLogo size={38} showName hideIcon />
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <Pressable onPress={() => { Haptics.selectionAsync(); isLoggedIn ? router.push("/(tabs)/profile") : router.push("/auth"); }} style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]} hitSlop={6}>
                 {isLoggedIn && profile.avatarInitials ? (
