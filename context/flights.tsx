@@ -155,19 +155,39 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
   }, [isLoggedIn, profile.id, persistLocal]);
 
   // ── Remove flight ────────────────────────────────────────────────────────────
+  // Strategy: optimistic removal — remove from UI immediately, then confirm with
+  // the API. If the API call fails, the snapshot is restored and the error is
+  // re-thrown so the caller (e.g. a detail screen) can show a feedback message.
   const removeFlight = useCallback(async (id: string) => {
+    // 1. Capture current state as a rollback snapshot.
+    let snapshot: Flight[] = [];
+    setFlights((prev) => {
+      snapshot = prev;
+      return prev.filter((f) => f.id !== id);
+    });
+
     if (isLoggedIn && profile.id) {
       try {
-        await fetch(`${API_BASE}/api/flights/${encodeURIComponent(id)}`, { method: "DELETE" });
+        const res = await fetch(`${API_BASE}/api/flights/${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (!res.ok) {
+          // Non-2xx response — treat as failure and roll back.
+          throw new Error(`DELETE /api/flights/${id} responded with ${res.status}`);
+        }
+        // Success — nothing more to do; UI is already updated.
       } catch (err) {
-        console.warn("[FlightsContext] Failed to delete flight from API:", err);
+        // 2. Restore the snapshot so the flight reappears in the UI.
+        console.warn("[FlightsContext] Failed to delete flight from API, reverting:", err);
+        setFlights(snapshot);
+        // 3. Re-throw so the caller can surface an error message to the user.
+        throw err;
       }
+    } else {
+      // Guest mode — persist the updated list locally.
+      setFlights((prev) => {
+        persistLocal(prev);
+        return prev;
+      });
     }
-    setFlights((prev) => {
-      const next = prev.filter((f) => f.id !== id);
-      persistLocal(next);
-      return next;
-    });
   }, [isLoggedIn, profile.id, persistLocal]);
 
   const stats = useMemo(() => computeStats(flights), [flights]);
