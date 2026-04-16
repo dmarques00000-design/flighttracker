@@ -26,6 +26,7 @@ import {
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 
 const TODAY = new Date().toISOString().substring(0, 10);
+const CURRENT_YEAR = new Date().getFullYear();
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
 type GroupBy = "month" | "year" | "all";
@@ -86,6 +87,22 @@ function groupFlights(flights: Flight[], groupBy: GroupBy, timeFilter: TimeFilte
   return Array.from(map.entries())
     .sort((a, b) => timeFilter === "upcoming" ? a[0].localeCompare(b[0]) : b[0].localeCompare(a[0]))
     .map(([key, data]) => { const y = parseInt(key.substring(0, 4), 10); const m = parseInt(key.substring(5), 10) - 1; return { title: `${MONTHS[m]} ${y}`, data }; });
+}
+
+/**
+ * Returns the best default TimeFilter given the available flights:
+ *  1. Current year, if it has at least one flight.
+ *  2. The most recent year in the list that has flights.
+ *  3. "all" if there are no flights at all.
+ */
+function smartDefaultFilter(flights: Flight[]): TimeFilter {
+  if (flights.length === 0) return "all";
+  const hasCurrentYear = flights.some((f) => f.date.startsWith(String(CURRENT_YEAR)));
+  if (hasCurrentYear) return CURRENT_YEAR;
+  const years = Array.from(
+    new Set(flights.map((f) => parseInt(f.date.substring(0, 4), 10)).filter((y) => !isNaN(y)))
+  ).sort((a, b) => b - a);
+  return years.length > 0 ? years[0] : "all";
 }
 
 function AirlineLogoSmall({ airlineCode }: { airlineCode: string }) {
@@ -439,8 +456,6 @@ function FlightItem({
     pillText  = flight.status === "delayed" ? "Delayed" : flight.status === "cancelled" ? "Cancelled" : "Completed";
   }
 
-  // Tightened activeOffsetX from [-10,10] → [-16,16] so diagonal scrolls
-  // don't accidentally arm the swipe-to-delete zone
   const panGesture = Gesture.Pan()
     .activeOffsetX([-16, 16])
     .onUpdate((e) => {
@@ -584,13 +599,15 @@ const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
 export default function FlightsScreen() {
   const C = useColors();
   const insets = useSafeAreaInsets();
-  const { flights, removeFlight } = useFlights();
+  const { flights, isLoading, removeFlight } = useFlights();
   const params = useLocalSearchParams<{ filter?: string }>();
   const topPadding    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
   const [groupBy, setGroupBy]               = useState<GroupBy>("month");
-  const [timeFilter, setTimeFilter]         = useState<TimeFilter>(new Date().getFullYear());
+  // Initialise to "all" cheaply; corrected to the smart default once flights load.
+  const [timeFilter, setTimeFilter]         = useState<TimeFilter>("all");
+  const defaultApplied                      = useRef(false);
   const [query, setQuery]                   = useState("");
   const [searchFocused, setSearchFocused]   = useState(false);
   const [reminderFlight, setReminderFlight] = useState<Flight | null>(null);
@@ -606,12 +623,18 @@ export default function FlightsScreen() {
 
   const swipeHandlers = useSwipeNavigation(1, !searchFocused);
 
+  // ── Smart default: set once, as soon as the flights array is non-empty ──────
+  // We only set the default once (tracked by defaultApplied ref) so that user
+  // selections made after load are never overridden by subsequent re-renders.
+  useEffect(() => {
+    if (defaultApplied.current || isLoading) return;
+    if (flights.length === 0) return; // wait until we have data
+    defaultApplied.current = true;
+    setTimeFilter(smartDefaultFilter(flights));
+  }, [flights, isLoading]);
+
   // ── Undo helpers ──────────────────────────────────────────────────────────
-  // Called by the delete button on a card: stages the flight for deletion
-  // without actually removing it yet. The UndoToast handles the commit/cancel.
   const handleDeleteIntent = useCallback((flight: Flight) => {
-    // If there is already a pending delete, commit it immediately before
-    // staging the new one so we never have two toasts at once.
     if (pendingDeleteRef.current) {
       removeFlight(pendingDeleteRef.current.id);
     }
@@ -850,7 +873,7 @@ export default function FlightsScreen() {
         </Pressable>
       )}
 
-      {/* Undo-delete toast — rendered above the FAB */}
+      {/* Undo-delete toast */}
       {pendingDelete && (
         <UndoToast
           flight={pendingDelete}
