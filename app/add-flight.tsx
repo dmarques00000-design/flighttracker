@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View, Text, Pressable, Image,
-  ActivityIndicator, ScrollView, Platform, Alert, TextInput,
+  ActivityIndicator, ScrollView, Platform, TextInput,
   AppState, AppStateStatus,
 } from "react-native";
 import { router } from "expo-router";
@@ -19,11 +19,11 @@ import { AirportInput } from "@/components/AirportInput";
 const lookupLimiter = getRateLimiter("flight-lookup", { maxCalls: 5, windowMs: 60_000 });
 export const percentileLimiter = getRateLimiter("percentile", { maxCalls: 10, windowMs: 60_000 });
 
-// ─── Search mode ─────────────────────────────────────────────────────────────
+// ─── Search mode ──────────────────────────────────────────────────────────────────────────────
 type SearchMode = "code" | "airport";
 
-// ─── Error types ─────────────────────────────────────────────────────────────
-type LookupErrorKind = "offline" | "server" | "timeout" | "not_found" | "invalid_input" | "rate_limit" | "unknown";
+// ─── Error types ────────────────────────────────────────────────────────────────────────────
+type LookupErrorKind = "offline" | "server" | "timeout" | "not_found" | "invalid_input" | "rate_limit" | "unknown" | "save_failed";
 
 interface LookupError {
   kind: LookupErrorKind;
@@ -43,7 +43,15 @@ function classifyError(err: unknown, isOnline: boolean): LookupError {
   return { kind: "unknown",   message:"Could not look up that flight. Please check the details and date.", retryable: true };
 }
 
-// ─── Network hook ─────────────────────────────────────────────────────────────
+function classifySaveError(err: unknown, isOnline: boolean): LookupError {
+  if (!isOnline) return { kind: "offline", message: "You're offline. The flight couldn't be saved to your account. Reconnect and try again.", retryable: true };
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.startsWith("5") || msg.includes("Failed to fetch") || msg.includes("Network request failed") || msg.includes("ERR_CONNECTION_REFUSED"))
+    return { kind: "save_failed", message: "Server error — couldn't save to your account. Please try again.", retryable: true };
+  return { kind: "save_failed", message: "Couldn't save the flight. Please try again.", retryable: true };
+}
+
+// ─── Network hook ───────────────────────────────────────────────────────────────────────────
 function useIsOnline(): boolean {
   const [online, setOnline] = useState(true);
   const check = useCallback(async () => {
@@ -71,7 +79,7 @@ function useIsOnline(): boolean {
   return online;
 }
 
-// ─── Validation ───────────────────────────────────────────────────────────────
+// ─── Validation ───────────────────────────────────────────────────────────────────────────
 function sanitiseFlightCode(raw: string): { value: string; error: string | null } {
   const value = raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (!value) return { value: "", error: "Please enter a flight code (e.g. LX2819)" };
@@ -89,7 +97,7 @@ function sanitiseDate(raw: string): { value: string; error: string | null } {
   return { value: raw, error: null };
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ─────────────────────────────────────────────────────────────────────────────────
 interface FlightLookupResult {
   flightCode: string; date: string; airline: string; airlineCode: string;
   departureAirport: string; arrivalAirport: string; departureCity: string; arrivalCity: string;
@@ -98,7 +106,7 @@ interface FlightLookupResult {
   delayMinutes: number; aircraft: string; isMock?: boolean;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers ───────────────────────────────────────────────────────────────────────────────
 function formatHours(minutes: number): string {
   const h = Math.floor(minutes / 60); const m = minutes % 60;
   if (h === 0) return `${m}m`; if (m === 0) return `${h}h`; return `${h}h ${m}m`;
@@ -137,12 +145,19 @@ function airlineLogoUrl(airlineCode: string): string {
   return `https://logo.clearbit.com/${domain}?size=64`;
 }
 
-// ─── Error banner ─────────────────────────────────────────────────────────────
+// ─── Error banner ───────────────────────────────────────────────────────────────────────────
 function ErrorBanner({ err, onRetry, C }: { err: LookupError; onRetry: () => void; C: ReturnType<typeof useColors> }) {
   const iconMap: Record<LookupErrorKind, string> = {
     offline: "wifi-outline", server: "cloud-offline-outline", timeout: "time-outline",
     not_found: "search-outline", invalid_input: "alert-circle-outline",
     rate_limit: "warning-outline", unknown: "alert-circle-outline",
+    save_failed: "cloud-offline-outline",
+  };
+  const titleMap: Record<LookupErrorKind, string> = {
+    offline: "No internet connection", server: "Server unreachable", timeout: "Request timed out",
+    not_found: "Flight not found", invalid_input: "Invalid input",
+    rate_limit: "Too many requests", unknown: "Something went wrong",
+    save_failed: "Couldn\u2019t save flight",
   };
   return (
     <Animated.View entering={FadeIn} style={{ borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
@@ -150,8 +165,7 @@ function ErrorBanner({ err, onRetry, C }: { err: LookupError; onRetry: () => voi
         <Ionicons name={iconMap[err.kind] as never} size={18} color={C.red} style={{ marginTop: 1 }} />
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 13, color: C.red, fontFamily: "DMSans_600SemiBold", marginBottom: err.retryable ? 6 : 0 }}>
-            {err.kind === "offline" ? "No internet connection" : err.kind === "server" ? "Server unreachable" :
-             err.kind === "timeout" ? "Request timed out" : err.kind === "not_found" ? "Flight not found" : "Something went wrong"}
+            {titleMap[err.kind]}
           </Text>
           <Text style={{ fontSize: 12, color: C.red + "cc", fontFamily: "DMSans_400Regular", lineHeight: 17 }}>{err.message}</Text>
           {err.retryable && (
@@ -166,7 +180,7 @@ function ErrorBanner({ err, onRetry, C }: { err: LookupError; onRetry: () => voi
   );
 }
 
-// ─── Flight result card ───────────────────────────────────────────────────────
+// ─── Flight result card ──────────────────────────────────────────────────────────────────────────
 function FlightCard({
   flight, C, action, actionLabel, actionLoading,
 }: {
@@ -286,16 +300,13 @@ function FlightCard({
   );
 }
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
+// ─── Screen ──────────────────────────────────────────────────────────────────────────────────
 export default function AddFlightScreen() {
   const insets   = useSafeAreaInsets();
   const C        = useColors();
   const { addFlight, flights } = useFlights();
   const isOnline = useIsOnline();
 
-  // Ref used to auto-scroll the sheet down after results appear,
-  // ensuring the FlightCard and "Add to Logbook" button are visible
-  // without the user having to manually discover they can scroll.
   const scrollRef = useRef<ScrollView>(null);
 
   const [searchMode, setSearchMode]   = useState<SearchMode>("code");
@@ -347,8 +358,6 @@ export default function AddFlightScreen() {
       const updated = await lookupLimiter.check();
       setRemainingCalls(updated.remainingCalls);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      // Scroll to bottom so the FlightCard and Add to Logbook button are
-      // immediately visible — the formSheet won't grow to accommodate them.
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (err) {
       setLookupErr(classifyError(err, isOnline));
@@ -378,8 +387,6 @@ export default function AddFlightScreen() {
       const updated = await lookupLimiter.check();
       setRemainingCalls(updated.remainingCalls);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      // Scroll to bottom so the first FlightCard result and its Add to Logbook
-      // button are immediately visible without the user needing to discover scroll.
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (err) {
       setLookupErr(classifyError(err, isOnline));
@@ -387,11 +394,18 @@ export default function AddFlightScreen() {
     } finally { setLoading(false); }
   }, [depIATA, arrIATA, date, isOnline]);
 
+  // handleSave: no more Alert — errors surface via the inline ErrorBanner.
+  // The "Try Again" button in the banner re-triggers the save for the same flight.
   async function handleSave(flight: FlightLookupResult) {
     setSavingId(flight.flightCode);
+    setLookupErr(null);
     try {
       const isDuplicate = flights.some((f) => f.flightCode === flight.flightCode && f.date === flight.date);
-      if (isDuplicate) { setLookupErr({ kind: "unknown", message: "This flight has already been added to your logbook.", retryable: false }); setSavingId(null); return; }
+      if (isDuplicate) {
+        setLookupErr({ kind: "unknown", message: "This flight has already been added to your logbook.", retryable: false });
+        setSavingId(null);
+        return;
+      }
       await addFlight({
         flightCode: flight.flightCode, date: flight.date, airline: flight.airline, airlineCode: flight.airlineCode,
         departureAirport: flight.departureAirport, arrivalAirport: flight.arrivalAirport,
@@ -405,18 +419,22 @@ export default function AddFlightScreen() {
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.dismissAll();
-    } catch {
-      Alert.alert("Error", "Could not save the flight. Please try again.");
-    } finally { setSavingId(null); }
+    } catch (err) {
+      // addFlight throws for logged-in users when the API fails.
+      // Show the inline ErrorBanner with a contextual message and a retry button.
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setLookupErr(classifySaveError(err, isOnline));
+      // Scroll the banner into view
+      setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: true }), 100);
+    } finally {
+      setSavingId(null);
+    }
   }
 
   const activeSearch = searchMode === "code" ? handleCodeLookup : handleAirportSearch;
 
   return (
-    // No KeyboardAvoidingView — iOS formSheet manages the keyboard offset natively.
-    // The ScrollView fills the full sheet and scrolls to reveal every card and button.
     <View style={{ flex: 1, backgroundColor: C.surface }}>
-      {/* Colour fill behind the sheet grabber area */}
       <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 300, backgroundColor: C.surface }} />
 
       <View style={{
@@ -435,8 +453,6 @@ export default function AddFlightScreen() {
           keyboardDismissMode="on-drag"
           bounces={true}
           alwaysBounceVertical={true}
-          // paddingBottom 200 guarantees the Add to Logbook button clears the
-          // bottom of the formSheet even on smaller phones with the keyboard open.
           contentContainerStyle={{ padding: 24, paddingBottom: 200 }}
         >
           {/* Header */}
@@ -537,7 +553,7 @@ export default function AddFlightScreen() {
             </Animated.View>
           )}
 
-          {/* Error banner */}
+          {/* Error banner — used for both lookup errors AND save errors */}
           {lookupErr && <ErrorBanner err={lookupErr} onRetry={activeSearch} C={C} />}
 
           {/* Search button */}

@@ -124,24 +124,35 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
   }, [isLoggedIn]);
 
   // ── Add flight ───────────────────────────────────────────────────────────────
+  // For logged-in users: POST to API and throw on failure so the caller
+  // (add-flight screen) can surface an inline error to the user.
+  // For guests: save to AsyncStorage only — never throws.
   const addFlight = useCallback(async (data: Omit<Flight, "id" | "addedAt">) => {
     if (isLoggedIn && profile.id) {
+      let res: Response;
       try {
-        const res = await fetch(`${API_BASE}/api/flights`, {
+        res = await fetch(`${API_BASE}/api/flights`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...data, userId: profile.id }),
         });
-        if (res.ok) {
-          const saved: Flight = await res.json();
-          setFlights((prev) => [saved, ...prev]);
-          return;
-        }
       } catch (err) {
-        console.warn("[FlightsContext] Failed to save flight to API:", err);
+        // Network-level failure (offline, timeout, DNS, etc.)
+        console.warn("[FlightsContext] Network error saving flight:", err);
+        throw err;
       }
+      if (!res.ok) {
+        // Server responded with a non-2xx status
+        const err = new Error(`${res.status}`);
+        console.warn("[FlightsContext] API returned", res.status, "saving flight");
+        throw err;
+      }
+      const saved: Flight = await res.json();
+      setFlights((prev) => [saved, ...prev]);
+      return;
     }
-    // Guest / offline fallback
+
+    // Guest / not logged in — save locally, never throws.
     const flight: Flight = {
       ...data,
       id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
@@ -170,10 +181,8 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
       try {
         const res = await fetch(`${API_BASE}/api/flights/${encodeURIComponent(id)}`, { method: "DELETE" });
         if (!res.ok) {
-          // Non-2xx response — treat as failure and roll back.
           throw new Error(`DELETE /api/flights/${id} responded with ${res.status}`);
         }
-        // Success — nothing more to do; UI is already updated.
       } catch (err) {
         // 2. Restore the snapshot so the flight reappears in the UI.
         console.warn("[FlightsContext] Failed to delete flight from API, reverting:", err);
