@@ -394,8 +394,6 @@ export default function AddFlightScreen() {
     } finally { setLoading(false); }
   }, [depIATA, arrIATA, date, isOnline]);
 
-  // handleSave: no more Alert — errors surface via the inline ErrorBanner.
-  // The "Try Again" button in the banner re-triggers the save for the same flight.
   async function handleSave(flight: FlightLookupResult) {
     setSavingId(flight.flightCode);
     setLookupErr(null);
@@ -420,11 +418,8 @@ export default function AddFlightScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.dismissAll();
     } catch (err) {
-      // addFlight throws for logged-in users when the API fails.
-      // Show the inline ErrorBanner with a contextual message and a retry button.
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setLookupErr(classifySaveError(err, isOnline));
-      // Scroll the banner into view
       setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: true }), 100);
     } finally {
       setSavingId(null);
@@ -434,26 +429,36 @@ export default function AddFlightScreen() {
   const activeSearch = searchMode === "code" ? handleCodeLookup : handleAirportSearch;
 
   return (
+    // Root fills the sheet — no overflow:hidden here so iOS sheet height
+    // is communicated correctly to the ScrollView layout engine.
     <View style={{ flex: 1, backgroundColor: C.surface }}>
       <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 300, backgroundColor: C.surface }} />
 
+      {/* flex:1 + no overflow:hidden lets the ScrollView measure its true height */}
       <View style={{
         flex: 1,
         backgroundColor: C.surface,
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
-        overflow: "hidden",
         paddingTop: topPad,
       }}>
         <ScrollView
           ref={scrollRef}
+          // flex:1 is the critical fix — without it the ScrollView collapses to
+          // content height inside the sheet and iOS misreads the scroll region,
+          // causing the sheet-dismiss gesture to fire instead of scrolling.
           style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 24, paddingBottom: 120 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          // Tell iOS this ScrollView owns vertical scrolling so the sheet
+          // dismiss gesture won't compete with it once the user starts scrolling.
+          scrollEventThrottle={16}
           bounces={true}
           alwaysBounceVertical={true}
-          contentContainerStyle={{ padding: 24, paddingBottom: 200 }}
+          // scrollIndicatorInsets keeps the indicator inside the rounded corners.
+          scrollIndicatorInsets={{ bottom: 0 }}
         >
           {/* Header */}
           <Animated.View entering={FadeInDown.delay(0).springify()}>
@@ -553,7 +558,7 @@ export default function AddFlightScreen() {
             </Animated.View>
           )}
 
-          {/* Error banner — used for both lookup errors AND save errors */}
+          {/* Error banner */}
           {lookupErr && <ErrorBanner err={lookupErr} onRetry={activeSearch} C={C} />}
 
           {/* Search button */}
