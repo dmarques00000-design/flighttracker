@@ -46,6 +46,9 @@ function classifyError(err: unknown, isOnline: boolean): LookupError {
 function classifySaveError(err: unknown, isOnline: boolean): LookupError {
   if (!isOnline) return { kind: "offline", message: "You're offline. The flight couldn't be saved to your account. Reconnect and try again.", retryable: true };
   const msg = err instanceof Error ? err.message : String(err);
+  // 4xx = validation/bad request from server (e.g. Zod schema rejection)
+  if (msg.startsWith("4"))
+    return { kind: "save_failed", message: "The flight data was rejected by the server. Please try again or contact support.", retryable: false };
   if (msg.startsWith("5") || msg.includes("Failed to fetch") || msg.includes("Network request failed") || msg.includes("ERR_CONNECTION_REFUSED"))
     return { kind: "save_failed", message: "Server error — couldn't save to your account. Please try again.", retryable: true };
   return { kind: "save_failed", message: "Couldn't save the flight. Please try again.", retryable: true };
@@ -413,7 +416,7 @@ export default function AddFlightScreen() {
         distanceMiles: flight.distanceMiles,
         co2Kg: flight.co2Kg, status: flight.status || "on_time",
         delayMinutes: flight.delayMinutes ?? 0, aircraft: flight.aircraft,
-        verified: false, isMock: flight.isMock ?? false,
+        isMock: flight.isMock ?? false,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.dismissAll();
