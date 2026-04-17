@@ -1,7 +1,9 @@
 import "dotenv/config";
 import express from "express";
+import { Pool } from "pg";
 import type { Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
+import { bootstrapDatabase } from "./bootstrap";
 
 const app = express();
 const log = console.log;
@@ -90,6 +92,18 @@ function setupErrorHandler(app: express.Application) {
 }
 
 (async () => {
+  // ── Bootstrap: create tables if they don't exist ──────────────────────────
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL env var is not set");
+  }
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+  });
+  await bootstrapDatabase(pool);
+  await pool.end();
+  // ──────────────────────────────────────────────────────────────────────────
+
   setupCors(app);
   setupBodyParsing(app);
   setupRequestLogging(app);
