@@ -27,16 +27,18 @@ import { GestureLockProvider } from "@/context/gesture-lock";
 
 import HomeScreen    from "./index";
 import FlightsScreen from "./flights";
+import TripsScreen   from "./trips";
 import ProfileScreen from "./profile";
 
 const { width: SCREEN_W } = Dimensions.get("window");
-const NUM_TABS    = 3;
-const EDGE_ZONE_W = 40; // px — only swiping from within this strip triggers paging
+const NUM_TABS    = 4;
+const EDGE_ZONE_W = 40;
 
 const TABS = [
-  { key: "home",    label: "Home",    icon: "home-outline"    as const },
-  { key: "flights", label: "Flights", icon: "airplane-outline" as const },
-  { key: "profile", label: "Profile", icon: "person-outline"  as const },
+  { key: "home",    label: "Home",    icon: "home-outline"       as const },
+  { key: "flights", label: "Flights", icon: "airplane-outline"   as const },
+  { key: "trips",   label: "Trips",   icon: "briefcase-outline"  as const },
+  { key: "profile", label: "Profile", icon: "person-outline"     as const },
 ] as const;
 
 function TabPager() {
@@ -63,14 +65,9 @@ function TabPager() {
     [translateX],
   );
 
-  // Build one reusable PanResponder for the edge zones.
-  // Because these Views sit on top of everything and cover only the
-  // 40px strips, there is zero risk of conflicting with the globe or
-  // any inner ScrollView.
   const makePanResponder = useCallback(
     () =>
       PanResponder.create({
-        // Claim the gesture immediately on the edge strip
         onStartShouldSetPanResponder:        () => true,
         onStartShouldSetPanResponderCapture: () => true,
         onMoveShouldSetPanResponder:         () => true,
@@ -114,8 +111,6 @@ function TabPager() {
     [translateX, snapTo],
   );
 
-  // Two separate PanResponder instances — one per edge strip.
-  // Using two instances avoids any shared-state confusion.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const leftPR  = useRef(makePanResponder()).current;
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -125,7 +120,7 @@ function TabPager() {
 
   return (
     <View style={styles.root}>
-      {/* ── Pager content — NO panHandlers here ─────────── */}
+      {/* ── Pager content ─────────────────────────────────── */}
       <View style={[styles.pagerContainer, { bottom: TAB_BAR_H }]}>
         <Animated.View
           style={[
@@ -133,64 +128,32 @@ function TabPager() {
             { width: SCREEN_W * NUM_TABS, transform: [{ translateX }] },
           ]}
         >
-          <View style={{ width: SCREEN_W, flex: 1 }}>
-            <HomeScreen />
-          </View>
-          <View style={{ width: SCREEN_W, flex: 1 }}>
-            <FlightsScreen />
-          </View>
-          <View style={{ width: SCREEN_W, flex: 1 }}>
-            <ProfileScreen />
-          </View>
+          <View style={{ width: SCREEN_W, flex: 1 }}><HomeScreen /></View>
+          <View style={{ width: SCREEN_W, flex: 1 }}><FlightsScreen /></View>
+          <View style={{ width: SCREEN_W, flex: 1 }}><TripsScreen /></View>
+          <View style={{ width: SCREEN_W, flex: 1 }}><ProfileScreen /></View>
         </Animated.View>
       </View>
 
       {/* ── Left edge swipe zone ─────────────────────────── */}
-      <View
-        style={[styles.edgeZone, styles.edgeLeft, { bottom: TAB_BAR_H }]}
-        {...leftPR.panHandlers}
-      />
+      <View style={[styles.edgeZone, styles.edgeLeft, { bottom: TAB_BAR_H }]} {...leftPR.panHandlers} />
 
       {/* ── Right edge swipe zone ────────────────────────── */}
-      <View
-        style={[styles.edgeZone, styles.edgeRight, { bottom: TAB_BAR_H }]}
-        {...rightPR.panHandlers}
-      />
+      <View style={[styles.edgeZone, styles.edgeRight, { bottom: TAB_BAR_H }]} {...rightPR.panHandlers} />
 
       {/* ── Tab bar ─────────────────────────────────────── */}
       <View
         style={[
           styles.tabBar,
-          {
-            height:          TAB_BAR_H,
-            paddingBottom:   insets.bottom,
-            backgroundColor: C.card,
-            borderTopColor:  C.border,
-          },
+          { height: TAB_BAR_H, paddingBottom: insets.bottom, backgroundColor: C.card, borderTopColor: C.border },
         ]}
       >
         {TABS.map((tab, i) => {
           const isActive = activeTab === i;
           return (
-            <Pressable
-              key={tab.key}
-              onPress={() => snapTo(i)}
-              style={styles.tabItem}
-              hitSlop={6}
-            >
-              <Ionicons
-                name={tab.icon}
-                size={22}
-                color={isActive ? C.accent : C.textMuted}
-              />
-              <Text
-                style={[
-                  styles.tabLabel,
-                  { color: isActive ? C.accent : C.textMuted },
-                ]}
-              >
-                {tab.label}
-              </Text>
+            <Pressable key={tab.key} onPress={() => snapTo(i)} style={styles.tabItem} hitSlop={6}>
+              <Ionicons name={tab.icon} size={22} color={isActive ? C.accent : C.textMuted} />
+              <Text style={[styles.tabLabel, { color: isActive ? C.accent : C.textMuted }]}>{tab.label}</Text>
             </Pressable>
           );
         })}
@@ -208,53 +171,16 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    overflow: "hidden",
-  },
-  pagerContainer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    overflow: "hidden",
-  },
-  pagerRow: {
-    flexDirection: "row",
-    flex: 1,
-  },
-  // Invisible overlay strips — sit above all content, only on the edges
-  edgeZone: {
-    position: "absolute",
-    top: 0,
-    width: EDGE_ZONE_W,
-    // bottom is set inline per the current TAB_BAR_H
-  },
-  edgeLeft: {
-    left: 0,
-  },
-  edgeRight: {
-    right: 0,
-  },
+  root:           { flex: 1, overflow: "hidden" },
+  pagerContainer: { position: "absolute", top: 0, left: 0, right: 0, overflow: "hidden" },
+  pagerRow:       { flexDirection: "row", flex: 1 },
+  edgeZone:       { position: "absolute", top: 0, width: EDGE_ZONE_W },
+  edgeLeft:       { left: 0 },
+  edgeRight:      { right: 0 },
   tabBar: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    borderTopWidth: 1,
-    elevation: 0,
-    shadowOpacity: 0,
+    position: "absolute", bottom: 0, left: 0, right: 0,
+    flexDirection: "row", borderTopWidth: 1, elevation: 0, shadowOpacity: 0,
   },
-  tabItem: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingTop: 8,
-    gap: 3,
-  },
-  tabLabel: {
-    fontSize: 11,
-    fontFamily: "DMSans_500Medium",
-  },
+  tabItem:  { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 8, gap: 3 },
+  tabLabel: { fontSize: 11, fontFamily: "DMSans_500Medium" },
 });

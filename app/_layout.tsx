@@ -8,6 +8,7 @@ import { StatusBar } from "expo-status-bar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { FlightsProvider } from "@/context/flights";
+import { TripsProvider } from "@/context/trips";
 import { UserProvider } from "@/context/user";
 import { ThemeProvider, useTheme } from "@/context/theme";
 import { useColors } from "@/constants/colors";
@@ -41,25 +42,15 @@ function RootLayoutNav() {
               contentStyle: { backgroundColor: C.surface },
             }}
           />
-          <Stack.Screen
-            name="flight/[id]"
-            options={{ headerShown: false }}
-          />
+          <Stack.Screen name="flight/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="trip/[id]"   options={{ headerShown: false }} />
           <Stack.Screen
             name="share"
-            options={{
-              presentation: "modal",
-              headerShown: false,
-              contentStyle: { backgroundColor: "transparent" },
-            }}
+            options={{ presentation: "modal", headerShown: false, contentStyle: { backgroundColor: "transparent" } }}
           />
           <Stack.Screen
             name="auth"
-            options={{
-              presentation: "modal",
-              headerShown: false,
-              contentStyle: { backgroundColor: "transparent" },
-            }}
+            options={{ presentation: "modal", headerShown: false, contentStyle: { backgroundColor: "transparent" } }}
           />
         </Stack>
       </KeyboardProvider>
@@ -76,9 +67,7 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
-    }
+    if (fontsLoaded || fontError) SplashScreen.hideAsync();
   }, [fontsLoaded, fontError]);
 
   if (!fontsLoaded && !fontError) return null;
@@ -87,10 +76,11 @@ export default function RootLayout() {
     <ErrorBoundary>
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
-          {/* UserProvider must wrap FlightsProvider — flights context reads profile.id */}
           <UserProvider>
             <FlightsProvider>
-              <RootLayoutNav />
+              <TripsProvider>
+                <RootLayoutNav />
+              </TripsProvider>
             </FlightsProvider>
           </UserProvider>
         </QueryClientProvider>
