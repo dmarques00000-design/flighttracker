@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { Pool } from "pg";
+import { bootstrapDatabase } from "../server/bootstrap";
 
 async function main() {
   const url = process.env.DATABASE_URL_DIRECT ?? process.env.DATABASE_URL;
@@ -7,15 +8,23 @@ async function main() {
 
   const pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } });
 
-  // First, show what columns the users table actually has
-  const cols = await pool.query(`
-    SELECT column_name, data_type
-    FROM information_schema.columns
-    WHERE table_name = 'users'
-    ORDER BY ordinal_position
-  `);
-  console.log("users columns:", cols.rows);
+  console.log("Dropping stale tables...");
+  // Drop in correct order (flights refs users)
+  await pool.query(`DROP TABLE IF EXISTS flights CASCADE`);
+  await pool.query(`DROP TABLE IF EXISTS users CASCADE`);
+  console.log("Dropped.");
 
+  console.log("Recreating tables via bootstrap...");
+  await bootstrapDatabase(pool);
+
+  console.log("Seeding test user...");
+  await pool.query(`
+    INSERT INTO users (id, email, name, provider)
+    VALUES ('test-user-001', 'diogo.test@logbook.app', 'Diogo Marques', 'email')
+    ON CONFLICT (id) DO NOTHING
+  `);
+
+  console.log("✅ Done! Tables recreated and test user seeded.");
   await pool.end();
 }
 
