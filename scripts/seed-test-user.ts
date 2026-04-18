@@ -8,23 +8,21 @@ async function main() {
 
   const pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } });
 
-  console.log("Dropping stale tables...");
-  // Drop in correct order (flights refs users)
-  await pool.query(`DROP TABLE IF EXISTS flights CASCADE`);
-  await pool.query(`DROP TABLE IF EXISTS users CASCADE`);
-  console.log("Dropped.");
+  // Show current users
+  const users = await pool.query("SELECT id, email FROM users");
+  console.log("Current users in DB:", users.rows);
 
-  console.log("Recreating tables via bootstrap...");
-  await bootstrapDatabase(pool);
-
-  console.log("Seeding test user...");
+  // Try inserting test user
   await pool.query(`
     INSERT INTO users (id, email, name, provider)
     VALUES ('test-user-001', 'diogo.test@logbook.app', 'Diogo Marques', 'email')
-    ON CONFLICT (id) DO NOTHING
+    ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name
   `);
+  console.log("✅ Test user upserted.");
 
-  console.log("✅ Done! Tables recreated and test user seeded.");
+  const after = await pool.query("SELECT id, email FROM users");
+  console.log("Users after upsert:", after.rows);
+
   await pool.end();
 }
 
