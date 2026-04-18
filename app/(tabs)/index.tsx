@@ -16,6 +16,7 @@ import { useColors } from "@/constants/colors";
 import { useFlights, Flight } from "@/context/flights";
 import { useUser } from "@/context/user";
 import { useGestureLock } from "@/context/gesture-lock";
+import { useTabNav } from "@/context/tab-nav";
 import GlobeView from "@/components/GlobeView";
 import { LogbookLogo } from "@/components/LogbookLogo";
 import { getCO2FunFact } from "@/utils/co2FunFact";
@@ -136,9 +137,6 @@ function useFilteredStats(flights: Flight[], period: "all" | number): FilteredSt
   }, [flights, period]);
 }
 
-// ---------------------------------------------------------------------------
-// Skeleton primitives
-// ---------------------------------------------------------------------------
 function SkeletonBox({ width, height, borderRadius = 8, style }: { width?: number | string; height: number; borderRadius?: number; style?: object }) {
   const C = useColors();
   const opacity = useSharedValue(1);
@@ -169,7 +167,6 @@ function HomeSkeleton() {
       scrollEnabled={false}
       contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100 }}
     >
-      {/* Header */}
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 20 }}>
         <LogbookLogo size={38} showName hideIcon />
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -178,7 +175,6 @@ function HomeSkeleton() {
         </View>
       </View>
 
-      {/* Next flight card skeleton */}
       <View style={{ borderRadius: 22, overflow: "hidden", borderWidth: 1, borderColor: C.border, backgroundColor: C.card, marginBottom: 24 }}>
         <SkeletonBox height={4} borderRadius={0} />
         <View style={{ padding: 20, gap: 14 }}>
@@ -205,7 +201,6 @@ function HomeSkeleton() {
         </View>
       </View>
 
-      {/* Stats card skeleton */}
       <View style={{ backgroundColor: C.card, borderRadius: 20, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: C.border, gap: 14 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
           <View style={{ gap: 8 }}>
@@ -224,7 +219,6 @@ function HomeSkeleton() {
         </View>
       </View>
 
-      {/* Stat cards grid skeleton */}
       <SkeletonBox width={120} height={13} borderRadius={6} style={{ marginBottom: 10 }} />
       <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 10 }}>
         <SkeletonBox width="48%" height={100} borderRadius={16} />
@@ -235,7 +229,6 @@ function HomeSkeleton() {
         <SkeletonBox width="48%" height={100} borderRadius={16} />
       </View>
 
-      {/* Upcoming section skeleton */}
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <SkeletonBox width={90} height={13} borderRadius={6} />
         <SkeletonBox width={44} height={13} borderRadius={6} />
@@ -357,7 +350,7 @@ function FlightRow({ flight, isUpcoming, today }: { flight: Flight; isUpcoming: 
           <Text style={{ fontSize: 18, color: C.text, fontFamily: "DMSans_700Bold" }}>{flight.arrivalAirport}</Text>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular" }}>{flight.flightCode}{"  \u00b7  "}{formatDateShort(flight.date)}</Text>
+          <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular" }}>{flight.flightCode}{"  ·  "}{formatDateShort(flight.date)}</Text>
           {isUpcoming && days !== null ? (
             <View style={{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: 8, backgroundColor: days === 0 ? C.accent : days <= 7 ? C.amber + "22" : C.accentDim }}>
               <Text style={{ fontSize: 11, fontFamily: "DMSans_700Bold", color: days === 0 ? C.white : days <= 7 ? C.amber : C.accent }}>
@@ -486,6 +479,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { flights, isLoading } = useFlights();
   const { profile, isLoggedIn, dismissedPrompt, dismissPrompt } = useUser();
+  const { switchTab } = useTabNav();
   const [period, setPeriod] = useState<"all" | number>(new Date().getFullYear());
   const [menuOpen, setMenuOpen] = useState(false);
   const [globeDragging, setGlobeDragging] = useState(false);
@@ -549,11 +543,10 @@ export default function HomeScreen() {
           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomPadding + 100 }}
           contentInsetAdjustmentBehavior="automatic"
         >
-          {/* Header */}
           <Animated.View entering={FadeInDown.delay(0).springify()} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 20 }}>
             <LogbookLogo size={38} showName hideIcon />
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <Pressable onPress={() => { Haptics.selectionAsync(); isLoggedIn ? router.push("/(tabs)/profile") : router.push("/auth"); }} style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]} hitSlop={6}>
+              <Pressable onPress={() => { Haptics.selectionAsync(); isLoggedIn ? switchTab(3) : router.push("/auth"); }} style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]} hitSlop={6}>
                 {isLoggedIn && profile.avatarInitials ? (
                   <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.accent, alignItems: "center", justifyContent: "center", shadowColor: C.accent, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 3 }}>
                     <Text style={{ fontSize: 13, color: C.white, fontFamily: "DMSans_700Bold" }}>{profile.avatarInitials}</Text>
@@ -583,7 +576,6 @@ export default function HomeScreen() {
             <>
               {nextFlight && <NextFlightCard flight={nextFlight} today={today} />}
 
-              {/* Stats card */}
               <Animated.View entering={FadeInDown.delay(40).springify()} style={{ backgroundColor: C.card, borderRadius: 20, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: C.border }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                   <View>
@@ -603,7 +595,7 @@ export default function HomeScreen() {
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: stats.co2 > 0 ? 10 : 0 }}>
                   <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_500Medium" }}>{formatNumber(stats.miles)} mi</Text>
                   <View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: C.border }} />
-                  <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_500Medium" }}>{stats.co2.toFixed(0)}{" kg CO\u2082"}</Text>
+                  <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_500Medium" }}>{stats.co2.toFixed(0)}{" kg CO₂"}</Text>
                   {percentileData && percentileData.topPercent <= 30 && (
                     <View style={{ backgroundColor: C.accentDim, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 }}>
                       <Text style={{ fontSize: 12, color: C.accent, fontFamily: "DMSans_700Bold" }}>Top {percentileData.topPercent}%</Text>
@@ -615,13 +607,12 @@ export default function HomeScreen() {
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.green + "12", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 }}>
                     <Ionicons name="leaf" size={14} color={C.green} />
                     <Text style={{ fontSize: 13, color: C.green, fontFamily: "DMSans_500Medium", flex: 1, lineHeight: 18 }}>
-                      {"That\u2019s like "}{getCO2FunFact(stats.co2)}
+                      {"That’s like "}{getCO2FunFact(stats.co2)}
                     </Text>
                   </View>
                 )}
               </Animated.View>
 
-              {/* Globe preview */}
               <Animated.View entering={FadeInDown.delay(120).springify()} style={{ marginTop: 4, marginBottom: 24 }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                   <Text style={{ fontSize: 17, color: C.text, fontFamily: "DMSans_700Bold" }}>Flight Network</Text>
@@ -641,16 +632,15 @@ export default function HomeScreen() {
                 />
               </Animated.View>
 
-              {/* Statistics */}
               <Animated.View entering={FadeInDown.delay(140).springify()} style={{ marginBottom: 24 }}>
                 <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Statistics</Text>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 10 }}>
                   <StatCard label="Miles Flown"       value={formatNumber(stats.miles)}    icon="globe-outline"  accent={C.accent} />
-                  <StatCard label={"CO\u2082 Emitted"} value={`${formatNumber(stats.co2)}kg`} icon="leaf-outline" accent={C.green} />
+                  <StatCard label="CO₂ Emitted" value={`${formatNumber(stats.co2)}kg`} icon="leaf-outline" accent={C.green} />
                 </View>
                 <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                   <StatCard label="Time in Air" value={formatHours(stats.flightMin)}                                icon="time-outline"      accent={C.amber} />
-                  <StatCard label="Delay Time"  value={stats.delayMin > 0 ? formatHours(stats.delayMin) : "\u2014"} icon="hourglass-outline" accent={C.red} />
+                  <StatCard label="Delay Time"  value={stats.delayMin > 0 ? formatHours(stats.delayMin) : "—"} icon="hourglass-outline" accent={C.red} />
                 </View>
               </Animated.View>
 
