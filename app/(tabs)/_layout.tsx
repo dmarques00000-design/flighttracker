@@ -9,7 +9,7 @@
  *
  * Tab-bar icon taps still switch tabs as normal.
  */
-import React, { useRef, useState, useCallback } from "react";
+import React, { useRef, useState, useCallback, useEffect } from "react";
 import {
   View,
   Animated,
@@ -24,6 +24,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/constants/colors";
 import { GestureLockProvider } from "@/context/gesture-lock";
+import { TabNavProvider, useTabNav } from "@/context/tab-nav";
 
 import HomeScreen    from "./index";
 import FlightsScreen from "./flights";
@@ -45,6 +46,7 @@ function TabPager() {
   const C      = useColors();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState(0);
+  const { registerSnapTo } = useTabNav();
 
   const translateX = useRef(new Animated.Value(0)).current;
   const activeRef  = useRef(0);
@@ -64,6 +66,11 @@ function TabPager() {
     },
     [translateX],
   );
+
+  // Register snapTo with the context so any screen can call switchTab()
+  useEffect(() => {
+    registerSnapTo(snapTo);
+  }, [registerSnapTo, snapTo]);
 
   const makePanResponder = useCallback(
     () =>
@@ -164,9 +171,11 @@ function TabPager() {
 
 export default function TabLayout() {
   return (
-    <GestureLockProvider>
-      <TabPager />
-    </GestureLockProvider>
+    <TabNavProvider>
+      <GestureLockProvider>
+        <TabPager />
+      </GestureLockProvider>
+    </TabNavProvider>
   );
 }
 
