@@ -7,13 +7,15 @@ async function main() {
 
   const pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } });
 
-  await pool.query(`
-    INSERT INTO users (id, email, name, provider)
-    VALUES ('test-user-001', 'diogo.test@logbook.app', 'Diogo Marques', 'email')
-    ON CONFLICT (id) DO NOTHING
+  // First, show what columns the users table actually has
+  const cols = await pool.query(`
+    SELECT column_name, data_type
+    FROM information_schema.columns
+    WHERE table_name = 'users'
+    ORDER BY ordinal_position
   `);
+  console.log("users columns:", cols.rows);
 
-  console.log("✅ Test user seeded (or already existed).");
   await pool.end();
 }
 
