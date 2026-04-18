@@ -110,16 +110,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
   async function login(params: LoginParams) {
     const { id, name, email, provider, avatarUrl } = params;
 
-    // Persist user to DB via backend upsert
-    try {
-      await fetch(`${API_BASE}/api/auth/upsert`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, email, name, avatarUrl, provider }),
-      });
-    } catch (err) {
-      console.warn("[UserContext] Failed to upsert user on server:", err);
-      // Non-fatal: user can still use the app locally
+    // Persist user to DB — must succeed before we mark the user as logged in.
+    // If the upsert fails the user row won't exist and every flight save will
+    // throw a FK violation, so we throw here to surface the problem early.
+    const res = await fetch(`${API_BASE}/api/auth/upsert`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, email, name, avatarUrl, provider }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "(no body)");
+      throw new Error(`[UserContext] /api/auth/upsert failed ${res.status}: ${body}`);
     }
 
     const initials = name.trim()
