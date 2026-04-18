@@ -18,7 +18,6 @@ function setupCors(app: express.Application) {
   app.use((req, res, next) => {
     const origin = req.header("origin");
 
-    // Allow all localhost / local network origins (Expo Go on device + simulator)
     const isAllowed =
       !origin ||
       origin.startsWith("http://localhost:") ||
@@ -92,16 +91,26 @@ function setupErrorHandler(app: express.Application) {
 }
 
 (async () => {
-  // ── Bootstrap: create tables if they don't exist ──────────────────────────
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL env var is not set");
   }
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
-  });
-  await bootstrapDatabase(pool);
-  await pool.end();
+
+  // ── Bootstrap: create tables if they don't exist (non-fatal) ──────────────
+  // Uses DATABASE_URL_DIRECT if set (required for Neon DDL via direct connection).
+  // Falls back to DATABASE_URL. Errors are logged but never crash the server —
+  // tables are expected to already exist after running bootstrap-run.ts once.
+  try {
+    const bootstrapUrl = process.env.DATABASE_URL_DIRECT || process.env.DATABASE_URL;
+    const pool = new Pool({
+      connectionString: bootstrapUrl,
+      ssl: { rejectUnauthorized: false },
+    });
+    await bootstrapDatabase(pool);
+    await pool.end();
+  } catch (err) {
+    console.warn("[bootstrap] Could not verify tables (non-fatal):", (err as Error).message);
+    console.warn("[bootstrap] Tip: set DATABASE_URL_DIRECT in .env to your Neon direct connection string.");
+  }
   // ──────────────────────────────────────────────────────────────────────────
 
   setupCors(app);
