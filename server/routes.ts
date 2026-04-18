@@ -135,13 +135,8 @@ async function createNotionFeedbackEntry(payload: {
 export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Auth: upsert user on social sign-in ─────────────────────────────────
-  //
-  // POST /api/auth/upsert
-  // Body: { id, email, name?, avatarUrl?, provider? }
-  // Creates the user row if new, updates name/avatar if existing.
-  // Returns the full user record.
   app.post("/api/auth/upsert", async (req, res) => {
-    console.log("[Route] POST /api/auth/upsert");
+    console.log("[Route] POST /api/auth/upsert body:", req.body);
     const parsed = insertUserSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.flatten() });
@@ -157,8 +152,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Auth: get user by id ─────────────────────────────────────────────────
-  //
-  // GET /api/users/:id
   app.get("/api/users/:id", async (req, res) => {
     const { id } = req.params;
     try {
@@ -172,8 +165,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Flights: list all flights for a user ─────────────────────────────────
-  //
-  // GET /api/users/:userId/flights
   app.get("/api/users/:userId/flights", async (req, res) => {
     const { userId } = req.params;
     console.log(`[Route] GET /api/users/${userId}/flights`);
@@ -188,11 +179,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Flights: save a new flight ────────────────────────────────────────────
-  //
-  // POST /api/flights
-  // Body: InsertFlight (must include userId)
   app.post("/api/flights", async (req, res) => {
-    console.log("[Route] POST /api/flights");
+    console.log("[Route] POST /api/flights — userId:", req.body?.userId);
     const parsed = insertFlightSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.flatten() });
@@ -202,15 +190,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(201).json(flight);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Create failed";
-      console.error("[Route] createFlight error:", err);
+      console.error("[Route] createFlight error:", (err as any)?.detail ?? msg);
       return res.status(500).json({ error: msg });
     }
   });
 
   // ── Flights: update a flight ──────────────────────────────────────────────
-  //
-  // PATCH /api/flights/:id
-  // Body: Partial<InsertFlight> + userId (for ownership check)
   app.patch("/api/flights/:id", async (req, res) => {
     const { id } = req.params;
     const { userId, ...rest } = req.body ?? {};
@@ -228,8 +213,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Flights: delete a flight ──────────────────────────────────────────────
-  //
-  // DELETE /api/flights/:id?userId=...
   app.delete("/api/flights/:id", async (req, res) => {
     const { id } = req.params;
     const userId = req.query.userId as string | undefined;
