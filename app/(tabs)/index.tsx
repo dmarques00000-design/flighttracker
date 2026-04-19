@@ -171,7 +171,7 @@ function HomeSkeleton() {
         <LogbookLogo size={38} showName hideIcon />
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <SkeletonBox width={36} height={36} borderRadius={18} />
-          <SkeletonBox width={36} height={36} borderRadius={10} />
+          <SkeletonBox width={44} height={44} borderRadius={14} />
         </View>
       </View>
 
@@ -557,7 +557,22 @@ export default function HomeScreen() {
                   </View>
                 )}
               </Pressable>
-              <Pressable onPress={() => { Haptics.selectionAsync(); setMenuOpen(true); }} style={({ pressed }) => [{ width: 36, height: 36, alignItems: "center", justifyContent: "center", gap: 4, opacity: pressed ? 0.7 : 1 }]} hitSlop={8}>
+              <Pressable
+                onPress={() => { Haptics.selectionAsync(); setMenuOpen(true); }}
+                style={({ pressed }) => [{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 4,
+                  backgroundColor: pressed ? C.surface : C.card,
+                  borderWidth: 1,
+                  borderColor: C.border,
+                  opacity: pressed ? 0.75 : 1,
+                }]}
+                hitSlop={12}
+              >
                 <View style={{ width: 18, height: 2, borderRadius: 1, backgroundColor: C.text }} />
                 <View style={{ width: 14, height: 2, borderRadius: 1, backgroundColor: C.text }} />
                 <View style={{ width: 10, height: 2, borderRadius: 1, backgroundColor: C.text }} />
