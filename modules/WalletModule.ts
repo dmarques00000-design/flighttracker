@@ -2,25 +2,21 @@
  * WalletModule.ts
  * Abstraction layer for Apple Wallet (PassKit) integration.
  *
- * On a real device with a custom dev build, this would call a native module
- * registered via expo-modules-core (see WalletModule.native.ts).
+ * Uses expo-modules-core requireNativeModule() — required for New Architecture
+ * (JSI / Fabric). NativeModules is bridge-only and unreliable with newArchEnabled.
  *
- * In Expo Go / web / Android: returns mocked data so the UI is fully functional
- * and can be tested end-to-end before the native build is wired up.
+ * On a real device with a custom dev build the native module registered as
+ * "FlightTrackerWallet" (ios/FlightTracker/WalletModule.swift) is returned.
  *
- * To wire up the real native side:
- *  1. Run: npx expo install expo-modules-core
- *  2. Create ios/FlightTracker/WalletModule.swift (see comments below)
- *  3. Run: eas build --profile development --platform ios
+ * In Expo Go / simulator / Android: requireNativeModule throws, we catch it and
+ * fall back to mock data so the UI is fully testable without a native build.
  *
- * Native Swift note:
- *  To include expired passes, call PKPassLibrary().passes(of: .boardingPass)
- *  — PassKit returns ALL boarding passes regardless of expiry when you
- *  enumerate by type. Do NOT filter by relevantDate on the native side;
- *  let the JS layer decide what to show.
+ * To build with the real native side:
+ *   eas build --profile development --platform ios
  */
 
-import { Platform, NativeModules } from "react-native";
+import { Platform } from "react-native";
+import { requireNativeModule } from "expo-modules-core";
 
 export interface WalletBoardingPass {
   /** Unique identifier from the pass */
@@ -43,8 +39,21 @@ export interface WalletBoardingPass {
 
 export type WalletPermissionStatus = "granted" | "denied" | "unavailable" | "mock";
 
-// ─── Native module bridge (only available in custom dev build) ───────────────
-const NativeWallet = (NativeModules as any).FlightTrackerWallet;
+// ─── Native module bridge (New Architecture safe) ────────────────────────────
+// requireNativeModule throws if the module is not registered (Expo Go, simulator
+// without a custom build). We catch it and set NativeWallet to null so all
+// callers fall through to the mock path gracefully.
+let NativeWallet: {
+  requestPermission: () => Promise<string>;
+  getBoardingPasses: (options: { includeExpired: boolean }) => Promise<any[]>;
+} | null = null;
+
+try {
+  NativeWallet = requireNativeModule("FlightTrackerWallet");
+} catch {
+  // Module not available — Expo Go or no custom build yet
+  NativeWallet = null;
+}
 
 async function requestNativePermission(): Promise<WalletPermissionStatus> {
   if (!NativeWallet) return Platform.OS === "ios" ? "mock" : "unavailable";
@@ -59,8 +68,8 @@ async function requestNativePermission(): Promise<WalletPermissionStatus> {
 async function fetchNativePasses(): Promise<WalletBoardingPass[]> {
   if (!NativeWallet) return [];
   try {
-    // Pass { includeExpired: true } so the native side returns ALL boarding
-    // passes from PKPassLibrary, not just currently relevant ones.
+    // includeExpired: true — native side returns ALL boarding passes from
+    // PKPassLibrary regardless of relevantDate.
     const raw: any[] = await NativeWallet.getBoardingPasses({ includeExpired: true });
     return raw.map(parsePKPass);
   } catch {
@@ -76,13 +85,24 @@ async function fetchNativePasses(): Promise<WalletBoardingPass[]> {
 function parsePKPass(raw: any): WalletBoardingPass {
   const fields: Record<string, string> = raw.fields ?? {};
 
-  const flightNumber = fields["flightNumber"] ?? fields["flight"] ?? fields["flightCode"] ?? "";
-  const carrier = fields["airlineCode"] ?? fields["carrier"] ?? flightNumber.replace(/\d/g, "").substring(0, 3).toUpperCase();
-  const origin = (fields["origin"] ?? fields["departureAirport"] ?? fields["boardingGate"] ?? "").substring(0, 3).toUpperCase();
-  const destination = (fields["destination"] ?? fields["arrivalAirport"] ?? "").substring(0, 3).toUpperCase();
-  const depCity = fields["departureCity"] ?? fields["originName"] ?? origin;
-  const arrCity = fields["arrivalCity"] ?? fields["destinationName"] ?? destination;
-  const date = fields["date"] ?? fields["boardingDate"] ?? fields["departureDate"] ?? new Date().toISOString().substring(0, 10);
+  const flightNumber =
+    fields["flightNumber"] ?? fields["flight"] ?? fields["flightCode"] ?? fields["flightNo"] ?? "";
+  const carrier =
+    fields["airlineCode"] ?? fields["carrier"] ?? fields["iataCode"] ??
+    flightNumber.replace(/\d/g, "").substring(0, 3).toUpperCase();
+  const origin = (
+    fields["origin"] ?? fields["departureAirport"] ?? fields["from"] ?? ""
+  ).substring(0, 3).toUpperCase();
+  const destination = (
+    fields["destination"] ?? fields["arrivalAirport"] ?? fields["to"] ?? ""
+  ).substring(0, 3).toUpperCase();
+  const depCity =
+    fields["departureCity"] ?? fields["originName"] ?? fields["originCity"] ?? origin;
+  const arrCity =
+    fields["arrivalCity"] ?? fields["destinationName"] ?? fields["destinationCity"] ?? destination;
+  const date =
+    fields["date"] ?? fields["boardingDate"] ?? fields["departureDate"] ??
+    new Date().toISOString().substring(0, 10);
   const depTime = fields["departureTime"] ?? fields["boardingTime"] ?? "00:00";
   const arrTime = fields["arrivalTime"] ?? "00:00";
 
@@ -90,7 +110,8 @@ function parsePKPass(raw: any): WalletBoardingPass {
     passTypeIdentifier: raw.passTypeIdentifier ?? "",
     serialNumber: raw.serialNumber ?? Math.random().toString(36).substring(2),
     flightCode: flightNumber,
-    airline: fields["airlineName"] ?? fields["organizationName"] ?? carrier,
+    airline:
+      fields["airlineName"] ?? fields["airline"] ?? fields["organizationName"] ?? carrier,
     airlineCode: carrier,
     departureAirport: origin,
     arrivalAirport: destination,
@@ -99,7 +120,7 @@ function parsePKPass(raw: any): WalletBoardingPass {
     departureTime: depTime,
     arrivalTime: arrTime,
     date: date.includes("T") ? date.substring(0, 10) : date,
-    aircraft: fields["aircraft"] ?? fields["equipmentType"] ?? "Unknown",
+    aircraft: fields["aircraft"] ?? fields["equipmentType"] ?? fields["equipment"] ?? "Unknown",
     rawFields: fields,
   };
 }
@@ -260,14 +281,14 @@ export async function requestWalletPermission(): Promise<WalletPermissionStatus>
 
 /**
  * Fetch ALL boarding passes from Apple Wallet, including expired ones.
- * Falls back to mock data in Expo Go / simulator.
+ * Falls back to mock data in Expo Go / simulator (when NativeWallet is null).
  */
 export async function fetchBoardingPasses(): Promise<{ passes: WalletBoardingPass[]; isMock: boolean }> {
   if (Platform.OS !== "ios") {
     return { passes: [], isMock: false };
   }
   if (!NativeWallet) {
-    // Expo Go / no native module — return mocks (includes expired) so UI can be fully tested
+    // Expo Go / no native module — return mocks so UI can be fully tested
     return { passes: MOCK_PASSES, isMock: true };
   }
   const passes = await fetchNativePasses();
