@@ -159,22 +159,14 @@ function SkeletonBox({ width, height, borderRadius = 8, style }: { width?: numbe
   );
 }
 
-function HomeSkeleton() {
+function HomeSkeleton({ topInset }: { topInset: number }) {
   const C = useColors();
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}
       scrollEnabled={false}
-      contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100 }}
+      contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 + topInset }}
     >
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 20 }}>
-        <LogbookLogo size={38} showName hideIcon />
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <SkeletonBox width={36} height={36} borderRadius={18} />
-          <SkeletonBox width={44} height={44} borderRadius={14} />
-        </View>
-      </View>
-
       <View style={{ borderRadius: 22, overflow: "hidden", borderWidth: 1, borderColor: C.border, backgroundColor: C.card, marginBottom: 24 }}>
         <SkeletonBox height={4} borderRadius={0} />
         <View style={{ padding: 20, gap: 14 }}>
@@ -474,6 +466,50 @@ function PeriodDropdown({ period, years, onChange }: { period: "all" | number; y
   );
 }
 
+function HomeHeader({ isLoggedIn, avatarInitials, onProfilePress, onMenuPress }: { isLoggedIn: boolean; avatarInitials?: string; onProfilePress: () => void; onMenuPress: () => void }) {
+  const C = useColors();
+
+  return (
+    <Animated.View entering={FadeInDown.delay(0).springify()} style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+      <LogbookLogo size={38} showName hideIcon />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <Pressable onPress={onProfilePress} style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]} hitSlop={6}>
+          {isLoggedIn && avatarInitials ? (
+            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.accent, alignItems: "center", justifyContent: "center", shadowColor: C.accent, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 3 }}>
+              <Text style={{ fontSize: 13, color: C.white, fontFamily: "DMSans_700Bold" }}>{avatarInitials}</Text>
+            </View>
+          ) : (
+            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.surface, borderWidth: 1.5, borderColor: C.border, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="person-outline" size={18} color={C.textSec} />
+            </View>
+          )}
+        </Pressable>
+        <Pressable
+          onPress={onMenuPress}
+          style={({ pressed }) => [{
+            width: 44,
+            height: 44,
+            borderRadius: 14,
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 4,
+            backgroundColor: pressed ? C.surface : C.card,
+            borderWidth: 1,
+            borderColor: C.border,
+            opacity: pressed ? 0.75 : 1,
+          }]}
+          hitSlop={12}
+          pressRetentionOffset={12}
+        >
+          <View style={{ width: 18, height: 2, borderRadius: 1, backgroundColor: C.text }} />
+          <View style={{ width: 14, height: 2, borderRadius: 1, backgroundColor: C.text }} />
+          <View style={{ width: 10, height: 2, borderRadius: 1, backgroundColor: C.text }} />
+        </Pressable>
+      </View>
+    </Animated.View>
+  );
+}
+
 export default function HomeScreen() {
   const C = useColors();
   const insets = useSafeAreaInsets();
@@ -488,6 +524,7 @@ export default function HomeScreen() {
   const topPadding    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
   const showLoginPrompt = !isLoggedIn && !dismissedPrompt;
+  const headerHeight = 80;
 
   const menuTopOffset = topPadding + 74;
 
@@ -533,53 +570,23 @@ export default function HomeScreen() {
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPadding }}>
       <HamburgerMenu visible={menuOpen} onClose={() => setMenuOpen(false)} onSelect={handleMenuSelect} topOffset={menuTopOffset} />
 
+      <HomeHeader
+        isLoggedIn={isLoggedIn}
+        avatarInitials={profile.avatarInitials}
+        onProfilePress={() => { Haptics.selectionAsync(); isLoggedIn ? switchTab(3) : router.push("/auth"); }}
+        onMenuPress={() => { Haptics.selectionAsync(); setMenuOpen(true); }}
+      />
+
       {isLoading ? (
-        <HomeSkeleton />
+        <HomeSkeleton topInset={headerHeight} />
       ) : (
         <ScrollView
           ref={scrollRef}
           showsVerticalScrollIndicator={false}
           scrollEnabled={!globeDragging}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomPadding + 100 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: bottomPadding + 100 + headerHeight }}
           contentInsetAdjustmentBehavior="automatic"
         >
-          <Animated.View entering={FadeInDown.delay(0).springify()} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 20 }}>
-            <LogbookLogo size={38} showName hideIcon />
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <Pressable onPress={() => { Haptics.selectionAsync(); isLoggedIn ? switchTab(3) : router.push("/auth"); }} style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]} hitSlop={6}>
-                {isLoggedIn && profile.avatarInitials ? (
-                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.accent, alignItems: "center", justifyContent: "center", shadowColor: C.accent, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 3 }}>
-                    <Text style={{ fontSize: 13, color: C.white, fontFamily: "DMSans_700Bold" }}>{profile.avatarInitials}</Text>
-                  </View>
-                ) : (
-                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.surface, borderWidth: 1.5, borderColor: C.border, alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="person-outline" size={18} color={C.textSec} />
-                  </View>
-                )}
-              </Pressable>
-              <Pressable
-                onPress={() => { Haptics.selectionAsync(); setMenuOpen(true); }}
-                style={({ pressed }) => [{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 14,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 4,
-                  backgroundColor: pressed ? C.surface : C.card,
-                  borderWidth: 1,
-                  borderColor: C.border,
-                  opacity: pressed ? 0.75 : 1,
-                }]}
-                hitSlop={12}
-              >
-                <View style={{ width: 18, height: 2, borderRadius: 1, backgroundColor: C.text }} />
-                <View style={{ width: 14, height: 2, borderRadius: 1, backgroundColor: C.text }} />
-                <View style={{ width: 10, height: 2, borderRadius: 1, backgroundColor: C.text }} />
-              </Pressable>
-            </View>
-          </Animated.View>
-
           {showLoginPrompt && (
             <LoginPromptBanner
               onSignUp={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/auth"); }}
