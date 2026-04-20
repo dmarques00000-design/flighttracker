@@ -1,0 +1,60 @@
+# .github/workflows/eas-update.yml
+#
+# Runs on every push to main.
+# Publishes an EAS Update to the "development" channel so the installed
+# dev build on your iPhone picks up JS changes automatically on next launch.
+# No PC required — just open the app.
+
+name: EAS Update
+
+on:
+  push:
+    branches:
+      - main
+    # Only trigger when JS/TS/asset files change — skip if only native or
+    # config files changed (those require a full EAS build anyway).
+    paths:
+      - 'app/**'
+      - 'components/**'
+      - 'context/**'
+      - 'hooks/**'
+      - 'lib/**'
+      - 'utils/**'
+      - 'constants/**'
+      - 'shared/**'
+      - 'server/**'
+      - 'assets/**'
+      - 'modules/WalletModule.ts'
+      - 'app.json'
+      - 'package.json'
+
+jobs:
+  update:
+    name: Push OTA update
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup EAS CLI
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Publish EAS Update → development channel
+        run: |
+          eas update \
+            --branch development \
+            --message "${{ github.event.head_commit.message }}" \
+            --non-interactive
