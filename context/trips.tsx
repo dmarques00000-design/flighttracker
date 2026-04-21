@@ -8,14 +8,15 @@ export interface Trip {
   title: string;
   flightIds: string[];
   createdAt: string;
+  coverUri?: string;
 }
 
 interface TripsContextValue {
   trips: Trip[];
   isLoading: boolean;
-  addTrip: (title: string, flightIds: string[]) => Promise<void>;
+  addTrip: (title: string, flightIds: string[], coverUri?: string) => Promise<void>;
   removeTrip: (id: string) => Promise<void>;
-  updateTrip: (id: string, title: string, flightIds: string[]) => Promise<void>;
+  updateTrip: (id: string, title: string, flightIds: string[], coverUri?: string) => Promise<void>;
 }
 
 const LOCAL_KEY = "@logbook_trips";
@@ -58,13 +59,13 @@ export function TripsProvider({ children }: { children: ReactNode }) {
     if (!isLoggedIn) await AsyncStorage.setItem(LOCAL_KEY, JSON.stringify(updated));
   }, [isLoggedIn]);
 
-  const addTrip = useCallback(async (title: string, flightIds: string[]) => {
+  const addTrip = useCallback(async (title: string, flightIds: string[], coverUri?: string) => {
     if (isLoggedIn && profile.id) {
       try {
         const res = await fetch(`${API_BASE}/api/trips`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, flightIds, userId: profile.id }),
+          body: JSON.stringify({ title, flightIds, userId: profile.id, coverUri }),
         });
         if (res.ok) {
           const saved: Trip = await res.json();
@@ -80,6 +81,7 @@ export function TripsProvider({ children }: { children: ReactNode }) {
       title,
       flightIds,
       createdAt: new Date().toISOString(),
+      ...(coverUri ? { coverUri } : {}),
     };
     setTrips((prev) => {
       const next = [trip, ...prev];
@@ -105,9 +107,9 @@ export function TripsProvider({ children }: { children: ReactNode }) {
     }
   }, [isLoggedIn, profile.id, persistLocal]);
 
-  const updateTrip = useCallback(async (id: string, title: string, flightIds: string[]) => {
+  const updateTrip = useCallback(async (id: string, title: string, flightIds: string[], coverUri?: string) => {
     setTrips((prev) => {
-      const next = prev.map((t) => t.id === id ? { ...t, title, flightIds } : t);
+      const next = prev.map((t) => t.id === id ? { ...t, title, flightIds, coverUri } : t);
       if (!isLoggedIn) persistLocal(next);
       return next;
     });
@@ -116,7 +118,7 @@ export function TripsProvider({ children }: { children: ReactNode }) {
         await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, flightIds }),
+          body: JSON.stringify({ title, flightIds, coverUri }),
         });
       } catch (err) {
         console.warn("[TripsContext] Update failed:", err);
