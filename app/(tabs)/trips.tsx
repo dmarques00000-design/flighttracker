@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useCallback } from "react";
 import {
   View, Text, ScrollView, Pressable, TextInput,
-  Modal, TouchableWithoutFeedback, Alert, Platform,
+  Modal, Alert, Platform, Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { useColors } from "@/constants/colors";
 import { useTrips, Trip } from "@/context/trips";
@@ -24,7 +25,6 @@ function tripDateRange(flights: Flight[]): string {
   return first === last ? first : `${first} – ${last}`;
 }
 
-// ── Flight picker row ────────────────────────────────────────────────────────
 function FlightPickerRow({ flight, selected, onToggle }: { flight: Flight; selected: boolean; onToggle: () => void }) {
   const C = useColors();
   return (
@@ -56,31 +56,46 @@ function FlightPickerRow({ flight, selected, onToggle }: { flight: Flight; selec
   );
 }
 
-// ── Create / Edit Trip Modal ─────────────────────────────────────────────────
 function TripFormModal({
-  visible, onClose, onSave, flights, initialTitle = "", initialIds = [], editMode = false,
+  visible, onClose, onSave, flights, trips, initialTitle = "", initialIds = [], initialCoverUri, editMode = false, editingTripId,
 }: {
   visible: boolean;
   onClose: () => void;
-  onSave: (title: string, ids: string[]) => void;
+  onSave: (title: string, ids: string[], coverUri?: string) => void;
   flights: Flight[];
+  trips: Trip[];
   initialTitle?: string;
   initialIds?: string[];
+  initialCoverUri?: string;
   editMode?: boolean;
+  editingTripId?: string;
 }) {
   const C = useColors();
   const insets = useSafeAreaInsets();
   const [title, setTitle] = useState(initialTitle);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(initialIds));
+  const [coverUri, setCoverUri] = useState<string | undefined>(initialCoverUri);
 
-  // Reset when modal opens
   React.useEffect(() => {
     if (visible) {
       setTitle(initialTitle);
       setSelectedIds(new Set(initialIds));
+      setCoverUri(initialCoverUri);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
+  }, [visible, initialTitle, initialIds, initialCoverUri]);
+
+  const assignedFlightIds = useMemo(() => {
+    const ids = new Set<string>();
+    trips.forEach((trip) => {
+      if (trip.id === editingTripId) return;
+      trip.flightIds.forEach((id) => ids.add(id));
+    });
+    return ids;
+  }, [trips, editingTripId]);
+
+  const availableFlights = useMemo(() => {
+    return flights.filter((flight) => selectedIds.has(flight.id) || !assignedFlightIds.has(flight.id));
+  }, [flights, selectedIds, assignedFlightIds]);
 
   const toggle = useCallback((id: string) => {
     Haptics.selectionAsync();
@@ -92,9 +107,29 @@ function TripFormModal({
   }, []);
 
   const sortedFlights = useMemo(() =>
-    [...flights].sort((a, b) => b.date.localeCompare(a.date)),
-    [flights]
+    [...availableFlights].sort((a, b) => b.date.localeCompare(a.date)),
+    [availableFlights]
   );
+
+  async function pickCover() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permission required", "Please allow photo library access to choose a cover photo.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets?.[0]?.uri) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setCoverUri(result.assets[0].uri);
+    }
+  }
 
   function handleSave() {
     if (!title.trim()) {
@@ -105,13 +140,12 @@ function TripFormModal({
       Alert.alert("No flights selected", "Pick at least one flight for this trip.");
       return;
     }
-    onSave(title.trim(), Array.from(selectedIds));
+    onSave(title.trim(), Array.from(selectedIds), coverUri);
   }
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: C.bg }}>
-        {/* Header */}
         <View style={{
           flexDirection: "row", alignItems: "center", justifyContent: "space-between",
           paddingHorizontal: 20, paddingTop: insets.top + 16, paddingBottom: 16,
@@ -129,7 +163,6 @@ function TripFormModal({
         </View>
 
         <ScrollView keyboardShouldPersistTaps="handled">
-          {/* Title input */}
           <View style={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 8 }}>
             <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>Trip Title</Text>
             <TextInput
@@ -147,17 +180,55 @@ function TripFormModal({
             />
           </View>
 
-          {/* Flight picker */}
+          <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 }}>
+            <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>Cover Photo</Text>
+            <Pressable
+              onPress={pickCover}
+              style={({ pressed }) => ({
+                backgroundColor: C.card,
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: C.border,
+                overflow: "hidden",
+                opacity: pressed ? 0.9 : 1,
+              })}
+            >
+              {coverUri ? (
+                <View>
+                  <Image source={{ uri: coverUri }} style={{ width: "100%", height: 180 }} resizeMode="cover" />
+                  <View style={{
+                    position: "absolute", right: 12, top: 12,
+                    backgroundColor: "rgba(15,23,42,0.6)", borderRadius: 16,
+                    paddingHorizontal: 10, paddingVertical: 6,
+                  }}>
+                    <Text style={{ fontSize: 12, color: C.white, fontFamily: "DMSans_700Bold" }}>Change</Text>
+                  </View>
+                </View>
+              ) : (
+                <View style={{ alignItems: "center", justifyContent: "center", paddingVertical: 28, paddingHorizontal: 20, gap: 8 }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="image-outline" size={22} color={C.accent} />
+                  </View>
+                  <Text style={{ fontSize: 14, color: C.text, fontFamily: "DMSans_700Bold" }}>Choose cover photo</Text>
+                  <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", textAlign: "center" }}>Pick an image from your gallery for this trip.</Text>
+                </View>
+              )}
+            </Pressable>
+          </View>
+
           <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 }}>
             <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 8 }}>
               Select Flights ({selectedIds.size} selected)
+            </Text>
+            <Text style={{ fontSize: 12, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>
+              Flights already linked to another trip are hidden.
             </Text>
           </View>
           <View style={{ borderTopWidth: 1, borderTopColor: C.border }}>
             {sortedFlights.length === 0 ? (
               <View style={{ padding: 32, alignItems: "center" }}>
-                <Ionicons name="airplane-outline" size={32} color={C.textFaint} />
-                <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 10, textAlign: "center" }}>No flights yet.{"\n"}Add flights first, then create a trip.</Text>
+                <Ionicons name="airplane-outline" size={32} color={C.textMuted} />
+                <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 10, textAlign: "center" }}>No available flights.{"\n"}Add flights first or remove them from another trip.</Text>
               </View>
             ) : (
               sortedFlights.map((f) => (
@@ -177,7 +248,6 @@ function TripFormModal({
   );
 }
 
-// ── Trip Card ────────────────────────────────────────────────────────────────
 function TripCard({ trip, flights, onPress }: { trip: Trip; flights: Flight[]; onPress: () => void }) {
   const C = useColors();
   const tripFlights = useMemo(() => flights.filter((f) => trip.flightIds.includes(f.id)), [flights, trip.flightIds]);
@@ -192,7 +262,13 @@ function TripCard({ trip, flights, onPress }: { trip: Trip; flights: Flight[]; o
         marginBottom: 12, overflow: "hidden", opacity: pressed ? 0.85 : 1,
       })}
     >
-      <View style={{ height: 3, backgroundColor: C.accent }} />
+      {trip.coverUri ? (
+        <Image source={{ uri: trip.coverUri }} style={{ width: "100%", height: 150 }} resizeMode="cover" />
+      ) : (
+        <View style={{ height: 92, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="briefcase-outline" size={28} color={C.accent} />
+        </View>
+      )}
       <View style={{ padding: 16 }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <Text style={{ fontSize: 17, color: C.text, fontFamily: "DMSans_700Bold", flex: 1 }} numberOfLines={1}>{trip.title}</Text>
@@ -222,7 +298,6 @@ function TripCard({ trip, flights, onPress }: { trip: Trip; flights: Flight[]; o
   );
 }
 
-// ── Main Trips Screen ────────────────────────────────────────────────────────
 export default function TripsScreen() {
   const C = useColors();
   const insets = useSafeAreaInsets();
@@ -231,9 +306,9 @@ export default function TripsScreen() {
   const [showForm, setShowForm] = useState(false);
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
 
-  async function handleCreate(title: string, flightIds: string[]) {
+  async function handleCreate(title: string, flightIds: string[], coverUri?: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await addTrip(title, flightIds);
+    await addTrip(title, flightIds, coverUri);
     setShowForm(false);
   }
 
@@ -244,13 +319,13 @@ export default function TripsScreen() {
         onClose={() => setShowForm(false)}
         onSave={handleCreate}
         flights={flights}
+        trips={trips}
       />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 100 }}
       >
-        {/* Header */}
         <Animated.View
           entering={FadeInDown.delay(0).springify()}
           style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 20 }}
