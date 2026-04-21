@@ -9,6 +9,7 @@ export interface Trip {
   flightIds: string[];
   createdAt: string;
   coverUri?: string;
+  starred?: boolean;
 }
 
 interface TripsContextValue {
@@ -17,6 +18,7 @@ interface TripsContextValue {
   addTrip: (title: string, flightIds: string[], coverUri?: string) => Promise<void>;
   removeTrip: (id: string) => Promise<void>;
   updateTrip: (id: string, title: string, flightIds: string[], coverUri?: string) => Promise<void>;
+  toggleStar: (id: string) => Promise<void>;
 }
 
 const LOCAL_KEY = "@logbook_trips";
@@ -81,6 +83,7 @@ export function TripsProvider({ children }: { children: ReactNode }) {
       title,
       flightIds,
       createdAt: new Date().toISOString(),
+      starred: false,
       ...(coverUri ? { coverUri } : {}),
     };
     setTrips((prev) => {
@@ -126,7 +129,34 @@ export function TripsProvider({ children }: { children: ReactNode }) {
     }
   }, [isLoggedIn, profile.id, persistLocal]);
 
-  const value = useMemo(() => ({ trips, isLoading, addTrip, removeTrip, updateTrip }), [trips, isLoading, addTrip, removeTrip, updateTrip]);
+  const toggleStar = useCallback(async (id: string) => {
+    let newStarred = false;
+    setTrips((prev) => {
+      const next = prev.map((t) => {
+        if (t.id !== id) return t;
+        newStarred = !t.starred;
+        return { ...t, starred: newStarred };
+      });
+      if (!isLoggedIn) persistLocal(next);
+      return next;
+    });
+    if (isLoggedIn && profile.id) {
+      try {
+        await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ starred: newStarred }),
+        });
+      } catch (err) {
+        console.warn("[TripsContext] Star toggle failed:", err);
+      }
+    }
+  }, [isLoggedIn, profile.id, persistLocal]);
+
+  const value = useMemo(
+    () => ({ trips, isLoading, addTrip, removeTrip, updateTrip, toggleStar }),
+    [trips, isLoading, addTrip, removeTrip, updateTrip, toggleStar]
+  );
 
   return <TripsContext.Provider value={value}>{children}</TripsContext.Provider>;
 }

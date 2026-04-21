@@ -22,9 +22,10 @@ function tripDateRange(flights: Flight[]): string {
   const sorted = [...flights].sort((a, b) => a.date.localeCompare(b.date));
   const first = formatDateShort(sorted[0].date);
   const last  = formatDateShort(sorted[sorted.length - 1].date);
-  return first === last ? first : `${first} – ${last}`;
+  return first === last ? first : `${first} \u2013 ${last}`;
 }
 
+// ─── Flight picker row ────────────────────────────────────────────────────────
 function FlightPickerRow({ flight, selected, onToggle }: { flight: Flight; selected: boolean; onToggle: () => void }) {
   const C = useColors();
   return (
@@ -38,10 +39,10 @@ function FlightPickerRow({ flight, selected, onToggle }: { flight: Flight; selec
     >
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_700Bold" }}>
-          {flight.departureAirport} → {flight.arrivalAirport}
+          {flight.departureAirport} \u2192 {flight.arrivalAirport}
         </Text>
         <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 }}>
-          {flight.flightCode}  ·  {formatDateShort(flight.date)}
+          {flight.flightCode}  \u00b7  {formatDateShort(flight.date)}
         </Text>
       </View>
       <View style={{
@@ -56,8 +57,11 @@ function FlightPickerRow({ flight, selected, onToggle }: { flight: Flight; selec
   );
 }
 
+// ─── Create / edit modal ──────────────────────────────────────────────────────
 function TripFormModal({
-  visible, onClose, onSave, flights, trips, initialTitle = "", initialIds = [], initialCoverUri, editMode = false, editingTripId,
+  visible, onClose, onSave, flights, trips,
+  initialTitle = "", initialIds = [], initialCoverUri,
+  editMode = false, editingTripId,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -93,9 +97,10 @@ function TripFormModal({
     return ids;
   }, [trips, editingTripId]);
 
-  const availableFlights = useMemo(() => {
-    return flights.filter((flight) => selectedIds.has(flight.id) || !assignedFlightIds.has(flight.id));
-  }, [flights, selectedIds, assignedFlightIds]);
+  const availableFlights = useMemo(() =>
+    flights.filter((f) => selectedIds.has(f.id) || !assignedFlightIds.has(f.id)),
+    [flights, selectedIds, assignedFlightIds]
+  );
 
   const toggle = useCallback((id: string) => {
     Haptics.selectionAsync();
@@ -117,14 +122,12 @@ function TripFormModal({
       Alert.alert("Permission required", "Please allow photo library access to choose a cover photo.");
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: true,
       aspect: [16, 9],
       quality: 0.8,
     });
-
     if (!result.canceled && result.assets?.[0]?.uri) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setCoverUri(result.assets[0].uri);
@@ -132,14 +135,8 @@ function TripFormModal({
   }
 
   function handleSave() {
-    if (!title.trim()) {
-      Alert.alert("Title required", "Please enter a name for this trip.");
-      return;
-    }
-    if (selectedIds.size === 0) {
-      Alert.alert("No flights selected", "Pick at least one flight for this trip.");
-      return;
-    }
+    if (!title.trim()) { Alert.alert("Title required", "Please enter a name for this trip."); return; }
+    if (selectedIds.size === 0) { Alert.alert("No flights selected", "Pick at least one flight for this trip."); return; }
     onSave(title.trim(), Array.from(selectedIds), coverUri);
   }
 
@@ -185,12 +182,8 @@ function TripFormModal({
             <Pressable
               onPress={pickCover}
               style={({ pressed }) => ({
-                backgroundColor: C.card,
-                borderRadius: 16,
-                borderWidth: 1,
-                borderColor: C.border,
-                overflow: "hidden",
-                opacity: pressed ? 0.9 : 1,
+                backgroundColor: C.card, borderRadius: 16, borderWidth: 1,
+                borderColor: C.border, overflow: "hidden", opacity: pressed ? 0.9 : 1,
               })}
             >
               {coverUri ? (
@@ -228,16 +221,13 @@ function TripFormModal({
             {sortedFlights.length === 0 ? (
               <View style={{ padding: 32, alignItems: "center" }}>
                 <Ionicons name="airplane-outline" size={32} color={C.textMuted} />
-                <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 10, textAlign: "center" }}>No available flights.{"\n"}Add flights first or remove them from another trip.</Text>
+                <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 10, textAlign: "center" }}>
+                  No available flights.{"\n"}Add flights first or remove them from another trip.
+                </Text>
               </View>
             ) : (
               sortedFlights.map((f) => (
-                <FlightPickerRow
-                  key={f.id}
-                  flight={f}
-                  selected={selectedIds.has(f.id)}
-                  onToggle={() => toggle(f.id)}
-                />
+                <FlightPickerRow key={f.id} flight={f} selected={selectedIds.has(f.id)} onToggle={() => toggle(f.id)} />
               ))
             )}
           </View>
@@ -248,7 +238,15 @@ function TripFormModal({
   );
 }
 
-function TripCard({ trip, flights, onPress }: { trip: Trip; flights: Flight[]; onPress: () => void }) {
+// ─── Trip card ────────────────────────────────────────────────────────────────
+function TripCard({
+  trip, flights, onPress, onToggleStar,
+}: {
+  trip: Trip;
+  flights: Flight[];
+  onPress: () => void;
+  onToggleStar: () => void;
+}) {
   const C = useColors();
   const tripFlights = useMemo(() => flights.filter((f) => trip.flightIds.includes(f.id)), [flights, trip.flightIds]);
   const dateRange   = useMemo(() => tripDateRange(tripFlights), [tripFlights]);
@@ -262,6 +260,7 @@ function TripCard({ trip, flights, onPress }: { trip: Trip; flights: Flight[]; o
         marginBottom: 12, overflow: "hidden", opacity: pressed ? 0.85 : 1,
       })}
     >
+      {/* Cover */}
       {trip.coverUri ? (
         <Image source={{ uri: trip.coverUri }} style={{ width: "100%", height: 150 }} resizeMode="cover" />
       ) : (
@@ -269,11 +268,29 @@ function TripCard({ trip, flights, onPress }: { trip: Trip; flights: Flight[]; o
           <Ionicons name="briefcase-outline" size={28} color={C.accent} />
         </View>
       )}
+
       <View style={{ padding: 16 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <Text style={{ fontSize: 17, color: C.text, fontFamily: "DMSans_700Bold", flex: 1 }} numberOfLines={1}>{trip.title}</Text>
-          <Ionicons name="chevron-forward" size={16} color={C.textMuted} />
+        {/* Title row */}
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+          <Text style={{ fontSize: 17, color: C.text, fontFamily: "DMSans_700Bold", flex: 1 }} numberOfLines={1}>
+            {trip.title}
+          </Text>
+          {/* Star button */}
+          <Pressable
+            onPress={(e) => { e.stopPropagation(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onToggleStar(); }}
+            hitSlop={12}
+            style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, marginLeft: 8 })}
+          >
+            <Ionicons
+              name={trip.starred ? "star" : "star-outline"}
+              size={18}
+              color={trip.starred ? C.amber : C.textMuted}
+            />
+          </Pressable>
+          <Ionicons name="chevron-forward" size={16} color={C.textMuted} style={{ marginLeft: 8 }} />
         </View>
+
+        {/* Meta row */}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
             <Ionicons name="airplane-outline" size={13} color={C.textMuted} />
@@ -298,18 +315,40 @@ function TripCard({ trip, flights, onPress }: { trip: Trip; flights: Flight[]; o
   );
 }
 
+// ─── Section label ────────────────────────────────────────────────────────────
+function SectionLabel({ icon, label, color }: { icon: string; label: string; color: string }) {
+  const C = useColors();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12, marginTop: 4 }}>
+      <Ionicons name={icon as never} size={14} color={color} />
+      <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_700Bold", letterSpacing: 0.9, textTransform: "uppercase" }}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
 export default function TripsScreen() {
   const C = useColors();
   const insets = useSafeAreaInsets();
-  const { trips, addTrip } = useTrips();
+  const { trips, addTrip, toggleStar } = useTrips();
   const { flights } = useFlights();
   const [showForm, setShowForm] = useState(false);
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
+
+  const starredTrips  = useMemo(() => trips.filter((t) => t.starred),  [trips]);
+  const regularTrips  = useMemo(() => trips.filter((t) => !t.starred), [trips]);
 
   async function handleCreate(title: string, flightIds: string[], coverUri?: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await addTrip(title, flightIds, coverUri);
     setShowForm(false);
+  }
+
+  function navigateToTrip(id: string) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push({ pathname: "/trip/[id]", params: { id } });
   }
 
   return (
@@ -326,6 +365,7 @@ export default function TripsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 100 }}
       >
+        {/* Header */}
         <Animated.View
           entering={FadeInDown.delay(0).springify()}
           style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 16, paddingBottom: 20 }}
@@ -344,7 +384,8 @@ export default function TripsScreen() {
           </Pressable>
         </Animated.View>
 
-        {trips.length === 0 ? (
+        {/* Empty state */}
+        {trips.length === 0 && (
           <Animated.View entering={FadeIn.delay(100)} style={{ alignItems: "center", paddingTop: 60, paddingHorizontal: 20 }}>
             <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
               <Ionicons name="briefcase-outline" size={30} color={C.accent} />
@@ -360,19 +401,45 @@ export default function TripsScreen() {
               <Text style={{ fontSize: 15, color: C.white, fontFamily: "DMSans_700Bold" }}>Create First Trip</Text>
             </Pressable>
           </Animated.View>
-        ) : (
-          trips.map((trip, i) => (
-            <Animated.View key={trip.id} entering={FadeInDown.delay(i * 40).springify()}>
-              <TripCard
-                trip={trip}
-                flights={flights}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  router.push({ pathname: "/trip/[id]", params: { id: trip.id } });
-                }}
-              />
-            </Animated.View>
-          ))
+        )}
+
+        {/* ── Starred section ── */}
+        {starredTrips.length > 0 && (
+          <Animated.View entering={FadeInDown.delay(30).springify()}>
+            <SectionLabel icon="star" label="Starred" color={C.amber} />
+            {starredTrips.map((trip, i) => (
+              <Animated.View key={trip.id} entering={FadeInDown.delay(i * 40).springify()}>
+                <TripCard
+                  trip={trip}
+                  flights={flights}
+                  onPress={() => navigateToTrip(trip.id)}
+                  onToggleStar={() => toggleStar(trip.id)}
+                />
+              </Animated.View>
+            ))}
+            {regularTrips.length > 0 && (
+              <View style={{ height: 1, backgroundColor: C.border, marginBottom: 20, marginTop: 4 }} />
+            )}
+          </Animated.View>
+        )}
+
+        {/* ── All / remaining trips section ── */}
+        {regularTrips.length > 0 && (
+          <Animated.View entering={FadeInDown.delay(starredTrips.length > 0 ? 60 : 30).springify()}>
+            {starredTrips.length > 0 && (
+              <SectionLabel icon="time-outline" label="All Trips" color={C.textMuted} />
+            )}
+            {regularTrips.map((trip, i) => (
+              <Animated.View key={trip.id} entering={FadeInDown.delay(i * 40).springify()}>
+                <TripCard
+                  trip={trip}
+                  flights={flights}
+                  onPress={() => navigateToTrip(trip.id)}
+                  onToggleStar={() => toggleStar(trip.id)}
+                />
+              </Animated.View>
+            ))}
+          </Animated.View>
         )}
       </ScrollView>
     </View>
