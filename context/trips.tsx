@@ -3,6 +3,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE } from "@/constants/api";
 import { useUser } from "@/context/user";
 
+export type TripStatus = "planned" | "upcoming" | "completed";
+
 export interface Trip {
   id: string;
   title: string;
@@ -10,6 +12,7 @@ export interface Trip {
   createdAt: string;
   coverUri?: string;
   starred?: boolean;
+  status?: TripStatus;
 }
 
 interface TripsContextValue {
@@ -19,6 +22,7 @@ interface TripsContextValue {
   removeTrip: (id: string) => Promise<void>;
   updateTrip: (id: string, title: string, flightIds: string[], coverUri?: string) => Promise<void>;
   toggleStar: (id: string) => Promise<void>;
+  setTripStatus: (id: string, status: TripStatus) => Promise<void>;
 }
 
 const LOCAL_KEY = "@logbook_trips";
@@ -84,6 +88,7 @@ export function TripsProvider({ children }: { children: ReactNode }) {
       flightIds,
       createdAt: new Date().toISOString(),
       starred: false,
+      status: "planned",
       ...(coverUri ? { coverUri } : {}),
     };
     setTrips((prev) => {
@@ -111,8 +116,13 @@ export function TripsProvider({ children }: { children: ReactNode }) {
   }, [isLoggedIn, profile.id, persistLocal]);
 
   const updateTrip = useCallback(async (id: string, title: string, flightIds: string[], coverUri?: string) => {
+    let currentStatus: TripStatus | undefined;
     setTrips((prev) => {
-      const next = prev.map((t) => t.id === id ? { ...t, title, flightIds, coverUri } : t);
+      const next = prev.map((t) => {
+        if (t.id !== id) return t;
+        currentStatus = t.status;
+        return { ...t, title, flightIds, coverUri };
+      });
       if (!isLoggedIn) persistLocal(next);
       return next;
     });
@@ -121,7 +131,7 @@ export function TripsProvider({ children }: { children: ReactNode }) {
         await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, flightIds, coverUri }),
+          body: JSON.stringify({ title, flightIds, coverUri, status: currentStatus }),
         });
       } catch (err) {
         console.warn("[TripsContext] Update failed:", err);
@@ -153,9 +163,28 @@ export function TripsProvider({ children }: { children: ReactNode }) {
     }
   }, [isLoggedIn, profile.id, persistLocal]);
 
+  const setTripStatus = useCallback(async (id: string, status: TripStatus) => {
+    setTrips((prev) => {
+      const next = prev.map((t) => t.id === id ? { ...t, status } : t);
+      if (!isLoggedIn) persistLocal(next);
+      return next;
+    });
+    if (isLoggedIn && profile.id) {
+      try {
+        await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        });
+      } catch (err) {
+        console.warn("[TripsContext] Status update failed:", err);
+      }
+    }
+  }, [isLoggedIn, profile.id, persistLocal]);
+
   const value = useMemo(
-    () => ({ trips, isLoading, addTrip, removeTrip, updateTrip, toggleStar }),
-    [trips, isLoading, addTrip, removeTrip, updateTrip, toggleStar]
+    () => ({ trips, isLoading, addTrip, removeTrip, updateTrip, toggleStar, setTripStatus }),
+    [trips, isLoading, addTrip, removeTrip, updateTrip, toggleStar, setTripStatus]
   );
 
   return <TripsContext.Provider value={value}>{children}</TripsContext.Provider>;

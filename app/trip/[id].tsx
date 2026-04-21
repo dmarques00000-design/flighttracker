@@ -9,7 +9,7 @@ import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useColors } from "@/constants/colors";
-import { useTrips } from "@/context/trips";
+import { useTrips, TripStatus } from "@/context/trips";
 import { useFlights, Flight } from "@/context/flights";
 
 function formatDateShort(dateStr: string): string {
@@ -18,6 +18,29 @@ function formatDateShort(dateStr: string): string {
 function formatHours(minutes: number): string {
   const h = Math.floor(minutes / 60); const m = minutes % 60;
   if (h === 0) return `${m}m`; if (m === 0) return `${h}h`; return `${h}h ${m}m`;
+}
+
+function getAutoTripStatus(flights: Flight[]): TripStatus {
+  if (flights.length === 0) return "planned";
+  const today = new Date().toISOString().slice(0, 10);
+  const sorted = [...flights].sort((a, b) => a.date.localeCompare(b.date));
+  const firstDate = sorted[0]?.date;
+  const lastDate = sorted[sorted.length - 1]?.date;
+  if (firstDate && firstDate > today) return "planned";
+  if (lastDate && lastDate < today) return "completed";
+  return "upcoming";
+}
+
+function getStatusMeta(C: ReturnType<typeof useColors>, status: TripStatus) {
+  switch (status) {
+    case "planned":
+      return { label: "Planned", icon: "calendar-outline", color: C.accent, bg: C.accentDim, border: C.accent + "40" };
+    case "upcoming":
+      return { label: "Upcoming", icon: "time-outline", color: C.amber, bg: C.amberDim, border: C.amber + "40" };
+    case "completed":
+    default:
+      return { label: "Completed", icon: "checkmark-circle-outline", color: C.green, bg: C.greenDim, border: C.green + "40" };
+  }
 }
 
 function FlightRow({ flight }: { flight: Flight }) {
@@ -55,98 +78,13 @@ function FlightRow({ flight }: { flight: Flight }) {
   );
 }
 
-function EditTripModal({ visible, onClose, tripId }: { visible: boolean; onClose: () => void; tripId: string }) {
-  const C = useColors();
-  const insets = useSafeAreaInsets();
-  const { trips, updateTrip } = useTrips();
-  const { flights } = useFlights();
-  const trip = useMemo(() => trips.find((t) => t.id === tripId), [trips, tripId]);
-  const [title, setTitle] = useState(trip?.title ?? "");
-  const [coverUri, setCoverUri] = useState<string | undefined>(trip?.coverUri);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(trip?.flightIds ?? []));
-
-  React.useEffect(() => {
-    if (visible && trip) {
-      setTitle(trip.title);
-      setCoverUri(trip.coverUri);
-      setSelectedIds(new Set(trip.flightIds));
-    }
-  }, [visible, trip]);
-
-  const assignedFlightIds = useMemo(() => {
-    const ids = new Set<string>();
-    trips.forEach((item) => {
-      if (item.id === tripId) return;
-      item.flightIds.forEach((id) => ids.add(id));
-    });
-    return ids;
-  }, [trips, tripId]);
-
-  const availableFlights = useMemo(() => {
-    return flights.filter((flight) => selectedIds.has(flight.id) || !assignedFlightIds.has(flight.id));
-  }, [flights, selectedIds, assignedFlightIds]);
-
-  async function pickCover() {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert("Permission required", "Please allow photo library access to choose a cover photo.");
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [16, 9],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets?.[0]?.uri) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      setCoverUri(result.assets[0].uri);
-    }
-  }
-
-  function toggleFlight(id: string) {
-    Haptics.selectionAsync();
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  async function handleSave() {
-    if (!trip) return;
-    if (!title.trim()) {
-      Alert.alert("Title required", "Please enter a name for this trip.");
-      return;
-    }
-    if (selectedIds.size === 0) {
-      Alert.alert("No flights selected", "Pick at least one flight for this trip.");
-      return;
-    }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await updateTrip(trip.id, title.trim(), Array.from(selectedIds), coverUri);
-    onClose();
-  }
-
-  if (!trip) return null;
-
-  return (
-    <Animated.View />,
-    <View style={{ display: visible ? "flex" : "none", position: "absolute" }} />,
-    <></>
-  );
-}
-
 export default function TripDetailScreen() {
   const C = useColors();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { trips, removeTrip, updateTrip } = useTrips();
+  const { trips, removeTrip, updateTrip, setTripStatus } = useTrips();
   const { flights } = useFlights();
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
-  const [showEdit, setShowEdit] = useState(false);
 
   const trip = useMemo(() => trips.find((t) => t.id === id), [trips, id]);
   const tripFlights = useMemo(() =>
@@ -157,6 +95,9 @@ export default function TripDetailScreen() {
   const totalMiles   = useMemo(() => tripFlights.reduce((s, f) => s + f.distanceMiles, 0), [tripFlights]);
   const totalMinutes = useMemo(() => tripFlights.reduce((s, f) => s + f.durationMinutes, 0), [tripFlights]);
   const totalCo2     = useMemo(() => tripFlights.reduce((s, f) => s + f.co2Kg, 0), [tripFlights]);
+  const autoStatus   = useMemo(() => getAutoTripStatus(tripFlights), [tripFlights]);
+  const currentStatus: TripStatus = trip?.status ?? autoStatus;
+  const statusMeta = getStatusMeta(C, currentStatus);
 
   async function handlePickCover() {
     if (!trip) return;
@@ -193,6 +134,16 @@ export default function TripDetailScreen() {
     ]);
   }
 
+  function handleStatusPicker() {
+    if (!trip) return;
+    Alert.alert("Trip Status", "Choose a status for this trip.", [
+      { text: `Planned${currentStatus === "planned" ? " ✓" : ""}`, onPress: () => setTripStatus(trip.id, "planned") },
+      { text: `Upcoming${currentStatus === "upcoming" ? " ✓" : ""}`, onPress: () => setTripStatus(trip.id, "upcoming") },
+      { text: `Completed${currentStatus === "completed" ? " ✓" : ""}`, onPress: () => setTripStatus(trip.id, "completed") },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }
+
   if (!trip) {
     return (
       <View style={{ flex: 1, backgroundColor: C.bg, alignItems: "center", justifyContent: "center" }}>
@@ -215,6 +166,9 @@ export default function TripDetailScreen() {
               <Text style={{ fontSize: 15, color: C.accent, fontFamily: "DMSans_500Medium" }}>Trips</Text>
             </Pressable>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+              <Pressable onPress={handleStatusPicker} hitSlop={10} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+                <Ionicons name="flag-outline" size={20} color={statusMeta.color} />
+              </Pressable>
               <Pressable onPress={handlePickCover} hitSlop={10} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
                 <Ionicons name="image-outline" size={20} color={C.accent} />
               </Pressable>
@@ -255,9 +209,26 @@ export default function TripDetailScreen() {
 
         <View style={{ paddingHorizontal: 20 }}>
           <Animated.View entering={FadeInDown.delay(30).springify()} style={{ paddingTop: 18, paddingBottom: 24 }}>
-            <Text style={{ fontSize: 30, color: C.text, fontFamily: "DMSans_700Bold", marginBottom: 4 }}>{trip.title}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+              <Text style={{ fontSize: 30, color: C.text, fontFamily: "DMSans_700Bold", flex: 1 }}>{trip.title}</Text>
+              <Pressable
+                onPress={handleStatusPicker}
+                style={({ pressed }) => [{
+                  flexDirection: "row", alignItems: "center", gap: 6,
+                  paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20,
+                  backgroundColor: statusMeta.bg, borderWidth: 1, borderColor: statusMeta.border,
+                  opacity: pressed ? 0.82 : 1,
+                }]}
+              >
+                <Ionicons name={statusMeta.icon as never} size={14} color={statusMeta.color} />
+                <Text style={{ fontSize: 12, color: statusMeta.color, fontFamily: "DMSans_700Bold" }}>{statusMeta.label}</Text>
+              </Pressable>
+            </View>
             <Text style={{ fontSize: 13, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>
               {tripFlights.length} flight{tripFlights.length !== 1 ? "s" : ""}
+            </Text>
+            <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 6 }}>
+              Suggested automatically from your flight dates, but you can change it anytime.
             </Text>
           </Animated.View>
 
