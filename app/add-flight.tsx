@@ -15,14 +15,15 @@ import { apiRequest } from "@/lib/query-client";
 import { getRateLimiter, formatRetryAfter } from "@/lib/rate-limiter";
 import { DatePicker } from "@/components/DatePicker";
 import { AirportInput } from "@/components/AirportInput";
+import { validateField, flightCodeSchema, dateSchema } from "@/lib/validation";
 
 const lookupLimiter = getRateLimiter("flight-lookup", { maxCalls: 5, windowMs: 60_000 });
 export const percentileLimiter = getRateLimiter("percentile", { maxCalls: 10, windowMs: 60_000 });
 
-// ─── Search mode ──────────────────────────────────────────────────────────────────────────────
+// ── Search mode ──────────────────────────────────────────────────────────────────────────────
 type SearchMode = "code" | "airport";
 
-// ─── Error types ────────────────────────────────────────────────────────────────────────────
+// ── Error types ────────────────────────────────────────────────────────────────────────────
 type LookupErrorKind = "offline" | "server" | "timeout" | "not_found" | "invalid_input" | "rate_limit" | "unknown" | "save_failed";
 
 interface LookupError {
@@ -40,13 +41,12 @@ function classifyError(err: unknown, isOnline: boolean): LookupError {
     return { kind: "not_found", message: "No flights found. Double-check the airports and date.", retryable: false };
   if (msg.startsWith("5") || msg.includes("Failed to fetch") || msg.includes("Network request failed") || msg.includes("ERR_CONNECTION_REFUSED"))
     return { kind: "server",   message: "Our server is unreachable right now. Please try again shortly.", retryable: true };
-  return { kind: "unknown",   message:"Could not look up that flight. Please check the details and date.", retryable: true };
+  return { kind: "unknown",   message: "Could not look up that flight. Please check the details and date.", retryable: true };
 }
 
 function classifySaveError(err: unknown, isOnline: boolean): LookupError {
   if (!isOnline) return { kind: "offline", message: "You're offline. The flight couldn't be saved to your account. Reconnect and try again.", retryable: true };
   const msg = err instanceof Error ? err.message : String(err);
-  // 4xx = validation/bad request from server (e.g. Zod schema rejection)
   if (msg.startsWith("4"))
     return { kind: "save_failed", message: "The flight data was rejected by the server. Please try again or contact support.", retryable: false };
   if (msg.startsWith("5") || msg.includes("Failed to fetch") || msg.includes("Network request failed") || msg.includes("ERR_CONNECTION_REFUSED"))
@@ -54,7 +54,7 @@ function classifySaveError(err: unknown, isOnline: boolean): LookupError {
   return { kind: "save_failed", message: "Couldn't save the flight. Please try again.", retryable: true };
 }
 
-// ─── Network hook ───────────────────────────────────────────────────────────────────────────
+// ── Network hook ────────────────────────────────────────────────────────────────────────
 function useIsOnline(): boolean {
   const [online, setOnline] = useState(true);
   const check = useCallback(async () => {
@@ -82,25 +82,7 @@ function useIsOnline(): boolean {
   return online;
 }
 
-// ─── Validation ───────────────────────────────────────────────────────────────────────────
-function sanitiseFlightCode(raw: string): { value: string; error: string | null } {
-  const value = raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (!value) return { value: "", error: "Please enter a flight code (e.g. LX2819)" };
-  if (value.length < 3 || value.length > 8) return { value, error: "Flight code must be 3–8 characters (e.g. LX2819, BA456)" };
-  if (!/^[A-Z]{2,3}\d{1,4}$/.test(value)) return { value, error: "Invalid format — use IATA code + flight number (e.g. LX2819)" };
-  return { value, error: null };
-}
-function sanitiseDate(raw: string): { value: string; error: string | null } {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return { value: raw, error: "Invalid date format" };
-  const d = new Date(raw + "T00:00:00");
-  if (isNaN(d.getTime())) return { value: raw, error: "Invalid date" };
-  const maxFuture = new Date(); maxFuture.setFullYear(maxFuture.getFullYear() + 1);
-  if (d > maxFuture) return { value: raw, error: "Date cannot be more than 1 year in the future" };
-  if (d < new Date("2000-01-01T00:00:00")) return { value: raw, error: "Date is too far in the past" };
-  return { value: raw, error: null };
-}
-
-// ─── Types ─────────────────────────────────────────────────────────────────────────────────
+// ── Types ────────────────────────────────────────────────────────────────────────────────
 interface FlightLookupResult {
   flightCode: string; date: string; airline: string; airlineCode: string;
   departureAirport: string; arrivalAirport: string; departureCity: string; arrivalCity: string;
@@ -109,7 +91,7 @@ interface FlightLookupResult {
   delayMinutes: number; aircraft: string; isMock?: boolean;
 }
 
-// ─── Helpers ───────────────────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────────────────
 function formatHours(minutes: number): string {
   const h = Math.floor(minutes / 60); const m = minutes % 60;
   if (h === 0) return `${m}m`; if (m === 0) return `${h}h`; return `${h}h ${m}m`;
@@ -148,7 +130,7 @@ function airlineLogoUrl(airlineCode: string): string {
   return `https://logo.clearbit.com/${domain}?size=64`;
 }
 
-// ─── Error banner ───────────────────────────────────────────────────────────────────────────
+// ── Error banner ────────────────────────────────────────────────────────────────────────
 function ErrorBanner({ err, onRetry, C }: { err: LookupError; onRetry: () => void; C: ReturnType<typeof useColors> }) {
   const iconMap: Record<LookupErrorKind, string> = {
     offline: "wifi-outline", server: "cloud-offline-outline", timeout: "time-outline",
@@ -183,7 +165,7 @@ function ErrorBanner({ err, onRetry, C }: { err: LookupError; onRetry: () => voi
   );
 }
 
-// ─── Flight result card ──────────────────────────────────────────────────────────────────────────
+// ── Flight result card ─────────────────────────────────────────────────────────────────────
 function FlightCard({
   flight, C, action, actionLabel, actionLoading,
 }: {
@@ -303,7 +285,7 @@ function FlightCard({
   );
 }
 
-// ─── Screen ──────────────────────────────────────────────────────────────────────────────────
+// ── Screen ─────────────────────────────────────────────────────────────────────────────────
 export default function AddFlightScreen() {
   const insets   = useSafeAreaInsets();
   const C        = useColors();
@@ -319,7 +301,7 @@ export default function AddFlightScreen() {
   const [savingId, setSavingId]       = useState<string | null>(null);
   const [remainingCalls, setRemainingCalls] = useState<number | null>(null);
 
-  const [code, setCode]     = useState("");
+  const [code, setCode]       = useState("");
   const [preview, setPreview] = useState<FlightLookupResult | null>(null);
 
   const [depIATA, setDepIATA]           = useState("");
@@ -343,18 +325,37 @@ export default function AddFlightScreen() {
 
   const handleCodeLookup = useCallback(async () => {
     setLookupErr(null); setPreview(null);
-    if (!isOnline) { setLookupErr({ kind: "offline", message: "You're offline. Check your connection and try again.", retryable: true }); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); return; }
-    const codeResult = sanitiseFlightCode(code);
-    if (codeResult.error) { setLookupErr({ kind: "invalid_input", message: codeResult.error, retryable: false }); return; }
-    const dateResult = sanitiseDate(date);
-    if (dateResult.error) { setLookupErr({ kind: "invalid_input", message: dateResult.error, retryable: false }); return; }
+    if (!isOnline) {
+      setLookupErr({ kind: "offline", message: "You're offline. Check your connection and try again.", retryable: true });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+
+    // ─ Validate using shared Zod schemas ─────────────────────────────────
+    const codeResult = validateField(flightCodeSchema, code);
+    if (codeResult.error) {
+      setLookupErr({ kind: "invalid_input", message: codeResult.error, retryable: false });
+      return;
+    }
+    const dateResult = validateField(dateSchema, date);
+    if (dateResult.error) {
+      setLookupErr({ kind: "invalid_input", message: dateResult.error, retryable: false });
+      return;
+    }
+    // ────────────────────────────────────────────────────────────────────
+
     const limit = await lookupLimiter.check();
     setRemainingCalls(limit.remainingCalls - 1);
-    if (!limit.allowed) { setLookupErr({ kind: "rate_limit", message: `Too many lookups — please wait ${formatRetryAfter(limit.retryAfterMs)} before trying again.`, retryable: false }); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); return; }
+    if (!limit.allowed) {
+      setLookupErr({ kind: "rate_limit", message: `Too many lookups — please wait ${formatRetryAfter(limit.retryAfterMs)} before trying again.`, retryable: false });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
     setLoading(true);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await lookupLimiter.consume();
+      // Use the validated (normalised) code value from Zod
       const res  = await apiRequest("GET", `/api/flights/lookup?code=${encodeURIComponent(codeResult.value)}&date=${encodeURIComponent(dateResult.value)}`);
       const data = (await res.json()) as FlightLookupResult;
       setPreview(data);
@@ -370,13 +371,31 @@ export default function AddFlightScreen() {
 
   const handleAirportSearch = useCallback(async () => {
     setLookupErr(null); setAirportResults([]);
-    if (!isOnline) { setLookupErr({ kind: "offline", message: "You're offline. Check your connection and try again.", retryable: true }); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); return; }
-    if (!depIATA && !arrIATA) { setLookupErr({ kind: "invalid_input", message: "Enter at least one airport — departure, arrival, or both.", retryable: false }); return; }
-    const dateResult = sanitiseDate(date);
-    if (dateResult.error) { setLookupErr({ kind: "invalid_input", message: dateResult.error, retryable: false }); return; }
+    if (!isOnline) {
+      setLookupErr({ kind: "offline", message: "You're offline. Check your connection and try again.", retryable: true });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+    if (!depIATA && !arrIATA) {
+      setLookupErr({ kind: "invalid_input", message: "Enter at least one airport — departure, arrival, or both.", retryable: false });
+      return;
+    }
+
+    // ─ Validate date using shared Zod schema ──────────────────────────────
+    const dateResult = validateField(dateSchema, date);
+    if (dateResult.error) {
+      setLookupErr({ kind: "invalid_input", message: dateResult.error, retryable: false });
+      return;
+    }
+    // ────────────────────────────────────────────────────────────────────
+
     const limit = await lookupLimiter.check();
     setRemainingCalls(limit.remainingCalls - 1);
-    if (!limit.allowed) { setLookupErr({ kind: "rate_limit", message: `Too many lookups — please wait ${formatRetryAfter(limit.retryAfterMs)} before trying again.`, retryable: false }); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); return; }
+    if (!limit.allowed) {
+      setLookupErr({ kind: "rate_limit", message: `Too many lookups — please wait ${formatRetryAfter(limit.retryAfterMs)} before trying again.`, retryable: false });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
     setLoading(true);
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -432,12 +451,9 @@ export default function AddFlightScreen() {
   const activeSearch = searchMode === "code" ? handleCodeLookup : handleAirportSearch;
 
   return (
-    // Root fills the sheet — no overflow:hidden here so iOS sheet height
-    // is communicated correctly to the ScrollView layout engine.
     <View style={{ flex: 1, backgroundColor: C.surface }}>
       <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 300, backgroundColor: C.surface }} />
 
-      {/* flex:1 + no overflow:hidden lets the ScrollView measure its true height */}
       <View style={{
         flex: 1,
         backgroundColor: C.surface,
@@ -447,20 +463,14 @@ export default function AddFlightScreen() {
       }}>
         <ScrollView
           ref={scrollRef}
-          // flex:1 is the critical fix — without it the ScrollView collapses to
-          // content height inside the sheet and iOS misreads the scroll region,
-          // causing the sheet-dismiss gesture to fire instead of scrolling.
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: 24, paddingBottom: 120 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          // Tell iOS this ScrollView owns vertical scrolling so the sheet
-          // dismiss gesture won't compete with it once the user starts scrolling.
           scrollEventThrottle={16}
           bounces={true}
           alwaysBounceVertical={true}
-          // scrollIndicatorInsets keeps the indicator inside the rounded corners.
           scrollIndicatorInsets={{ bottom: 0 }}
         >
           {/* Header */}
