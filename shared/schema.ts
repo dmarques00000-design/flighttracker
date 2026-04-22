@@ -83,3 +83,25 @@ export const insertFlightSchema = createInsertSchema(flights).omit({ createdAt: 
 export const selectFlightSchema = createSelectSchema(flights);
 export type InsertFlight = z.infer<typeof insertFlightSchema>;
 export type Flight      = typeof flights.$inferSelect;
+
+// ─── Trips ────────────────────────────────────────────────────────────────────
+// A named group of flights belonging to a user
+
+export const trips = pgTable("trips", {
+  id:         varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId:     varchar("user_id", { length: 128 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  title:      text("title").notNull(),
+  flightIds:  text("flight_ids").notNull().default("[]"), // JSON array of flight id strings
+  coverUri:   text("cover_uri"),
+  starred:    boolean("starred").notNull().default(false),
+  status:     varchar("status", { length: 16 }).notNull().default("planned"), // 'planned' | 'upcoming' | 'completed'
+  createdAt:  timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt:  timestamp("updated_at").notNull().default(sql`now()`),
+});
+
+export const insertTripSchema = createInsertSchema(trips).omit({ createdAt: true, updatedAt: true }).extend({
+  flightIds: z.array(z.string()).default([]),
+});
+export const selectTripSchema = createSelectSchema(trips);
+export type InsertTrip = z.infer<typeof insertTripSchema>;
+export type TripRow   = typeof trips.$inferSelect;
