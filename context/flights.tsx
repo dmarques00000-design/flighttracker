@@ -126,10 +126,12 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, [isLoggedIn, profile.id]);
 
-  // ── Persist locally for guest mode ─────────────────────────────────────────────
+  // ── Persist locally for both guest mode and as offline fallback for logged-in users ──
+  // Always write to AsyncStorage so that if the API is unreachable on next launch,
+  // the cached list is shown instead of a blank screen.
   const persistLocal = useCallback(async (updated: Flight[]) => {
-    if (!isLoggedIn) await AsyncStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-  }, [isLoggedIn]);
+    await AsyncStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+  }, []);
 
   // ── Add flight ───────────────────────────────────────────────────────────────────────
   const addFlight = useCallback(async (data: Omit<Flight, "id" | "addedAt">) => {
@@ -161,30 +163,30 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
         throw err;
       }
       const saved: Flight = await res.json();
-      setFlights((prev) => [saved, ...prev]);
+      const next = [saved, ...flights];
+      setFlights(next);
+      await persistLocal(next);
       return;
     }
 
-    // Guest / not logged in — save locally, never throws.
+    // Guest / not logged in — save locally.
     const flight: Flight = {
       ...data,
       id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
       addedAt: new Date().toISOString(),
     };
-    setFlights((prev) => {
-      const next = [flight, ...prev];
-      persistLocal(next);
-      return next;
-    });
+    const next = [flight, ...flights];
+    setFlights(next);
+    await persistLocal(next);
   }, [flights, isLoggedIn, profile.id, persistLocal]);
 
   // ── Remove flight ────────────────────────────────────────────────────────────────────
   const removeFlight = useCallback(async (id: string) => {
-    let snapshot: Flight[] = [];
-    setFlights((prev) => {
-      snapshot = prev;
-      return prev.filter((f) => f.id !== id);
-    });
+    const snapshot = flights;
+    const next = flights.filter((f) => f.id !== id);
+
+    // Optimistic update
+    setFlights(next);
 
     if (isLoggedIn && profile.id) {
       try {
@@ -195,18 +197,18 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
         if (!res.ok) {
           throw new Error(`DELETE /api/flights/${id} responded with ${res.status}`);
         }
+        // Keep local cache in sync after successful API delete
+        await persistLocal(next);
       } catch (err) {
         console.warn("[FlightsContext] Failed to delete flight from API, reverting:", err);
         setFlights(snapshot);
         throw err;
       }
     } else {
-      setFlights((prev) => {
-        persistLocal(prev);
-        return prev;
-      });
+      // Guest: persist the updated list immediately, single setState already done above
+      await persistLocal(next);
     }
-  }, [isLoggedIn, profile.id, persistLocal]);
+  }, [flights, isLoggedIn, profile.id, persistLocal]);
 
   const stats = useMemo(() => computeStats(flights), [flights]);
 
