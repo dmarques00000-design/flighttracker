@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { db } from "./db";
 import { flights, type InsertFlight, type Flight } from "../shared/schema";
 
@@ -11,8 +11,35 @@ export async function getFlightsByUser(userId: string): Promise<Flight[]> {
     .orderBy(desc(flights.date), desc(flights.departureTime));
 }
 
-/** Insert a new flight row. Returns the created row. */
+/**
+ * Insert a new flight row.
+ * Throws a DuplicateFlightError if the user already has a flight with the
+ * same flightCode + date combination.
+ */
+export class DuplicateFlightError extends Error {
+  constructor() {
+    super("You have already logged this flight.");
+    this.name = "DuplicateFlightError";
+  }
+}
+
 export async function createFlight(data: InsertFlight): Promise<Flight> {
+  // Duplicate guard: same user + flightCode + date
+  if (data.flightCode && data.date) {
+    const [existing] = await db
+      .select({ id: flights.id })
+      .from(flights)
+      .where(
+        and(
+          eq(flights.userId, data.userId),
+          eq(flights.flightCode, data.flightCode),
+          eq(flights.date, data.date),
+        ),
+      )
+      .limit(1);
+    if (existing) throw new DuplicateFlightError();
+  }
+
   const [created] = await db.insert(flights).values(data).returning();
   return created;
 }

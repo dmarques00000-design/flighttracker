@@ -53,6 +53,14 @@ interface FlightsContextValue {
 
 const LOCAL_STORAGE_KEY = "@logbook_flights";
 
+/** Error thrown when a user tries to log a flight they already have. */
+export class DuplicateFlightError extends Error {
+  constructor() {
+    super("You have already logged this flight.");
+    this.name = "DuplicateFlightError";
+  }
+}
+
 function computeStats(flights: Flight[]): FlightStats {
   const currentYear = new Date().getFullYear();
   const yearFlights = flights.filter((f) => f.date.startsWith(String(currentYear)));
@@ -86,7 +94,7 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
   const [flights, setFlights] = useState<Flight[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ── Load flights: API when logged in, AsyncStorage as fallback/guest ────────
+  // ── Load flights: API when logged in, AsyncStorage as fallback/guest ────────────
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -118,16 +126,19 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, [isLoggedIn, profile.id]);
 
-  // ── Persist locally for guest mode ──────────────────────────────────────────
+  // ── Persist locally for guest mode ─────────────────────────────────────────────
   const persistLocal = useCallback(async (updated: Flight[]) => {
     if (!isLoggedIn) await AsyncStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   }, [isLoggedIn]);
 
-  // ── Add flight ───────────────────────────────────────────────────────────────
-  // For logged-in users: POST to API and throw on failure so the caller
-  // (add-flight screen) can surface an inline error to the user.
-  // For guests: save to AsyncStorage only — never throws.
+  // ── Add flight ───────────────────────────────────────────────────────────────────────
   const addFlight = useCallback(async (data: Omit<Flight, "id" | "addedAt">) => {
+    // ─ Client-side duplicate guard (fast path, covers both logged-in and guest) ─
+    const isDuplicate = flights.some(
+      (f) => f.flightCode === data.flightCode && f.date === data.date,
+    );
+    if (isDuplicate) throw new DuplicateFlightError();
+
     if (isLoggedIn && profile.id) {
       let res: Response;
       try {
@@ -137,12 +148,14 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ ...data, userId: profile.id }),
         });
       } catch (err) {
-        // Network-level failure (offline, timeout, DNS, etc.)
         console.warn("[FlightsContext] Network error saving flight:", err);
         throw err;
       }
+      if (res.status === 409) {
+        // Server confirmed it's a duplicate (race condition fallback)
+        throw new DuplicateFlightError();
+      }
       if (!res.ok) {
-        // Server responded with a non-2xx status
         const err = new Error(`${res.status}`);
         console.warn("[FlightsContext] API returned", res.status, "saving flight");
         throw err;
@@ -163,14 +176,10 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
       persistLocal(next);
       return next;
     });
-  }, [isLoggedIn, profile.id, persistLocal]);
+  }, [flights, isLoggedIn, profile.id, persistLocal]);
 
-  // ── Remove flight ────────────────────────────────────────────────────────────
-  // Strategy: optimistic removal — remove from UI immediately, then confirm with
-  // the API. If the API call fails, the snapshot is restored and the error is
-  // re-thrown so the caller (e.g. a detail screen) can show a feedback message.
+  // ── Remove flight ────────────────────────────────────────────────────────────────────
   const removeFlight = useCallback(async (id: string) => {
-    // 1. Capture current state as a rollback snapshot.
     let snapshot: Flight[] = [];
     setFlights((prev) => {
       snapshot = prev;
@@ -179,19 +188,19 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
 
     if (isLoggedIn && profile.id) {
       try {
-        const res = await fetch(`${API_BASE}/api/flights/${encodeURIComponent(id)}`, { method: "DELETE" });
+        const res = await fetch(
+          `${API_BASE}/api/flights/${encodeURIComponent(id)}?userId=${encodeURIComponent(profile.id)}`,
+          { method: "DELETE" },
+        );
         if (!res.ok) {
           throw new Error(`DELETE /api/flights/${id} responded with ${res.status}`);
         }
       } catch (err) {
-        // 2. Restore the snapshot so the flight reappears in the UI.
         console.warn("[FlightsContext] Failed to delete flight from API, reverting:", err);
         setFlights(snapshot);
-        // 3. Re-throw so the caller can surface an error message to the user.
         throw err;
       }
     } else {
-      // Guest mode — persist the updated list locally.
       setFlights((prev) => {
         persistLocal(prev);
         return prev;

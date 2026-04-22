@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "node:http";
 import { lookupFlight, lookupFlightsByAirport } from "./storage";
 import { upsertUser, getUserById } from "./userStorage";
-import { getFlightsByUser, createFlight, deleteFlight, updateFlight } from "./flightStorage";
+import { getFlightsByUser, createFlight, deleteFlight, updateFlight, DuplicateFlightError } from "./flightStorage";
 import { getTripsByUser, createTrip, updateTrip, deleteTrip } from "./tripStorage";
 import { insertUserSchema, insertFlightSchema, insertTripSchema } from "../shared/schema";
 
@@ -190,6 +190,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const flight = await createFlight(parsed.data);
       return res.status(201).json(flight);
     } catch (err) {
+      if (err instanceof DuplicateFlightError) {
+        return res.status(409).json({ error: err.message, code: "DUPLICATE_FLIGHT" });
+      }
       const msg = err instanceof Error ? err.message : "Create failed";
       console.error("[Route] createFlight error:", (err as any)?.detail ?? msg);
       return res.status(500).json({ error: msg });
