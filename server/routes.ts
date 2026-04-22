@@ -5,6 +5,7 @@ import { upsertUser, getUserById } from "./userStorage";
 import { getFlightsByUser, createFlight, deleteFlight, updateFlight, DuplicateFlightError } from "./flightStorage";
 import { getTripsByUser, createTrip, updateTrip, deleteTrip } from "./tripStorage";
 import { insertUserSchema, insertFlightSchema, insertTripSchema } from "../shared/schema";
+import { authLimiter, writeLimiter, readLimiter } from "./middleware/security";
 
 // ─── Empirical annual flights-per-person CDF ──────────────────────────────────────────────────
 const CDF: [number, number][] = [
@@ -136,7 +137,7 @@ async function createNotionFeedbackEntry(payload: {
 export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Auth: upsert user on social sign-in ──────────────────────────────────────────
-  app.post("/api/auth/upsert", async (req, res) => {
+  app.post("/api/auth/upsert", authLimiter, async (req, res) => {
     console.log("[Route] POST /api/auth/upsert body:", req.body);
     const parsed = insertUserSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -153,7 +154,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Auth: get user by id ─────────────────────────────────────────────────────
-  app.get("/api/users/:id", async (req, res) => {
+  app.get("/api/users/:id", readLimiter, async (req, res) => {
     const { id } = req.params;
     try {
       const user = await getUserById(id);
@@ -166,7 +167,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Flights: list all flights for a user ──────────────────────────────────────────
-  app.get("/api/users/:userId/flights", async (req, res) => {
+  app.get("/api/users/:userId/flights", readLimiter, async (req, res) => {
     const { userId } = req.params;
     console.log(`[Route] GET /api/users/${userId}/flights`);
     try {
@@ -180,7 +181,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Flights: save a new flight ─────────────────────────────────────────────────────
-  app.post("/api/flights", async (req, res) => {
+  app.post("/api/flights", writeLimiter, async (req, res) => {
     console.log("[Route] POST /api/flights — userId:", req.body?.userId);
     const parsed = insertFlightSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -200,7 +201,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Flights: update a flight ──────────────────────────────────────────────────────────────
-  app.patch("/api/flights/:id", async (req, res) => {
+  app.patch("/api/flights/:id", writeLimiter, async (req, res) => {
     const { id } = req.params;
     const { userId, ...rest } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: "userId is required" });
@@ -217,7 +218,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Flights: delete a flight ──────────────────────────────────────────────────────────────
-  app.delete("/api/flights/:id", async (req, res) => {
+  app.delete("/api/flights/:id", writeLimiter, async (req, res) => {
     const { id } = req.params;
     const userId = req.query.userId as string | undefined;
     if (!userId) return res.status(400).json({ error: "userId query param is required" });
@@ -234,7 +235,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Flight-lookup endpoint ───────────────────────────────────────────────────────────────────
-  app.get("/api/flights/lookup", async (req, res) => {
+  app.get("/api/flights/lookup", readLimiter, async (req, res) => {
     const { code, date, dep, arr } = req.query;
     if (!code || !date || typeof code !== "string" || typeof date !== "string") {
       return res.status(400).json({ error: "Missing flight code or date" });
@@ -253,7 +254,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Airport schedule search endpoint ───────────────────────────────────────────────
-  app.get("/api/flights/search", async (req, res) => {
+  app.get("/api/flights/search", readLimiter, async (req, res) => {
     const { date, dep, arr } = req.query;
     if (!date || typeof date !== "string") return res.status(400).json({ error: "Missing date parameter (YYYY-MM-DD)" });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "Invalid date format — use YYYY-MM-DD" });
@@ -272,7 +273,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Percentile endpoint ───────────────────────────────────────────────────────────────────────
-  app.get("/api/percentile", (req, res) => {
+  app.get("/api/percentile", readLimiter, (req, res) => {
     const raw = req.query.count;
     const count = typeof raw === "string" ? parseInt(raw, 10) : NaN;
     if (isNaN(count) || count < 0) return res.status(400).json({ error: "count must be a non-negative integer" });
@@ -282,7 +283,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Beta feedback endpoint ──────────────────────────────────────────────────────────────────
-  app.post("/api/feedback", async (req, res) => {
+  app.post("/api/feedback", writeLimiter, async (req, res) => {
     const { category, message, userName, userEmail, appVersion, platform } = req.body ?? {};
     if (!message || typeof message !== "string" || message.trim().length < 3) {
       return res.status(400).json({ error: "message must be at least 3 characters" });
@@ -310,7 +311,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ────────────────────────────────────────────────────────────────────────────────
 
   // ── Trips: list all trips for a user ──────────────────────────────────────────────
-  app.get("/api/users/:userId/trips", async (req, res) => {
+  app.get("/api/users/:userId/trips", readLimiter, async (req, res) => {
     const { userId } = req.params;
     console.log(`[Route] GET /api/users/${userId}/trips`);
     try {
@@ -324,7 +325,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Trips: create a new trip ───────────────────────────────────────────────────────────
-  app.post("/api/trips", async (req, res) => {
+  app.post("/api/trips", writeLimiter, async (req, res) => {
     console.log("[Route] POST /api/trips — userId:", req.body?.userId);
     const parsed = insertTripSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -341,7 +342,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Trips: update a trip (title, flightIds, coverUri, starred, status) ───────────────
-  app.patch("/api/trips/:id", async (req, res) => {
+  app.patch("/api/trips/:id", writeLimiter, async (req, res) => {
     const { id } = req.params;
     const { userId, ...rest } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: "userId is required" });
@@ -358,7 +359,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ── Trips: delete a trip ──────────────────────────────────────────────────────────────────
-  app.delete("/api/trips/:id", async (req, res) => {
+  app.delete("/api/trips/:id", writeLimiter, async (req, res) => {
     const { id } = req.params;
     const userId = req.query.userId as string | undefined;
     if (!userId) return res.status(400).json({ error: "userId query param is required" });

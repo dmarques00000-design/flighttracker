@@ -4,6 +4,7 @@ import { Pool } from "pg";
 import type { Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { bootstrapDatabase } from "./bootstrap";
+import { securityHeaders } from "./middleware/security";
 
 const app = express();
 const log = console.log;
@@ -28,7 +29,7 @@ function setupCors(app: express.Application) {
 
     if (isAllowed) {
       res.header("Access-Control-Allow-Origin", origin || "*");
-      res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+      res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
       res.header("Access-Control-Allow-Headers", "Content-Type");
       res.header("Access-Control-Allow-Credentials", "true");
     }
@@ -44,12 +45,14 @@ function setupCors(app: express.Application) {
 function setupBodyParsing(app: express.Application) {
   app.use(
     express.json({
+      // Reject bodies larger than 100kb — prevents payload-based DoS attacks
+      limit: "100kb",
       verify: (req, _res, buf) => {
         req.rawBody = buf;
       },
     }),
   );
-  app.use(express.urlencoded({ extended: false }));
+  app.use(express.urlencoded({ extended: false, limit: "100kb" }));
 }
 
 function setupRequestLogging(app: express.Application) {
@@ -96,9 +99,6 @@ function setupErrorHandler(app: express.Application) {
   }
 
   // ── Bootstrap: create tables if they don't exist (non-fatal) ──────────────
-  // Uses DATABASE_URL_DIRECT if set (required for Neon DDL via direct connection).
-  // Falls back to DATABASE_URL. Errors are logged but never crash the server —
-  // tables are expected to already exist after running bootstrap-run.ts once.
   try {
     const bootstrapUrl = process.env.DATABASE_URL_DIRECT || process.env.DATABASE_URL;
     const pool = new Pool({
@@ -111,7 +111,9 @@ function setupErrorHandler(app: express.Application) {
     console.warn("[bootstrap] Could not verify tables (non-fatal):", (err as Error).message);
     console.warn("[bootstrap] Tip: set DATABASE_URL_DIRECT in .env to your Neon direct connection string.");
   }
-  // ──────────────────────────────────────────────────────────────────────────
+
+  // Security headers are applied first, before anything else
+  app.use(securityHeaders());
 
   setupCors(app);
   setupBodyParsing(app);
