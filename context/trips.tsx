@@ -61,9 +61,10 @@ export function TripsProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, [isLoggedIn, profile.id]);
 
+  // Always persist locally so trips survive app restarts when the API is unreachable.
   const persistLocal = useCallback(async (updated: Trip[]) => {
-    if (!isLoggedIn) await AsyncStorage.setItem(LOCAL_KEY, JSON.stringify(updated));
-  }, [isLoggedIn]);
+    await AsyncStorage.setItem(LOCAL_KEY, JSON.stringify(updated));
+  }, []);
 
   const addTrip = useCallback(async (title: string, flightIds: string[], coverUri?: string) => {
     if (isLoggedIn && profile.id) {
@@ -75,13 +76,19 @@ export function TripsProvider({ children }: { children: ReactNode }) {
         });
         if (res.ok) {
           const saved: Trip = await res.json();
-          setTrips((prev) => [saved, ...prev]);
+          setTrips((prev) => {
+            const next = [saved, ...prev];
+            persistLocal(next);
+            return next;
+          });
           return;
         }
+        console.warn("[TripsContext] API POST /api/trips returned", res.status);
       } catch (err) {
         console.warn("[TripsContext] API save failed, saving locally:", err);
       }
     }
+    // Fallback: create locally (guest mode or API failure)
     const trip: Trip = {
       id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
       title,
@@ -103,8 +110,12 @@ export function TripsProvider({ children }: { children: ReactNode }) {
     setTrips((prev) => { snapshot = prev; return prev.filter((t) => t.id !== id); });
     if (isLoggedIn && profile.id) {
       try {
-        const res = await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, { method: "DELETE" });
+        const res = await fetch(
+          `${API_BASE}/api/trips/${encodeURIComponent(id)}?userId=${encodeURIComponent(profile.id)}`,
+          { method: "DELETE" },
+        );
         if (!res.ok) throw new Error(`DELETE /api/trips/${id} => ${res.status}`);
+        setTrips((prev) => { persistLocal(prev); return prev; });
       } catch (err) {
         console.warn("[TripsContext] Delete failed, reverting:", err);
         setTrips(snapshot);
@@ -123,7 +134,7 @@ export function TripsProvider({ children }: { children: ReactNode }) {
         currentStatus = t.status;
         return { ...t, title, flightIds, coverUri };
       });
-      if (!isLoggedIn) persistLocal(next);
+      persistLocal(next);
       return next;
     });
     if (isLoggedIn && profile.id) {
@@ -131,7 +142,7 @@ export function TripsProvider({ children }: { children: ReactNode }) {
         await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, flightIds, coverUri, status: currentStatus }),
+          body: JSON.stringify({ userId: profile.id, title, flightIds, coverUri, status: currentStatus }),
         });
       } catch (err) {
         console.warn("[TripsContext] Update failed:", err);
@@ -147,7 +158,7 @@ export function TripsProvider({ children }: { children: ReactNode }) {
         newStarred = !t.starred;
         return { ...t, starred: newStarred };
       });
-      if (!isLoggedIn) persistLocal(next);
+      persistLocal(next);
       return next;
     });
     if (isLoggedIn && profile.id) {
@@ -155,7 +166,7 @@ export function TripsProvider({ children }: { children: ReactNode }) {
         await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ starred: newStarred }),
+          body: JSON.stringify({ userId: profile.id, starred: newStarred }),
         });
       } catch (err) {
         console.warn("[TripsContext] Star toggle failed:", err);
@@ -166,7 +177,7 @@ export function TripsProvider({ children }: { children: ReactNode }) {
   const setTripStatus = useCallback(async (id: string, status: TripStatus) => {
     setTrips((prev) => {
       const next = prev.map((t) => t.id === id ? { ...t, status } : t);
-      if (!isLoggedIn) persistLocal(next);
+      persistLocal(next);
       return next;
     });
     if (isLoggedIn && profile.id) {
@@ -174,7 +185,7 @@ export function TripsProvider({ children }: { children: ReactNode }) {
         await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status }),
+          body: JSON.stringify({ userId: profile.id, status }),
         });
       } catch (err) {
         console.warn("[TripsContext] Status update failed:", err);
