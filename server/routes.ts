@@ -3,9 +3,10 @@ import { createServer, type Server } from "node:http";
 import { lookupFlight, lookupFlightsByAirport } from "./storage";
 import { upsertUser, getUserById } from "./userStorage";
 import { getFlightsByUser, createFlight, deleteFlight, updateFlight } from "./flightStorage";
-import { insertUserSchema, insertFlightSchema } from "../shared/schema";
+import { getTripsByUser, createTrip, updateTrip, deleteTrip } from "./tripStorage";
+import { insertUserSchema, insertFlightSchema, insertTripSchema } from "../shared/schema";
 
-// ─── Empirical annual flights-per-person CDF ──────────────────────────────────
+// ─── Empirical annual flights-per-person CDF ──────────────────────────────────────────────────
 const CDF: [number, number][] = [
   [  0, 0.0000 ],
   [  1, 0.3800 ],
@@ -84,7 +85,7 @@ function flightCountToPercentile(count: number): number {
   return 100;
 }
 
-// ─── Notion feedback helper ───────────────────────────────────────────────────
+// ─── Notion feedback helper ───────────────────────────────────────────────────────────────────
 const NOTION_FEEDBACK_DB_ID = "d0f10547-8b19-43c8-98e3-4640f62539f0";
 
 async function createNotionFeedbackEntry(payload: {
@@ -134,7 +135,7 @@ async function createNotionFeedbackEntry(payload: {
 
 export async function registerRoutes(app: Express): Promise<Server> {
 
-  // ── Auth: upsert user on social sign-in ─────────────────────────────────
+  // ── Auth: upsert user on social sign-in ──────────────────────────────────────────
   app.post("/api/auth/upsert", async (req, res) => {
     console.log("[Route] POST /api/auth/upsert body:", req.body);
     const parsed = insertUserSchema.safeParse(req.body);
@@ -151,7 +152,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ── Auth: get user by id ─────────────────────────────────────────────────
+  // ── Auth: get user by id ─────────────────────────────────────────────────────
   app.get("/api/users/:id", async (req, res) => {
     const { id } = req.params;
     try {
@@ -164,7 +165,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ── Flights: list all flights for a user ─────────────────────────────────
+  // ── Flights: list all flights for a user ──────────────────────────────────────────
   app.get("/api/users/:userId/flights", async (req, res) => {
     const { userId } = req.params;
     console.log(`[Route] GET /api/users/${userId}/flights`);
@@ -178,7 +179,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ── Flights: save a new flight ────────────────────────────────────────────
+  // ── Flights: save a new flight ─────────────────────────────────────────────────────
   app.post("/api/flights", async (req, res) => {
     console.log("[Route] POST /api/flights — userId:", req.body?.userId);
     const parsed = insertFlightSchema.safeParse(req.body);
@@ -195,7 +196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ── Flights: update a flight ──────────────────────────────────────────────
+  // ── Flights: update a flight ──────────────────────────────────────────────────────────────
   app.patch("/api/flights/:id", async (req, res) => {
     const { id } = req.params;
     const { userId, ...rest } = req.body ?? {};
@@ -212,7 +213,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ── Flights: delete a flight ──────────────────────────────────────────────
+  // ── Flights: delete a flight ──────────────────────────────────────────────────────────────
   app.delete("/api/flights/:id", async (req, res) => {
     const { id } = req.params;
     const userId = req.query.userId as string | undefined;
@@ -229,7 +230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ── Flight-lookup endpoint ───────────────────────────────────────────────
+  // ── Flight-lookup endpoint ───────────────────────────────────────────────────────────────────
   app.get("/api/flights/lookup", async (req, res) => {
     const { code, date, dep, arr } = req.query;
     if (!code || !date || typeof code !== "string" || typeof date !== "string") {
@@ -248,7 +249,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ── Airport schedule search endpoint ────────────────────────────────────
+  // ── Airport schedule search endpoint ───────────────────────────────────────────────
   app.get("/api/flights/search", async (req, res) => {
     const { date, dep, arr } = req.query;
     if (!date || typeof date !== "string") return res.status(400).json({ error: "Missing date parameter (YYYY-MM-DD)" });
@@ -267,7 +268,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ── Percentile endpoint ─────────────────────────────────────────────────
+  // ── Percentile endpoint ───────────────────────────────────────────────────────────────────────
   app.get("/api/percentile", (req, res) => {
     const raw = req.query.count;
     const count = typeof raw === "string" ? parseInt(raw, 10) : NaN;
@@ -277,7 +278,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return res.json({ percentile, topPercent });
   });
 
-  // ── Beta feedback endpoint ───────────────────────────────────────────────
+  // ── Beta feedback endpoint ──────────────────────────────────────────────────────────────────
   app.post("/api/feedback", async (req, res) => {
     const { category, message, userName, userEmail, appVersion, platform } = req.body ?? {};
     if (!message || typeof message !== "string" || message.trim().length < 3) {
@@ -297,6 +298,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.json({ ok: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to store feedback";
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────────
+  // TRIPS
+  // ────────────────────────────────────────────────────────────────────────────────
+
+  // ── Trips: list all trips for a user ──────────────────────────────────────────────
+  app.get("/api/users/:userId/trips", async (req, res) => {
+    const { userId } = req.params;
+    console.log(`[Route] GET /api/users/${userId}/trips`);
+    try {
+      const userTrips = await getTripsByUser(userId);
+      return res.json(userTrips);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Fetch failed";
+      console.error("[Route] getTripsByUser error:", err);
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // ── Trips: create a new trip ───────────────────────────────────────────────────────────
+  app.post("/api/trips", async (req, res) => {
+    console.log("[Route] POST /api/trips — userId:", req.body?.userId);
+    const parsed = insertTripSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+    try {
+      const trip = await createTrip(parsed.data);
+      return res.status(201).json(trip);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Create failed";
+      console.error("[Route] createTrip error:", (err as any)?.detail ?? msg);
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // ── Trips: update a trip (title, flightIds, coverUri, starred, status) ───────────────
+  app.patch("/api/trips/:id", async (req, res) => {
+    const { id } = req.params;
+    const { userId, ...rest } = req.body ?? {};
+    if (!userId) return res.status(400).json({ error: "userId is required" });
+    console.log(`[Route] PATCH /api/trips/${id}`);
+    try {
+      const updated = await updateTrip(id, userId, rest);
+      if (!updated) return res.status(404).json({ error: "Trip not found or unauthorised" });
+      return res.json(updated);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Update failed";
+      console.error("[Route] updateTrip error:", err);
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // ── Trips: delete a trip ──────────────────────────────────────────────────────────────────
+  app.delete("/api/trips/:id", async (req, res) => {
+    const { id } = req.params;
+    const userId = req.query.userId as string | undefined;
+    if (!userId) return res.status(400).json({ error: "userId query param is required" });
+    console.log(`[Route] DELETE /api/trips/${id}`);
+    try {
+      const ok = await deleteTrip(id, userId);
+      if (!ok) return res.status(404).json({ error: "Trip not found or unauthorised" });
+      return res.json({ ok: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Delete failed";
+      console.error("[Route] deleteTrip error:", err);
       return res.status(500).json({ error: msg });
     }
   });
