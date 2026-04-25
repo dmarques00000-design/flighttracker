@@ -76,13 +76,18 @@ function TabPager() {
   /**
    * Build a PanResponder.  When `fullScreen` is true the responder claims
    * the whole View it is attached to; when false it only claims a thin edge.
+   *
+   * IMPORTANT: for fullScreen responders we intentionally do NOT implement
+   * onMoveShouldSetPanResponderCapture. The capture phase fires top-down
+   * (before children), which would intercept vertical scroll gestures inside
+   * ScrollView / FlatList before they get a chance to handle them. The
+   * bubble-phase onMoveShouldSetPanResponder is sufficient — it fires after
+   * child scroll views have already decided whether to claim the gesture, so
+   * horizontal swipes still switch tabs while vertical scrolls work normally.
    */
   const makePanResponder = useCallback(
     (fullScreen: boolean) =>
       PanResponder.create({
-        // For full-screen zones we only claim the gesture when the user is
-        // dragging mostly horizontally, so vertical scrolls inside the tab
-        // content (SectionList, ScrollView) are not stolen.
         onMoveShouldSetPanResponder: (_, gs) => {
           if (gestureLockRef.current) return false;
           if (fullScreen) {
@@ -92,13 +97,17 @@ function TabPager() {
           // Edge zone — claim immediately
           return true;
         },
-        onMoveShouldSetPanResponderCapture: (_, gs) => {
-          if (gestureLockRef.current) return false;
-          if (fullScreen) {
-            return Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5 && Math.abs(gs.dx) > 8;
-          }
-          return true;
-        },
+
+        // NOTE: onMoveShouldSetPanResponderCapture is intentionally absent for
+        // fullScreen responders (see comment above). Edge-zone responders keep
+        // capture so they can claim gestures that start in the thin edge strip
+        // before any child might try to handle them.
+        ...(fullScreen ? {} : {
+          onMoveShouldSetPanResponderCapture: (_: any, gs: any) => {
+            if (gestureLockRef.current) return false;
+            return true;
+          },
+        }),
 
         onPanResponderGrant: () => {
           translateX.stopAnimation();
