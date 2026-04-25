@@ -62,6 +62,35 @@ export interface LoginParams {
 
 const UserContext = createContext<UserContextType | null>(null);
 
+/**
+ * Silently upsert a user row in the DB.
+ * Fire-and-forget — errors are swallowed so a transient network blip at
+ * launch never breaks an already-logged-in session.
+ *
+ * Called both from login() (where errors ARE thrown) and from the
+ * AsyncStorage restore path (where we only want a best-effort guarantee
+ * that the row exists before the user tries to write any data).
+ */
+async function silentUpsert(profile: UserProfile): Promise<void> {
+  if (!profile.id || !profile.email) return;
+  try {
+    await fetch(`${API_BASE}/api/auth/upsert`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id:        profile.id,
+        email:     profile.email,
+        name:      profile.name,
+        avatarUrl: profile.avatarUrl,
+        provider:  profile.provider,
+      }),
+    });
+  } catch {
+    // Network unavailable at launch — not fatal. The upsert will be
+    // retried the next time login() is called explicitly.
+  }
+}
+
 export function UserProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile]         = useState<UserProfile>(DEFAULT_PROFILE);
   const [isLoggedIn, setIsLoggedIn]   = useState(false);
@@ -73,14 +102,30 @@ export function UserProvider({ children }: { children: ReactNode }) {
       const profileRaw    = pairs[0][1];
       const authRaw       = pairs[1][1];
       const notifPrefsRaw = pairs[2][1];
+
+      let restoredProfile: UserProfile | null = null;
+
       if (profileRaw) {
         try {
           const parsed = JSON.parse(profileRaw);
           const { passportNumber, passportExpiry, ...safe } = parsed;
-          setProfile({ ...DEFAULT_PROFILE, ...safe });
+          restoredProfile = { ...DEFAULT_PROFILE, ...safe };
+          setProfile(restoredProfile);
         } catch {}
       }
-      if (authRaw === "true") setIsLoggedIn(true);
+
+      if (authRaw === "true") {
+        setIsLoggedIn(true);
+
+        // Re-upsert on every launch for cached sessions.
+        // Guarantees the users row exists in Postgres even if the server
+        // was unreachable during the very first sign-in — without this,
+        // any write (flights, trips) would throw a FK violation.
+        if (restoredProfile) {
+          silentUpsert(restoredProfile);
+        }
+      }
+
       if (notifPrefsRaw) {
         try {
           setNotifPrefs({ ...DEFAULT_NOTIFICATION_PREFS, ...JSON.parse(notifPrefsRaw) });
