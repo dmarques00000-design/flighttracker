@@ -1,18 +1,10 @@
 // app.config.js — dynamic Expo config
 // Replaces app.json so we can read environment variables at build time.
 // • Local dev:  set GOOGLE_IOS_URL_SCHEME in .env.local (never commit this file)
-// • EAS builds: store as an EAS secret
-//   `eas secret:create --scope project --name GOOGLE_IOS_URL_SCHEME --value <value>`
+// • EAS builds: eas env:create --scope project --name GOOGLE_IOS_URL_SCHEME --value <value> --environment production
 
-const googleIosUrlScheme = process.env.GOOGLE_IOS_URL_SCHEME;
-
-if (!googleIosUrlScheme) {
-  throw new Error(
-    "[app.config.js] Missing required env var: GOOGLE_IOS_URL_SCHEME\n" +
-    "  • Local dev: add it to .env.local\n" +
-    "  • EAS builds: run `eas secret:create --scope project --name GOOGLE_IOS_URL_SCHEME --value <value>`"
-  );
-}
+const googleIosUrlScheme =
+  process.env.GOOGLE_IOS_URL_SCHEME || "com.googleusercontent.apps.placeholder";
 
 /** @type {import('expo/config').ExpoConfig} */
 export default {
@@ -58,8 +50,10 @@ export default {
     },
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
-      NSCalendarsUsageDescription: "Logbook needs calendar access to add your flights as events.",
-      NSCalendarsFullAccessUsageDescription: "Logbook needs full calendar access to create flight events in Apple Calendar.",
+      NSCalendarsUsageDescription:
+        "Logbook needs calendar access to add your flights as events.",
+      NSCalendarsFullAccessUsageDescription:
+        "Logbook needs full calendar access to create flight events in Apple Calendar.",
     },
   },
 
@@ -76,7 +70,6 @@ export default {
     [
       "@react-native-google-signin/google-signin",
       {
-        // Injected at build time — never hardcoded in source
         iosUrlScheme: googleIosUrlScheme,
       },
     ],
