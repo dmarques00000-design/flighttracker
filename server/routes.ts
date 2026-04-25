@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "node:http";
 import { lookupFlight, lookupFlightsByAirport } from "./storage";
-import { upsertUser, getUserById } from "./userStorage";
+import { upsertUser, getUserById, deleteUser } from "./userStorage";
 import { getFlightsByUser, createFlight, deleteFlight, updateFlight, DuplicateFlightError } from "./flightStorage";
 import { getTripsByUser, createTrip, updateTrip, deleteTrip } from "./tripStorage";
 import { insertUserSchema, insertFlightSchema, insertTripSchema } from "../shared/schema";
@@ -162,6 +162,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.json(user);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Fetch failed";
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // ── Auth: delete account and all associated data ─────────────────────────────
+  // Flights and trips are cascade-deleted via FK constraints in the schema.
+  // Required by Apple App Store guideline 5.1.1.
+  app.delete("/api/users/:id", writeLimiter, async (req, res) => {
+    const { id } = req.params;
+    console.log(`[Route] DELETE /api/users/${id}`);
+    try {
+      const deleted = await deleteUser(id);
+      if (!deleted) return res.status(404).json({ error: "User not found" });
+      return res.json({ ok: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Delete failed";
+      console.error("[Route] deleteUser error:", err);
       return res.status(500).json({ error: msg });
     }
   });

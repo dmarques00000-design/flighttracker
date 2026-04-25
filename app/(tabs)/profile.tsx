@@ -118,7 +118,6 @@ function Field({
   );
 }
 
-// A single row item for the flight highlights section
 function HighlightRow({ icon, accent, title, subtitle, badge, C }: {
   icon: string; accent: string; title: string; subtitle: string; badge?: string;
   C: ReturnType<typeof useColors>;
@@ -180,7 +179,7 @@ function NotLoggedInState({ C }: { C: ReturnType<typeof useColors> }) {
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const C = useColors();
-  const { profile, isLoggedIn, notifPrefs, updateProfile, updateNotifPrefs, clearProfile, logout } = useUser();
+  const { profile, isLoggedIn, notifPrefs, updateProfile, updateNotifPrefs, deleteAccount, logout } = useUser();
   const { flights } = useFlights();
   const { mode, setMode } = useTheme();
   const [editing, setEditing] = useState(false);
@@ -190,7 +189,6 @@ export default function ProfileScreen() {
   const topPadding    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
-  // Swipe right → flights (profile is the last tab, no left swipe target)
   const swipeHandlers = useSwipeNavigation(2);
 
   const TODAY           = new Date().toISOString().substring(0, 10);
@@ -198,7 +196,6 @@ export default function ProfileScreen() {
   const upcomingFlights = flights.filter((f) => f.date >= TODAY).length;
   const uniqueAirports  = new Set(flights.flatMap((f) => [f.departureAirport, f.arrivalAirport])).size;
 
-  // All-time flight highlights for the profile stats section
   const flightStats = useMemo(() => {
     const totalMiles   = flights.reduce((s, f) => s + f.distanceMiles, 0);
     const totalMin     = flights.reduce((s, f) => s + f.durationMinutes, 0);
@@ -250,11 +247,30 @@ export default function ProfileScreen() {
       { text: "Log Out", style: "destructive", onPress: async () => { await logout(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); } },
     ]);
   }
-  function confirmClear() {
-    Alert.alert("Clear Profile", "This will erase all your account details. Your flights will not be affected.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Clear", style: "destructive", onPress: async () => { await clearProfile(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); } },
-    ]);
+
+  function confirmDeleteAccount() {
+    Alert.alert(
+      "Delete Account & Data",
+      "This will permanently delete your account and all associated data — including every flight and trip you have saved. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete Everything",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              await deleteAccount(profile.id);
+            } catch (err) {
+              Alert.alert(
+                "Deletion Failed",
+                "We couldn't delete your account right now. Please check your connection and try again.",
+              );
+            }
+          },
+        },
+      ],
+    );
   }
 
   const initials = profile.avatarInitials || getInitials(profile.name);
@@ -312,7 +328,7 @@ export default function ProfileScreen() {
               <StatBox label="Airports"  value={uniqueAirports}  C={C} />
             </Animated.View>
 
-            {/* ─── Flight Highlights (new cards moved from home) ─── */}
+            {/* Flight Highlights */}
             {flights.length > 0 && (
               <Animated.View entering={FadeInDown.delay(70).springify()}>
                 <SectionCard title="Flight Highlights" icon="stats-chart-outline" C={C}>
@@ -489,9 +505,9 @@ export default function ProfileScreen() {
                   <Ionicons name="log-out-outline" size={16} color={C.textSec} />
                   <Text style={[S.dangerBtnText, { color: C.textSec }]}>Log Out</Text>
                 </Pressable>
-                <Pressable onPress={confirmClear} style={S.dangerBtn}>
+                <Pressable onPress={confirmDeleteAccount} style={S.dangerBtn}>
                   <Ionicons name="trash-outline" size={16} color={C.red} />
-                  <Text style={S.dangerBtnText}>Clear Profile Data</Text>
+                  <Text style={S.dangerBtnText}>Delete Account &amp; Data</Text>
                 </Pressable>
               </Animated.View>
             )}

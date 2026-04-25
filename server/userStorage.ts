@@ -34,3 +34,17 @@ export async function upsertUser(data: InsertUser): Promise<User> {
 export async function getUserById(id: string): Promise<User | undefined> {
   return db.query.users.findFirst({ where: eq(users.id, id) });
 }
+
+/**
+ * Permanently delete a user and all their data.
+ * Flights and trips are removed automatically via ON DELETE CASCADE
+ * on the FK constraints defined in shared/schema.ts.
+ * Returns true if a row was deleted, false if the user was not found.
+ */
+export async function deleteUser(id: string): Promise<boolean> {
+  const deleted = await db
+    .delete(users)
+    .where(eq(users.id, id))
+    .returning({ id: users.id });
+  return deleted.length > 0;
+}

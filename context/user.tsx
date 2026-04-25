@@ -44,7 +44,7 @@ interface UserContextType {
   notifPrefs: NotificationPrefs;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   updateNotifPrefs: (updates: Partial<NotificationPrefs>) => Promise<void>;
-  clearProfile: () => Promise<void>;
+  deleteAccount: (userId: string) => Promise<void>;
   login: (params: LoginParams) => Promise<void>;
   logout: () => Promise<void>;
   dismissedPrompt: boolean;
@@ -66,10 +66,6 @@ const UserContext = createContext<UserContextType | null>(null);
  * Silently upsert a user row in the DB.
  * Fire-and-forget — errors are swallowed so a transient network blip at
  * launch never breaks an already-logged-in session.
- *
- * Called both from login() (where errors ARE thrown) and from the
- * AsyncStorage restore path (where we only want a best-effort guarantee
- * that the row exists before the user tries to write any data).
  */
 async function silentUpsert(profile: UserProfile): Promise<void> {
   if (!profile.id || !profile.email) return;
@@ -86,8 +82,7 @@ async function silentUpsert(profile: UserProfile): Promise<void> {
       }),
     });
   } catch {
-    // Network unavailable at launch — not fatal. The upsert will be
-    // retried the next time login() is called explicitly.
+    // Network unavailable at launch — not fatal.
   }
 }
 
@@ -116,14 +111,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
       if (authRaw === "true") {
         setIsLoggedIn(true);
-
-        // Re-upsert on every launch for cached sessions.
-        // Guarantees the users row exists in Postgres even if the server
-        // was unreachable during the very first sign-in — without this,
-        // any write (flights, trips) would throw a FK violation.
-        if (restoredProfile) {
-          silentUpsert(restoredProfile);
-        }
+        // Re-upsert on every launch to guarantee the users row exists in Postgres
+        // even if the server was unreachable during the very first sign-in.
+        if (restoredProfile) silentUpsert(restoredProfile);
       }
 
       if (notifPrefsRaw) {
@@ -146,18 +136,29 @@ export function UserProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem(NOTIF_PREFS_KEY, JSON.stringify(updated));
   }
 
-  async function clearProfile() {
+  /**
+   * Permanently delete the account from the server (cascades to flights + trips),
+   * then wipe all local state and AsyncStorage.
+   * Throws if the server call fails so the UI can show an error to the user.
+   */
+  async function deleteAccount(userId: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "(no body)");
+      throw new Error(`[UserContext] DELETE /api/users/${userId} failed ${res.status}: ${body}`);
+    }
+    // Server deletion succeeded — wipe everything locally.
     setProfile(DEFAULT_PROFILE);
     setIsLoggedIn(false);
-    await AsyncStorage.multiRemove([STORAGE_KEY, AUTH_KEY]);
+    await AsyncStorage.multiRemove([STORAGE_KEY, AUTH_KEY, NOTIF_PREFS_KEY]);
   }
 
   async function login(params: LoginParams) {
     const { id, name, email, provider, avatarUrl } = params;
 
     // Persist user to DB — must succeed before we mark the user as logged in.
-    // If the upsert fails the user row won't exist and every flight save will
-    // throw a FK violation, so we throw here to surface the problem early.
     const res = await fetch(`${API_BASE}/api/auth/upsert`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -203,7 +204,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     <UserContext.Provider value={{
       profile, isLoggedIn, notifPrefs,
       updateProfile, updateNotifPrefs,
-      clearProfile, login, logout,
+      deleteAccount, login, logout,
       dismissedPrompt, dismissPrompt,
     }}>
       {children}
