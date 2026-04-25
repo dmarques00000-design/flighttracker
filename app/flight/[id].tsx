@@ -8,6 +8,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Linking,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
+import * as Calendar from "expo-calendar";
 import ViewShot from "react-native-view-shot";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { useColors } from "@/constants/colors";
@@ -32,17 +34,6 @@ import {
   requestNotificationPermission,
 } from "@/utils/notifications";
 
-// ---------------------------------------------------------------------------
-// Lazy loaders for optional native packages
-// ---------------------------------------------------------------------------
-type CalendarModule = typeof import("expo-calendar");
-let _cal: CalendarModule | null | undefined = undefined;
-function getCal(): CalendarModule | null {
-  if (_cal !== undefined) return _cal;
-  try { _cal = require("expo-calendar") as CalendarModule; } catch { _cal = null; }
-  return _cal;
-}
-
 type NotificationsModule = typeof import("expo-notifications");
 let _notif: NotificationsModule | null | undefined = undefined;
 function getNotif(): NotificationsModule | null {
@@ -50,8 +41,6 @@ function getNotif(): NotificationsModule | null {
   try { _notif = require("expo-notifications") as NotificationsModule; } catch { _notif = null; }
   return _notif;
 }
-
-// ---------------------------------------------------------------------------
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
@@ -210,7 +199,7 @@ function useScheduledReminders(flightId: string) {
   return { scheduled, refresh };
 }
 
-/** Add the flight as a calendar event. Returns true on success. */
+/** Add the flight as a native calendar event via expo-calendar. */
 async function addFlightToCalendar(flight: {
   flightCode: string;
   airline: string;
@@ -226,17 +215,15 @@ async function addFlightToCalendar(flight: {
   arrivalTerminal?: string;
   arrivalGate?: string;
   aircraft: string;
-}): Promise<boolean> {
-  if (Platform.OS === "web") return false;
-  const Cal = getCal();
-  if (!Cal) return false;
+}): Promise<"ok" | "denied" | "no_calendar" | "error"> {
+  if (Platform.OS === "web") return "error";
 
-  const { status } = await Cal.requestCalendarPermissionsAsync();
-  if (status !== "granted") return false;
+  const { status } = await Calendar.requestCalendarPermissionsAsync();
+  if (status !== "granted") return "denied";
 
   const startDate = parseLocalDateTime(flight.date, flight.departureTime);
   const rawEnd    = parseLocalDateTime(flight.date, flight.arrivalTime);
-  const endDate   = rawEnd < startDate
+  const endDate   = rawEnd <= startDate
     ? new Date(rawEnd.getTime() + 24 * 60 * 60 * 1000)
     : rawEnd;
 
@@ -252,14 +239,18 @@ async function addFlightToCalendar(flight: {
     "\nAdded from Logbook \u2708\uFE0F",
   ].filter(Boolean).join("\n");
 
-  const calendars = await Cal.getCalendarsAsync(Cal.EntityTypes.EVENT);
-  const writable  = calendars.find(
-    (c) => c.allowsModifications && c.source?.isLocalAccount !== false,
+  const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+
+  // Prefer the default iOS calendar, then any writable local calendar
+  const defaultCal = calendars.find(
+    (c) => c.allowsModifications && c.source?.name === "iCloud"
+  ) ?? calendars.find(
+    (c) => c.allowsModifications && c.source?.isLocalAccount !== false
   ) ?? calendars.find((c) => c.allowsModifications);
 
-  if (!writable) return false;
+  if (!defaultCal) return "no_calendar";
 
-  await Cal.createEventAsync(writable.id, {
+  await Calendar.createEventAsync(defaultCal.id, {
     title: `${flight.flightCode}  ${flight.departureAirport} \u2192 ${flight.arrivalAirport}`,
     startDate,
     endDate,
@@ -269,7 +260,7 @@ async function addFlightToCalendar(flight: {
     timeZone: "local",
   });
 
-  return true;
+  return "ok";
 }
 
 export default function FlightDetailScreen() {
@@ -282,6 +273,7 @@ export default function FlightDetailScreen() {
   const shareRef = useRef<ViewShot>(null);
   const [sharing, setSharing] = useState(false);
   const [addingCalendar, setAddingCalendar] = useState(false);
+  const [calendarAdded, setCalendarAdded] = useState(false);
   const [togglingOffset, setTogglingOffset] = useState<ReminderOffset | null>(null);
 
   const topPad    = Platform.OS === "web" ? 67 : insets.top;
@@ -295,7 +287,6 @@ export default function FlightDetailScreen() {
   if (!flight) return <FlightNotFound topPad={topPad} />;
 
   const remindersAvailable = isUpcoming && Platform.OS !== "web" && getNotif() !== null;
-  const calendarAvailable  = isUpcoming && Platform.OS !== "web" && getCal() !== null;
 
   // ─── Share ───────────────────────────────────────────────────────────────
   async function handleShare() {
@@ -332,18 +323,30 @@ export default function FlightDetailScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setAddingCalendar(true);
     try {
-      const ok = await addFlightToCalendar(flight);
-      if (ok) {
+      const result = await addFlightToCalendar(flight);
+      if (result === "ok") {
+        setCalendarAdded(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert(
           "Added to Calendar \u2713",
-          `${flight.flightCode} \u00b7 ${flight.departureAirport} \u2192 ${flight.arrivalAirport} has been added to your calendar with a 1-hour reminder.`,
+          `${flight.flightCode} \u00b7 ${flight.departureAirport} \u2192 ${flight.arrivalAirport} has been added to your Apple Calendar with a 1-hour reminder.`,
+        );
+      } else if (result === "denied") {
+        Alert.alert(
+          "Calendar Access Required",
+          "Please allow Logbook to access your calendar in Settings to add this flight.",
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Open Settings", onPress: () => Linking.openURL("app-settings:") },
+          ],
+        );
+      } else if (result === "no_calendar") {
+        Alert.alert(
+          "No Calendar Found",
+          "No writable calendar was found on your device. Please add an account in the iOS Calendar app first.",
         );
       } else {
-        Alert.alert(
-          "Permission Required",
-          "Please allow calendar access in your device Settings to add this flight.",
-        );
+        Alert.alert("Error", "Could not add to calendar. Please try again.");
       }
     } catch (e) {
       console.error("Calendar add failed:", e);
@@ -432,7 +435,6 @@ export default function FlightDetailScreen() {
             {flight.departureAirport}{" \u2192 "}{flight.arrivalAirport}
           </Text>
         </View>
-        {/* Share — top-right, the only share entry point */}
         <Pressable
           onPress={handleShare}
           disabled={sharing}
@@ -556,57 +558,69 @@ export default function FlightDetailScreen() {
           </View>
         </Animated.View>
 
-        {/* ─── QUICK ACTION BAR (upcoming only) ─── */}
-        {isUpcoming && (remindersAvailable || calendarAvailable) && (
-          <Animated.View entering={FadeInDown.delay(60).springify()} style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
-            {remindersAvailable && (
-              <Pressable
-                onPress={() => {
-                  // Scroll is handled by layout; just give haptic feedback to draw
-                  // the user's eye to the reminders section below.
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }}
-                style={({ pressed }) => [{
-                  flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-                  gap: 8, paddingVertical: 14, borderRadius: 14,
-                  backgroundColor: activeReminderCount > 0 ? C.accentDim : C.card,
-                  borderWidth: 1,
-                  borderColor: activeReminderCount > 0 ? C.accent + "55" : C.border,
-                }, { opacity: pressed ? 0.78 : 1 }]}
-              >
+        {/* ─── ADD TO CALENDAR BUTTON (upcoming only, always visible on iOS) ─── */}
+        {isUpcoming && Platform.OS !== "web" && (
+          <Animated.View entering={FadeInDown.delay(55).springify()} style={{ marginBottom: 14 }}>
+            <Pressable
+              onPress={handleAddToCalendar}
+              disabled={addingCalendar}
+              style={({ pressed }) => ([
+                {
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 10,
+                  paddingVertical: 16,
+                  borderRadius: 16,
+                  borderWidth: 1.5,
+                  backgroundColor: calendarAdded ? C.accentDim : C.card,
+                  borderColor: calendarAdded ? C.accent : C.accent + "70",
+                },
+                { opacity: addingCalendar || pressed ? 0.75 : 1 },
+              ])}
+            >
+              {addingCalendar ? (
+                <ActivityIndicator size="small" color={C.accent} />
+              ) : (
                 <Ionicons
-                  name={activeReminderCount > 0 ? "notifications" : "notifications-outline"}
-                  size={18}
-                  color={activeReminderCount > 0 ? C.accent : C.textSec}
+                  name={calendarAdded ? "calendar" : "calendar-outline"}
+                  size={20}
+                  color={C.accent}
                 />
-                <Text style={{
-                  fontSize: 14,
-                  color: activeReminderCount > 0 ? C.accent : C.textSec,
-                  fontFamily: "DMSans_700Bold",
-                }}>
-                  {activeReminderCount > 0 ? `${activeReminderCount} Reminder${activeReminderCount > 1 ? "s" : ""}` : "Add Reminder"}
-                </Text>
-              </Pressable>
-            )}
+              )}
+              <Text style={{ fontSize: 15, color: C.accent, fontFamily: "DMSans_700Bold" }}>
+                {addingCalendar ? "Adding to Calendar\u2026" : calendarAdded ? "Added to Calendar \u2713" : "Add to Apple Calendar"}
+              </Text>
+            </Pressable>
+          </Animated.View>
+        )}
 
-            {calendarAvailable && (
-              <Pressable
-                onPress={handleAddToCalendar}
-                disabled={addingCalendar}
-                style={({ pressed }) => [{
-                  flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
-                  gap: 8, paddingVertical: 14, borderRadius: 14,
-                  backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-                }, { opacity: addingCalendar || pressed ? 0.78 : 1 }]}
-              >
-                {addingCalendar
-                  ? <ActivityIndicator size="small" color={C.accent} />
-                  : <Ionicons name="calendar-outline" size={18} color={C.accent} />}
-                <Text style={{ fontSize: 14, color: C.accent, fontFamily: "DMSans_700Bold" }}>
-                  {addingCalendar ? "Adding\u2026" : "Add to Calendar"}
-                </Text>
-              </Pressable>
-            )}
+        {/* ─── QUICK ACTION BAR — reminders only ─── */}
+        {remindersAvailable && (
+          <Animated.View entering={FadeInDown.delay(65).springify()} style={{ marginBottom: 20 }}>
+            <Pressable
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+              style={({ pressed }) => [{
+                flexDirection: "row", alignItems: "center", justifyContent: "center",
+                gap: 8, paddingVertical: 14, borderRadius: 14,
+                backgroundColor: activeReminderCount > 0 ? C.accentDim : C.card,
+                borderWidth: 1,
+                borderColor: activeReminderCount > 0 ? C.accent + "55" : C.border,
+              }, { opacity: pressed ? 0.78 : 1 }]}
+            >
+              <Ionicons
+                name={activeReminderCount > 0 ? "notifications" : "notifications-outline"}
+                size={18}
+                color={activeReminderCount > 0 ? C.accent : C.textSec}
+              />
+              <Text style={{
+                fontSize: 14,
+                color: activeReminderCount > 0 ? C.accent : C.textSec,
+                fontFamily: "DMSans_700Bold",
+              }}>
+                {activeReminderCount > 0 ? `${activeReminderCount} Reminder${activeReminderCount > 1 ? "s" : ""}` : "Add Reminder"}
+              </Text>
+            </Pressable>
           </Animated.View>
         )}
 
@@ -660,7 +674,6 @@ export default function FlightDetailScreen() {
               )}
             </View>
 
-            {/* Context note */}
             <View style={{
               flexDirection: "row", alignItems: "flex-start", gap: 8,
               backgroundColor: C.surface, borderRadius: 12,
