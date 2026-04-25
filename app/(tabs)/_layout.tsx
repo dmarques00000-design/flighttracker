@@ -4,8 +4,9 @@
  * Swipe behaviour:
  *   - Home tab (index 0):  edge-only zones (40 px) so the GlobeView
  *     can own centre gestures.
- *   - All other tabs:      full-screen swipe zone so the user can
- *     swipe anywhere to change tabs, matching the Home feel.
+ *   - All other tabs:      PanResponder on the pager row itself so the
+ *     standard parent/child responder negotiation lets ScrollView children
+ *     claim vertical drags before the pager sees them.
  *
  * Tab-bar icon taps still switch tabs.
  */
@@ -73,48 +74,82 @@ function TabPager() {
 
   useEffect(() => { registerSnapTo(snapTo); }, [registerSnapTo, snapTo]);
 
-  /**
-   * Build a PanResponder.  When `fullScreen` is true the responder claims
-   * the whole View it is attached to; when false it only claims a thin edge.
-   *
-   * IMPORTANT: for fullScreen responders we intentionally do NOT implement
-   * onMoveShouldSetPanResponderCapture. The capture phase fires top-down
-   * (before children), which would intercept vertical scroll gestures inside
-   * ScrollView / FlatList before they get a chance to handle them. The
-   * bubble-phase onMoveShouldSetPanResponder is sufficient — it fires after
-   * child scroll views have already decided whether to claim the gesture, so
-   * horizontal swipes still switch tabs while vertical scrolls work normally.
-   */
-  const makePanResponder = useCallback(
-    (fullScreen: boolean) =>
+  // ---------------------------------------------------------------------------
+  // Full-screen pager responder — attached directly to the Animated.View that
+  // wraps all tab screens so it is a TRUE PARENT of every ScrollView/FlatList.
+  //
+  // Why this matters: React Native's responder negotiation between a parent and
+  // child works correctly — the child (ScrollView) can call
+  // onStartShouldSetResponderCapture / onMoveShouldSetResponder to claim the
+  // gesture first. A position:absolute SIBLING overlay does NOT participate in
+  // this negotiation; it always wins by z-order regardless of dx/dy.
+  //
+  // We use onMoveShouldSetPanResponder (bubble phase, children first) and
+  // require a clearly horizontal gesture (dx > dy*1.8, dx > 10px) so vertical
+  // scrolls inside tab content are never stolen.
+  // ---------------------------------------------------------------------------
+  const fullScreenPR = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) => {
+        if (gestureLockRef.current) return false;
+        return Math.abs(gs.dx) > Math.abs(gs.dy) * 1.8 && Math.abs(gs.dx) > 10;
+      },
+      // No onMoveShouldSetPanResponderCapture — capture fires top-down and
+      // would steal gestures from child scroll views before they can claim them.
+
+      onPanResponderGrant: () => {
+        translateX.stopAnimation();
+        translateX.setOffset(-activeRef.current * SCREEN_W);
+        translateX.setValue(0);
+      },
+
+      onPanResponderMove: (_, gs) => {
+        const minX   = -(NUM_TABS - 1) * SCREEN_W;
+        const maxX   = 0;
+        const target = gs.dx;
+        const rubber =
+          target < minX
+            ? minX - (minX - target) * 0.25
+            : target > maxX
+            ? (target - maxX) * 0.25
+            : gs.dx;
+        translateX.setValue(rubber);
+      },
+
+      onPanResponderRelease: (_, gs) => {
+        translateX.flattenOffset();
+        const SWIPE_DIST = SCREEN_W * 0.25;
+        const SWIPE_VEL  = 0.5;
+        let next = activeRef.current;
+        if      (gs.dx < -SWIPE_DIST || gs.vx < -SWIPE_VEL) next = Math.min(next + 1, NUM_TABS - 1);
+        else if (gs.dx >  SWIPE_DIST || gs.vx >  SWIPE_VEL) next = Math.max(next - 1, 0);
+        snapTo(next, -gs.vx * 200);
+      },
+
+      onPanResponderTerminate: () => {
+        translateX.flattenOffset();
+        snapTo(activeRef.current, 0);
+      },
+    }),
+  ).current;
+
+  // Edge-only responders for the Home tab (thin 40px strips)
+  const makeEdgePR = useCallback(
+    () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, gs) => {
           if (gestureLockRef.current) return false;
-          if (fullScreen) {
-            // Claim only when horizontal component clearly dominates
-            return Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5 && Math.abs(gs.dx) > 8;
-          }
-          // Edge zone — claim immediately
           return true;
         },
-
-        // NOTE: onMoveShouldSetPanResponderCapture is intentionally absent for
-        // fullScreen responders (see comment above). Edge-zone responders keep
-        // capture so they can claim gestures that start in the thin edge strip
-        // before any child might try to handle them.
-        ...(fullScreen ? {} : {
-          onMoveShouldSetPanResponderCapture: (_: any, gs: any) => {
-            if (gestureLockRef.current) return false;
-            return true;
-          },
-        }),
-
+        onMoveShouldSetPanResponderCapture: (_: any, gs: any) => {
+          if (gestureLockRef.current) return false;
+          return true;
+        },
         onPanResponderGrant: () => {
           translateX.stopAnimation();
           translateX.setOffset(-activeRef.current * SCREEN_W);
           translateX.setValue(0);
         },
-
         onPanResponderMove: (_, gs) => {
           const minX   = -(NUM_TABS - 1) * SCREEN_W;
           const maxX   = 0;
@@ -127,7 +162,6 @@ function TabPager() {
               : gs.dx;
           translateX.setValue(rubber);
         },
-
         onPanResponderRelease: (_, gs) => {
           translateX.flattenOffset();
           const SWIPE_DIST = SCREEN_W * 0.25;
@@ -137,7 +171,6 @@ function TabPager() {
           else if (gs.dx >  SWIPE_DIST || gs.vx >  SWIPE_VEL) next = Math.max(next - 1, 0);
           snapTo(next, -gs.vx * 200);
         },
-
         onPanResponderTerminate: () => {
           translateX.flattenOffset();
           snapTo(activeRef.current, 0);
@@ -147,11 +180,8 @@ function TabPager() {
     [translateX, snapTo, gestureLockRef],
   );
 
-  // Two edge-only responders (used on Home tab)
-  const leftEdgePR  = useRef(makePanResponder(false)).current;
-  const rightEdgePR = useRef(makePanResponder(false)).current;
-  // One full-screen responder (used on all other tabs)
-  const fullScreenPR = useRef(makePanResponder(true)).current;
+  const leftEdgePR  = useRef(makeEdgePR()).current;
+  const rightEdgePR = useRef(makeEdgePR()).current;
 
   const TAB_BAR_H = Platform.OS === "ios" ? 50 + insets.bottom : 54;
   const isHome    = activeTab === 0;
@@ -160,11 +190,19 @@ function TabPager() {
     <View style={styles.root}>
       {/* ── Pager content ─────────────────────────────────────────────── */}
       <View style={[styles.pagerContainer, { bottom: TAB_BAR_H }]}>
+        {/*
+          * The PanResponder is attached here — directly on the Animated.View
+          * that is the parent of all tab screens. This ensures correct
+          * parent/child responder negotiation with child ScrollViews.
+          * On the Home tab we let edge-zone overlays handle swipes instead,
+          * so we only spread fullScreenPR handlers on non-Home tabs.
+          */}
         <Animated.View
           style={[
             styles.pagerRow,
             { width: SCREEN_W * NUM_TABS, transform: [{ translateX }] },
           ]}
+          {...(!isHome ? fullScreenPR.panHandlers : {})}
         >
           <View style={{ width: SCREEN_W, flex: 1 }}><HomeScreen /></View>
           <View style={{ width: SCREEN_W, flex: 1 }}><FlightsScreen /></View>
@@ -173,7 +211,7 @@ function TabPager() {
         </Animated.View>
       </View>
 
-      {isHome ? (
+      {isHome && (
         /* ── Home: thin edge zones only so Globe can own the centre ──── */
         <>
           <View
@@ -185,12 +223,6 @@ function TabPager() {
             {...rightEdgePR.panHandlers}
           />
         </>
-      ) : (
-        /* ── Other tabs: full-screen swipe zone ──────────────────────── */
-        <View
-          style={[styles.fullScreenZone, { bottom: TAB_BAR_H }]}
-          {...fullScreenPR.panHandlers}
-        />
       )}
 
       {/* ── Tab bar ───────────────────────────────────────────────────── */}
@@ -256,8 +288,6 @@ const styles = StyleSheet.create({
   edgeZone:       { position: "absolute", top: 0, width: EDGE_ZONE_W },
   edgeLeft:       { left: 0 },
   edgeRight:      { right: 0 },
-  // Full-screen zone (non-Home tabs)
-  fullScreenZone: { position: "absolute", top: 0, left: 0, right: 0 },
   // Tab bar
   tabBar: {
     position: "absolute", bottom: 0, left: 0, right: 0,
