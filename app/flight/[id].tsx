@@ -16,7 +16,6 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
-import * as Calendar from "expo-calendar";
 import ViewShot from "react-native-view-shot";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { useColors } from "@/constants/colors";
@@ -34,6 +33,19 @@ import {
   requestNotificationPermission,
 } from "@/utils/notifications";
 
+// ---------------------------------------------------------------------------
+// Lazy loaders for optional native packages
+// expo-calendar requires a native rebuild — lazy load so the app doesn't
+// crash on older builds that don't yet have the native module compiled in.
+// ---------------------------------------------------------------------------
+type CalendarModule = typeof import("expo-calendar");
+let _cal: CalendarModule | null | undefined = undefined;
+function getCal(): CalendarModule | null {
+  if (_cal !== undefined) return _cal;
+  try { _cal = require("expo-calendar") as CalendarModule; } catch { _cal = null; }
+  return _cal;
+}
+
 type NotificationsModule = typeof import("expo-notifications");
 let _notif: NotificationsModule | null | undefined = undefined;
 function getNotif(): NotificationsModule | null {
@@ -41,6 +53,8 @@ function getNotif(): NotificationsModule | null {
   try { _notif = require("expo-notifications") as NotificationsModule; } catch { _notif = null; }
   return _notif;
 }
+
+// ---------------------------------------------------------------------------
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
@@ -215,10 +229,13 @@ async function addFlightToCalendar(flight: {
   arrivalTerminal?: string;
   arrivalGate?: string;
   aircraft: string;
-}): Promise<"ok" | "denied" | "no_calendar" | "error"> {
+}): Promise<"ok" | "denied" | "no_calendar" | "unavailable" | "error"> {
   if (Platform.OS === "web") return "error";
 
-  const { status } = await Calendar.requestCalendarPermissionsAsync();
+  const Cal = getCal();
+  if (!Cal) return "unavailable";
+
+  const { status } = await Cal.requestCalendarPermissionsAsync();
   if (status !== "granted") return "denied";
 
   const startDate = parseLocalDateTime(flight.date, flight.departureTime);
@@ -239,18 +256,17 @@ async function addFlightToCalendar(flight: {
     "\nAdded from Logbook \u2708\uFE0F",
   ].filter(Boolean).join("\n");
 
-  const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+  const calendars = await Cal.getCalendarsAsync(Cal.EntityTypes.EVENT);
 
-  // Prefer the default iOS calendar, then any writable local calendar
-  const defaultCal = calendars.find(
-    (c) => c.allowsModifications && c.source?.name === "iCloud"
-  ) ?? calendars.find(
-    (c) => c.allowsModifications && c.source?.isLocalAccount !== false
-  ) ?? calendars.find((c) => c.allowsModifications);
+  // Prefer iCloud, then any writable local calendar
+  const defaultCal =
+    calendars.find((c) => c.allowsModifications && c.source?.name === "iCloud") ??
+    calendars.find((c) => c.allowsModifications && c.source?.isLocalAccount !== false) ??
+    calendars.find((c) => c.allowsModifications);
 
   if (!defaultCal) return "no_calendar";
 
-  await Calendar.createEventAsync(defaultCal.id, {
+  await Cal.createEventAsync(defaultCal.id, {
     title: `${flight.flightCode}  ${flight.departureAirport} \u2192 ${flight.arrivalAirport}`,
     startDate,
     endDate,
@@ -281,6 +297,9 @@ export default function FlightDetailScreen() {
 
   const TODAY      = new Date().toISOString().substring(0, 10);
   const isUpcoming = !!flight && flight.date >= TODAY;
+
+  // Calendar available once native module is compiled in (after rebuild)
+  const calendarAvailable = isUpcoming && Platform.OS !== "web" && getCal() !== null;
 
   const { scheduled, refresh: refreshReminders } = useScheduledReminders(flight?.id ?? "");
 
@@ -344,6 +363,11 @@ export default function FlightDetailScreen() {
         Alert.alert(
           "No Calendar Found",
           "No writable calendar was found on your device. Please add an account in the iOS Calendar app first.",
+        );
+      } else if (result === "unavailable") {
+        Alert.alert(
+          "Rebuild Required",
+          "The calendar module requires a native rebuild. Run `npx expo run:ios` or build via EAS to enable this feature.",
         );
       } else {
         Alert.alert("Error", "Could not add to calendar. Please try again.");
@@ -558,7 +582,7 @@ export default function FlightDetailScreen() {
           </View>
         </Animated.View>
 
-        {/* ─── ADD TO CALENDAR BUTTON (upcoming only, always visible on iOS) ─── */}
+        {/* ─── ADD TO CALENDAR BUTTON (upcoming flights, iOS only) ─── */}
         {isUpcoming && Platform.OS !== "web" && (
           <Animated.View entering={FadeInDown.delay(55).springify()} style={{ marginBottom: 14 }}>
             <Pressable
@@ -589,13 +613,17 @@ export default function FlightDetailScreen() {
                 />
               )}
               <Text style={{ fontSize: 15, color: C.accent, fontFamily: "DMSans_700Bold" }}>
-                {addingCalendar ? "Adding to Calendar\u2026" : calendarAdded ? "Added to Calendar \u2713" : "Add to Apple Calendar"}
+                {addingCalendar
+                  ? "Adding to Calendar\u2026"
+                  : calendarAdded
+                  ? "Added to Calendar \u2713"
+                  : "Add to Apple Calendar"}
               </Text>
             </Pressable>
           </Animated.View>
         )}
 
-        {/* ─── QUICK ACTION BAR — reminders only ─── */}
+        {/* ─── REMINDERS BUTTON ─── */}
         {remindersAvailable && (
           <Animated.View entering={FadeInDown.delay(65).springify()} style={{ marginBottom: 20 }}>
             <Pressable

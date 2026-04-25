@@ -58,6 +58,8 @@ export default {
     },
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      NSCalendarsUsageDescription: "Logbook needs calendar access to add your flights as events.",
+      NSCalendarsFullAccessUsageDescription: "Logbook needs full calendar access to create flight events in Apple Calendar.",
     },
   },
 
@@ -70,6 +72,7 @@ export default {
     "expo-font",
     "expo-web-browser",
     "expo-apple-authentication",
+    "expo-calendar",
     [
       "@react-native-google-signin/google-signin",
       {
