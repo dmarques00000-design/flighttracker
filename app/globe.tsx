@@ -1,10 +1,12 @@
 /**
  * Full-screen interactive globe — no tab bar.
  *
- * Canvas is SCREEN_H × SCREEN_H so the square is never clipped vertically.
- * rBase is derived from SCREEN_W (the narrow dimension) so the sphere
- * sits comfortably within the screen width with natural breathing room
- * on all sides. The user can still pinch-zoom beyond this default.
+ * Fix: the gesture-capture View inside GlobeView must have explicit
+ * screen-filling dimensions so PanResponder receives all touches.
+ * We now use a StyleSheet.absoluteFill container that owns the full
+ * screen, with the GlobeView inside it.
+ * The back button and hint sit in a sibling absoluteFill View so
+ * they never intercept globe touches (pointerEvents="box-none").
  */
 import React, { useState } from "react";
 import {
@@ -27,11 +29,11 @@ import GlobeView from "@/components/GlobeView";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
-// Canvas tall enough to never clip vertically.
+// Canvas is the full screen height so the sphere is never clipped vertically.
 const GLOBE_SIZE = SCREEN_H;
 
-// Sphere radius = just under half the screen WIDTH so the globe fits
-// edge-to-edge horizontally and floats with breathing room top/bottom.
+// Sphere radius derived from the narrow dimension (width) so the globe sits
+// edge-to-edge horizontally with natural breathing room top/bottom.
 const GLOBE_R_BASE = (SCREEN_W / 2) * 0.88;
 
 export default function GlobeScreen() {
@@ -41,59 +43,73 @@ export default function GlobeScreen() {
   const [dragging, setDragging] = useState(false);
 
   const topInset = Platform.OS === "web" ? 24 : insets.top;
+  const bottomInset = Platform.OS === "web" ? 24 : insets.bottom;
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <StatusBar barStyle="light-content" />
 
-      <Animated.View entering={FadeIn.duration(300)} style={styles.globeWrap}>
-        <GlobeView
-          flights={flights}
-          size={GLOBE_SIZE}
-          rBase={GLOBE_R_BASE}
-          onDragStart={() => setDragging(true)}
-          onDragEnd={() => setDragging(false)}
-        />
-      </Animated.View>
+      {/*
+       * Globe layer — fills the entire screen so the PanResponder
+       * inside GlobeView has a properly-sized hit area.
+       * This is the key fix: previously the Animated.View had
+       * overflow:visible but no guaranteed fill, so touches near
+       * the edges fell through to the screen behind it.
+       */}
+      <View style={styles.globeLayer}>
+        <Animated.View entering={FadeIn.duration(300)} style={styles.globeCenter}>
+          <GlobeView
+            flights={flights}
+            size={GLOBE_SIZE}
+            rBase={GLOBE_R_BASE}
+            onDragStart={() => setDragging(true)}
+            onDragEnd={() => setDragging(false)}
+          />
+        </Animated.View>
+      </View>
 
-      {/* Back button */}
-      {!dragging && (
-        <Animated.View
-          entering={FadeIn.duration(200)}
-          style={[
-            styles.backBtn,
-            {
-              top: topInset + 12,
-              backgroundColor: C.card,
-              borderColor: C.border,
-              shadowColor: C.text,
-            },
-          ]}
-        >
-          <Pressable
-            onPress={() => { Haptics.selectionAsync(); router.back(); }}
-            style={({ pressed }) => [styles.backPressable, { opacity: pressed ? 0.7 : 1 }]}
-            hitSlop={10}
+      {/*
+       * UI overlay — pointerEvents="box-none" means this View itself
+       * does NOT intercept touches (they pass through to the globe layer),
+       * but its children (buttons) still receive taps normally.
+       */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        {/* Back button — hidden while dragging so it doesn't block gestures */}
+        {!dragging && (
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            style={[
+              styles.backBtn,
+              {
+                top: topInset + 12,
+                backgroundColor: C.card,
+                borderColor: C.border,
+                shadowColor: C.text,
+              },
+            ]}
           >
-            <Ionicons name="arrow-back" size={20} color={C.text} />
-          </Pressable>
-        </Animated.View>
-      )}
+            <Pressable
+              onPress={() => { Haptics.selectionAsync(); router.back(); }}
+              style={({ pressed }) => [styles.backPressable, { opacity: pressed ? 0.7 : 1 }]}
+              hitSlop={10}
+            >
+              <Ionicons name="arrow-back" size={20} color={C.text} />
+            </Pressable>
+          </Animated.View>
+        )}
 
-      {/* Hint */}
-      {!dragging && (
-        <Animated.View
-          entering={FadeIn.delay(400).duration(300)}
-          style={[
-            styles.hintWrap,
-            { bottom: (Platform.OS === "web" ? 24 : insets.bottom) + 24 },
-          ]}
-        >
-          <Text style={[styles.hint, { color: C.textMuted }]}>
-            Drag to rotate  ·  Pinch to zoom
-          </Text>
-        </Animated.View>
-      )}
+        {/* Drag hint — hidden while dragging */}
+        {!dragging && (
+          <Animated.View
+            entering={FadeIn.delay(400).duration(300)}
+            style={[styles.hintWrap, { bottom: bottomInset + 24 }]}
+          >
+            <Text style={[styles.hint, { color: C.textMuted }]}>
+              Drag to rotate  ·  Pinch to zoom
+            </Text>
+          </Animated.View>
+        )}
+      </View>
     </View>
   );
 }
@@ -101,15 +117,19 @@ export default function GlobeScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+  },
+  // Full-screen layer that gives PanResponder a properly-sized touch area.
+  globeLayer: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
   },
-  globeWrap: {
+  // Centers the GlobeView canvas within the layer.
+  globeCenter: {
     width: SCREEN_W,
     height: SCREEN_H,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "visible",
   },
   backBtn: {
     position: "absolute",
