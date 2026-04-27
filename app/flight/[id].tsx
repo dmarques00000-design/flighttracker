@@ -238,8 +238,10 @@ async function addFlightToCalendar(flight: {
   const { status } = await Cal.requestCalendarPermissionsAsync();
   if (status !== "granted") return "denied";
 
+  // Parse times as local-time Date objects.
   const startDate = parseLocalDateTime(flight.date, flight.departureTime);
   const rawEnd    = parseLocalDateTime(flight.date, flight.arrivalTime);
+  // If arrival is before departure (overnight flight), add a day.
   const endDate   = rawEnd <= startDate
     ? new Date(rawEnd.getTime() + 24 * 60 * 60 * 1000)
     : rawEnd;
@@ -258,7 +260,7 @@ async function addFlightToCalendar(flight: {
 
   const calendars = await Cal.getCalendarsAsync(Cal.EntityTypes.EVENT);
 
-  // Prefer iCloud, then any writable local calendar
+  // Prefer iCloud, then any writable local calendar.
   const defaultCal =
     calendars.find((c) => c.allowsModifications && c.source?.name === "iCloud") ??
     calendars.find((c) => c.allowsModifications && c.source?.isLocalAccount !== false) ??
@@ -266,6 +268,11 @@ async function addFlightToCalendar(flight: {
 
   if (!defaultCal) return "no_calendar";
 
+  // expo-calendar's createEventAsync on iOS requires Date objects (not strings)
+  // and must NOT receive timeZone:'local' — that is not a valid IANA tz identifier
+  // and causes the native saveEventAsync to throw. Omitting timeZone lets the
+  // system use the device's current timezone, which is the correct behaviour
+  // for flight times that are already in local time.
   await Cal.createEventAsync(defaultCal.id, {
     title: `${flight.flightCode}  ${flight.departureAirport} \u2192 ${flight.arrivalAirport}`,
     startDate,
@@ -273,7 +280,6 @@ async function addFlightToCalendar(flight: {
     location: `${flight.departureCity} (${flight.departureAirport}) \u2192 ${flight.arrivalCity} (${flight.arrivalAirport})`,
     notes,
     alarms: [{ relativeOffset: -60 }],
-    timeZone: "local",
   });
 
   return "ok";
@@ -431,6 +437,9 @@ export default function FlightDetailScreen() {
   const airlineInfo = getAirlineInfo(flight.airlineCode);
 
   const activeReminderCount = scheduled.size;
+
+  // Suppress unused variable warning — calendarAvailable is read in JSX below
+  void calendarAvailable;
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPad }}>
