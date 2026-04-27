@@ -8,7 +8,7 @@
  *  3. Decoded pass shown in card list, user taps "Add to Logbook"
  *  4. Flight enriched via API then added to context
  */
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -33,9 +33,7 @@ import type { BCBPFlight } from "@/utils/bcbpParser";
 type ImportState = "idle" | "importing" | "done";
 type EnrichState = "pending" | "fetching" | "done" | "failed";
 
-/** A decoded pass ready for display / import */
 interface ScannedPass extends BCBPFlight {
-  /** Unique key for this card */
   id: string;
   airline: string;
   departureCity: string;
@@ -81,11 +79,9 @@ function PassCard({
           },
         ]}
       >
-        {/* Left accent bar */}
         <View style={{ width: 3, backgroundColor: alreadyAdded ? C.border : selected ? C.accent : C.border }} />
 
         <View style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 14 }}>
-          {/* Route */}
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 5 }}>
             <Text style={{ fontSize: 20, color: C.text, fontFamily: "DMSans_700Bold" }}>{pass.departureAirport}</Text>
             <View style={{ flex: 1, flexDirection: "row", alignItems: "center", marginHorizontal: 8, gap: 3 }}>
@@ -96,7 +92,6 @@ function PassCard({
             <Text style={{ fontSize: 20, color: C.text, fontFamily: "DMSans_700Bold" }}>{pass.arrivalAirport}</Text>
           </View>
 
-          {/* Meta row */}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium" }}>{pass.flightCode}</Text>
             {pass.airline ? (
@@ -118,7 +113,6 @@ function PassCard({
           </View>
         </View>
 
-        {/* Right: checkbox / badge */}
         <View style={{ paddingHorizontal: 14, paddingVertical: 14, alignItems: "center", justifyContent: "center", gap: 8 }}>
           {alreadyAdded ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: C.green + "18", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
@@ -160,7 +154,6 @@ export default function WalletImportScreen() {
 
   const alreadyAddedKeys = new Set(flights.map((f) => `${f.flightCode}-${f.date}`));
 
-  // ── Receive decoded passes from scanner ──────────────────────────────────
   useEffect(() => {
     if (!params.scanned) return;
     try {
@@ -168,7 +161,6 @@ export default function WalletImportScreen() {
       const newPasses: ScannedPass[] = decoded.map((f, i) => ({
         ...f,
         id: `${f.flightCode}-${f.date}-${i}`,
-        // These will be filled in by the API enrichment step
         airline: f.airlineCode,
         departureCity: f.departureAirport,
         arrivalCity: f.arrivalAirport,
@@ -177,14 +169,12 @@ export default function WalletImportScreen() {
         aircraft: "Unknown",
       }));
 
-      // Merge — avoid adding the same flight twice if user scans again
       setPasses((prev) => {
         const existingIds = new Set(prev.map((p) => p.id));
         const merged = [...prev, ...newPasses.filter((p) => !existingIds.has(p.id))];
         return merged.sort((a, b) => b.date.localeCompare(a.date));
       });
 
-      // Pre-select all non-duplicate passes
       setSelected((prev) => {
         const next = new Set(prev);
         newPasses.forEach((p) => {
@@ -199,7 +189,6 @@ export default function WalletImportScreen() {
     }
   }, [params.scanned]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Toggle selection ─────────────────────────────────────────────────────
   function togglePass(id: string) {
     Haptics.selectionAsync();
     setSelected((prev) => {
@@ -221,7 +210,6 @@ export default function WalletImportScreen() {
     setSelected(new Set());
   }
 
-  // ── Import ───────────────────────────────────────────────────────────────
   async function handleImport() {
     if (selected.size === 0) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -275,7 +263,6 @@ export default function WalletImportScreen() {
   const selectedCount = selected.size;
   const hasPasses = passes.length > 0;
 
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: insets.top }}>
       {/* Header */}
@@ -295,11 +282,9 @@ export default function WalletImportScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: insets.bottom + 120 }}
       >
-
-        {/* ── IDLE / EMPTY STATE ── */}
+        {/* IDLE / EMPTY */}
         {importState === "idle" && !hasPasses && (
           <Animated.View entering={FadeIn.duration(300)} style={{ alignItems: "center", paddingTop: 40 }}>
-            {/* Icon */}
             <View style={{ width: 90, height: 90, borderRadius: 26, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
               <Ionicons name="scan" size={44} color={C.accent} />
             </View>
@@ -308,14 +293,13 @@ export default function WalletImportScreen() {
               Scan Your Boarding Pass
             </Text>
             <Text style={{ fontSize: 15, color: C.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 22, marginBottom: 28 }}>
-              Point your camera at the barcode on any boarding pass \u2014 physical, PDF, or on another screen \u2014 and Logbook will extract your flight automatically.
+              Point your camera at the barcode on any boarding pass — physical, PDF, or on another screen — and Logbook will extract your flight automatically.
             </Text>
 
-            {/* Feature list */}
             <View style={{ width: "100%", gap: 12, marginBottom: 32 }}>
               {[
-                { icon: "shield-checkmark-outline", text: "100% private \u2014 decoded on-device, nothing uploaded" },
-                { icon: "time-outline", text: "Works with old passes too \u2014 build your full flight history" },
+                { icon: "shield-checkmark-outline", text: "100% private — decoded on-device, nothing uploaded" },
+                { icon: "time-outline", text: "Works with old passes too — build your full flight history" },
                 { icon: "flash-outline", text: "Real flight data enriched automatically via API" },
                 { icon: "layers-outline", text: "Scan multiple passes one by one" },
               ].map((item) => (
@@ -351,10 +335,9 @@ export default function WalletImportScreen() {
           </Animated.View>
         )}
 
-        {/* ── PASSES LIST ── */}
+        {/* PASSES LIST */}
         {importState === "idle" && hasPasses && (
           <Animated.View entering={FadeIn.duration(250)}>
-            {/* Scan another button */}
             <Pressable
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -371,7 +354,6 @@ export default function WalletImportScreen() {
               <Text style={{ fontSize: 14, color: C.accent, fontFamily: "DMSans_700Bold" }}>Scan Another Pass</Text>
             </Pressable>
 
-            {/* List header */}
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
               <View>
                 <Text style={{ fontSize: 17, color: C.text, fontFamily: "DMSans_700Bold" }}>
@@ -387,7 +369,7 @@ export default function WalletImportScreen() {
                 <Pressable onPress={selectAll} hitSlop={8}>
                   <Text style={{ fontSize: 13, color: C.accent, fontFamily: "DMSans_500Medium" }}>All</Text>
                 </Pressable>
-                <Text style={{ fontSize: 13, color: C.textMuted }}>\u00b7</Text>
+                <Text style={{ fontSize: 13, color: C.textMuted }}>·</Text>
                 <Pressable onPress={deselectAll} hitSlop={8}>
                   <Text style={{ fontSize: 13, color: C.accent, fontFamily: "DMSans_500Medium" }}>None</Text>
                 </Pressable>
@@ -407,7 +389,7 @@ export default function WalletImportScreen() {
           </Animated.View>
         )}
 
-        {/* ── IMPORTING ── */}
+        {/* IMPORTING */}
         {importState === "importing" && (
           <Animated.View entering={FadeIn.duration(200)} style={{ alignItems: "center", paddingTop: 80, gap: 16 }}>
             <ActivityIndicator size="large" color={C.accent} />
@@ -425,7 +407,7 @@ export default function WalletImportScreen() {
                       color={s === "done" ? C.green : s === "fetching" ? C.accent : C.textMuted}
                     />
                     <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_400Regular" }}>
-                      {p.flightCode} \u00b7 {p.departureAirport} \u2192 {p.arrivalAirport} \u00b7 {p.date}
+                      {p.flightCode} · {p.departureAirport} → {p.arrivalAirport} · {p.date}
                     </Text>
                   </View>
                 );
@@ -434,7 +416,7 @@ export default function WalletImportScreen() {
           </Animated.View>
         )}
 
-        {/* ── DONE ── */}
+        {/* DONE */}
         {importState === "done" && (
           <Animated.View entering={FadeInDown.springify()} style={{ alignItems: "center", paddingTop: 60 }}>
             <View style={{ marginBottom: 20 }}>
