@@ -1,10 +1,10 @@
 /**
  * boarding-pass-scan.tsx
  * Full-screen camera scanner for boarding pass barcodes.
- * Decodes IATA BCBP format (Aztec / PDF417 / QR) on-device.
- * Returns decoded flight data to wallet-import screen via router params.
+ * expo-camera is loaded lazily so the app doesn't crash when the native
+ * module isn't available (Expo Go / old dev builds).
  */
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
 import {
   View,
   Text,
@@ -23,9 +23,20 @@ import Animated, {
   withTiming,
   Easing,
 } from "react-native-reanimated";
-import { CameraView, useCameraPermissions } from "expo-camera";
 import { useColors } from "@/constants/colors";
 import { parseBCBP } from "@/utils/bcbpParser";
+
+// ── Lazy-load expo-camera so a missing native module doesn't crash the router ──
+let CameraView: any = null;
+let useCameraPermissions: (() => any) | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const cam = require("expo-camera");
+  CameraView = cam.CameraView;
+  useCameraPermissions = cam.useCameraPermissions;
+} catch {
+  // Native module not available in this build
+}
 
 // ─── Animated scanning line ───────────────────────────────────────────────────
 function ScanLine() {
@@ -78,21 +89,127 @@ function FrameCorners({ color }: { color: string }) {
   );
 }
 
+// ─── "Needs new build" fallback ───────────────────────────────────────────────
+function NativeBuildRequired() {
+  const C = useColors();
+  const insets = useSafeAreaInsets();
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: C.bg,
+        paddingTop: insets.top,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: 32,
+      }}
+    >
+      <View
+        style={{
+          width: 80,
+          height: 80,
+          borderRadius: 24,
+          backgroundColor: C.accentDim,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 24,
+        }}
+      >
+        <Ionicons name="camera-outline" size={40} color={C.accent} />
+      </View>
+      <Text
+        style={{
+          fontSize: 20,
+          color: C.text,
+          fontFamily: "DMSans_700Bold",
+          textAlign: "center",
+          marginBottom: 12,
+        }}
+      >
+        Development Build Required
+      </Text>
+      <Text
+        style={{
+          fontSize: 14,
+          color: C.textSec,
+          fontFamily: "DMSans_400Regular",
+          textAlign: "center",
+          lineHeight: 22,
+          marginBottom: 32,
+        }}
+      >
+        Camera scanning requires a custom development build. Run the command
+        below in your terminal, then re-open the app.
+      </Text>
+      <View
+        style={{
+          backgroundColor: C.card,
+          borderRadius: 12,
+          padding: 14,
+          width: "100%",
+          marginBottom: 28,
+          borderWidth: 1,
+          borderColor: C.border,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 13,
+            color: C.accent,
+            fontFamily: "DMSans_500Medium",
+            letterSpacing: 0.2,
+          }}
+          selectable
+        >
+          eas build --profile development --platform ios
+        </Text>
+      </View>
+      <Pressable
+        onPress={() => router.back()}
+        style={({ pressed }) => [
+          {
+            backgroundColor: C.accent,
+            paddingHorizontal: 28,
+            paddingVertical: 14,
+            borderRadius: 14,
+          },
+          { opacity: pressed ? 0.8 : 1 },
+        ]}
+      >
+        <Text style={{ color: C.white, fontFamily: "DMSans_700Bold", fontSize: 15 }}>
+          Go Back
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function BoardingPassScanScreen() {
   const C = useColors();
   const insets = useSafeAreaInsets();
-  const [permission, requestPermission] = useCameraPermissions();
+
+  // If native module not available, show friendly fallback immediately
+  if (!CameraView || !useCameraPermissions) {
+    return <NativeBuildRequired />;
+  }
+
+  return <CameraScanner C={C} insets={insets} />;
+}
+
+// ─── Camera scanner (only rendered when native module is available) ────────────
+function CameraScanner({ C, insets }: { C: any; insets: any }) {
+  const [permission, requestPermission] = (useCameraPermissions as () => any)();
   const [scanned, setScanned] = useState(false);
   const [torch, setTorch] = useState(false);
   const debounceRef = useRef(false);
 
-  // ── Permission: loading ──────────────────────────────────────────────────
+  // Permission loading
   if (!permission) {
     return <View style={{ flex: 1, backgroundColor: C.bg }} />;
   }
 
-  // ── Permission: denied ───────────────────────────────────────────────────
+  // Permission denied
   if (!permission.granted) {
     return (
       <View
@@ -153,9 +270,7 @@ export default function BoardingPassScanScreen() {
           </Text>
         </Pressable>
         <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Text
-            style={{ color: C.textSec, fontFamily: "DMSans_400Regular", fontSize: 14 }}
-          >
+          <Text style={{ color: C.textSec, fontFamily: "DMSans_400Regular", fontSize: 14 }}>
             Cancel
           </Text>
         </Pressable>
@@ -163,7 +278,6 @@ export default function BoardingPassScanScreen() {
     );
   }
 
-  // ── Barcode handler ──────────────────────────────────────────────────────
   function handleBarcode({ data }: { data: string }) {
     if (scanned || debounceRef.current) return;
     debounceRef.current = true;
@@ -171,10 +285,7 @@ export default function BoardingPassScanScreen() {
     const result = parseBCBP(data);
 
     if (!result.ok || result.flights.length === 0) {
-      // Not a valid BCBP boarding pass — keep scanning
-      setTimeout(() => {
-        debounceRef.current = false;
-      }, 1500);
+      setTimeout(() => { debounceRef.current = false; }, 1500);
       return;
     }
 
@@ -185,7 +296,6 @@ export default function BoardingPassScanScreen() {
     router.replace(`/wallet-import?scanned=${encoded}`);
   }
 
-  // ── Camera view ──────────────────────────────────────────────────────────
   return (
     <View style={{ flex: 1, backgroundColor: "#000" }}>
       <CameraView
