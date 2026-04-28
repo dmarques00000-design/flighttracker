@@ -362,11 +362,12 @@ function FlightRow({ flight, isUpcoming, today }: { flight: Flight; isUpcoming: 
   );
 }
 
+// ── Burger menu items — order matches user spec ───────────────────────────────
 const MENU_ITEMS = [
-  { id: "passport",      icon: "earth-outline",        label: "Travel Passport",   sub: "Countries & airports visited" },
   { id: "wallet",        icon: "wallet-outline",        label: "Link Apple Wallet", sub: "Import boarding passes" },
-  { id: "monthly-recap", icon: "calendar-outline",      label: "Monthly Recap",     sub: "Share your month in the air" },
-  { id: "share",         icon: "share-social-outline",  label: "Share Year Recap",  sub: "Post to social media" },
+  { id: "share",         icon: "share-social-outline",  label: "Year Recap",        sub: "Share your year in the air" },
+  { id: "monthly-recap", icon: "calendar-outline",      label: "Month Recap",       sub: "Share your month in the air" },
+  { id: "passport",      icon: "earth-outline",         label: "Travel Passport",   sub: "Countries & airports visited" },
   { id: "add",           icon: "add-circle-outline",    label: "Add Flight",        sub: "Log a flight manually" },
 ];
 
@@ -629,7 +630,7 @@ export default function HomeScreen() {
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.green + "12", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 }}>
                     <Ionicons name="leaf" size={14} color={C.green} />
                     <Text style={{ fontSize: 13, color: C.green, fontFamily: "DMSans_500Medium", flex: 1, lineHeight: 18 }}>
-                      {"That’s like "}{getCO2FunFact(stats.co2)}
+                      {"That's like "}{getCO2FunFact(stats.co2)}
                     </Text>
                   </View>
                 )}
