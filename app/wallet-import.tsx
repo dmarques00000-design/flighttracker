@@ -3,8 +3,8 @@
  * Boarding pass import screen.
  *
  * Flow:
- *  1. User taps "Scan Boarding Pass" → opens boarding-pass-scan.tsx
- *  2. Camera decodes BCBP barcode → navigates back here with ?scanned=<json>
+ *  1. User taps "Scan Boarding Pass" → opens boarding-pass-scan.tsx (camera)
+ *  2. User taps "Pick from Gallery" → image picker → barcode decoded on-device
  *  3. Decoded pass shown in card list, user taps "Add to Logbook"
  *  4. Flight enriched via API then added to context
  */
@@ -22,15 +22,24 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { useColors } from "@/constants/colors";
 import { useFlights } from "@/context/flights";
 import { apiRequest } from "@/lib/query-client";
+import { parseBCBP } from "@/utils/bcbpParser";
 import type { BCBPFlight } from "@/utils/bcbpParser";
+
+// Lazy-load expo-camera for scanFromURLAsync (native module)
+let scanFromURLAsync: ((url: string, types?: string[]) => Promise<{ data: string }[]>) | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  scanFromURLAsync = require("expo-camera").scanFromURLAsync;
+} catch { /* not available in this build */ }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ImportState = "idle" | "importing" | "done";
+type ImportState = "idle" | "scanning" | "importing" | "done";
 type EnrichState = "pending" | "fetching" | "done" | "failed";
 
 interface ScannedPass extends BCBPFlight {
@@ -154,41 +163,129 @@ export default function WalletImportScreen() {
 
   const alreadyAddedKeys = new Set(flights.map((f) => `${f.flightCode}-${f.date}`));
 
+  // ── Receive decoded passes from camera scanner ────────────────────────────
   useEffect(() => {
     if (!params.scanned) return;
     try {
       const decoded: BCBPFlight[] = JSON.parse(decodeURIComponent(params.scanned));
-      const newPasses: ScannedPass[] = decoded.map((f, i) => ({
-        ...f,
-        id: `${f.flightCode}-${f.date}-${i}`,
-        airline: f.airlineCode,
-        departureCity: f.departureAirport,
-        arrivalCity: f.arrivalAirport,
-        departureTime: "00:00",
-        arrivalTime: "00:00",
-        aircraft: "Unknown",
-      }));
-
-      setPasses((prev) => {
-        const existingIds = new Set(prev.map((p) => p.id));
-        const merged = [...prev, ...newPasses.filter((p) => !existingIds.has(p.id))];
-        return merged.sort((a, b) => b.date.localeCompare(a.date));
-      });
-
-      setSelected((prev) => {
-        const next = new Set(prev);
-        newPasses.forEach((p) => {
-          if (!alreadyAddedKeys.has(`${p.flightCode}-${p.date}`)) next.add(p.id);
-        });
-        return next;
-      });
-
+      mergePasses(decoded);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
       Alert.alert("Scan Error", "Could not read the boarding pass barcode. Try scanning again.");
     }
   }, [params.scanned]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Shared helper: merge new BCBPFlights into state ───────────────────────
+  function mergePasses(decoded: BCBPFlight[]) {
+    const newPasses: ScannedPass[] = decoded.map((f, i) => ({
+      ...f,
+      id: `${f.flightCode}-${f.date}-${i}`,
+      airline: f.airlineCode,
+      departureCity: f.departureAirport,
+      arrivalCity: f.arrivalAirport,
+      departureTime: "00:00",
+      arrivalTime: "00:00",
+      aircraft: "Unknown",
+    }));
+
+    setPasses((prev) => {
+      const existingIds = new Set(prev.map((p) => p.id));
+      const merged = [...prev, ...newPasses.filter((p) => !existingIds.has(p.id))];
+      return merged.sort((a, b) => b.date.localeCompare(a.date));
+    });
+
+    setSelected((prev) => {
+      const next = new Set(prev);
+      newPasses.forEach((p) => {
+        if (!alreadyAddedKeys.has(`${p.flightCode}-${p.date}`)) next.add(p.id);
+      });
+      return next;
+    });
+  }
+
+  // ── Gallery picker ───────────────────────────────────────────────────────
+  async function handlePickFromGallery() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // Request permission
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Photos Access Needed",
+        "Please allow access to your photo library so Logbook can read the barcode from your boarding pass image.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => ImagePicker.requestMediaLibraryPermissionsAsync() },
+        ]
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsMultipleSelection: false,
+      quality: 1,
+      // Ask for high quality — barcode needs to be sharp
+    });
+
+    if (result.canceled || !result.assets[0]) return;
+
+    const imageUri = result.assets[0].uri;
+    setImportState("scanning");
+
+    try {
+      if (!scanFromURLAsync) {
+        throw new Error("native_unavailable");
+      }
+
+      const barcodes = await scanFromURLAsync(imageUri, [
+        "aztec", "pdf417", "qr", "code128", "code39", "datamatrix",
+      ]);
+
+      if (!barcodes || barcodes.length === 0) {
+        setImportState("idle");
+        Alert.alert(
+          "No Barcode Found",
+          "Logbook couldn't find a boarding pass barcode in this image. Make sure the barcode is clearly visible and not blurry."
+        );
+        return;
+      }
+
+      let parsed: ReturnType<typeof parseBCBP> | null = null;
+      for (const bc of barcodes) {
+        const attempt = parseBCBP(bc.data);
+        if (attempt.ok && attempt.flights.length > 0) {
+          parsed = attempt;
+          break;
+        }
+      }
+
+      if (!parsed || !parsed.ok || parsed.flights.length === 0) {
+        setImportState("idle");
+        Alert.alert(
+          "Not a Boarding Pass",
+          "A barcode was found but it doesn't appear to be a boarding pass. Make sure you're selecting a boarding pass image."
+        );
+        return;
+      }
+
+      setImportState("idle");
+      mergePasses(parsed.flights);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e: any) {
+      setImportState("idle");
+      if (e?.message === "native_unavailable") {
+        Alert.alert(
+          "Development Build Required",
+          "Gallery barcode scanning requires a custom development build. Run:\n\neas build --profile development --platform ios"
+        );
+      } else {
+        Alert.alert("Error", "Failed to scan the image. Please try again.");
+      }
+    }
+  }
+
+  // ── Selection helpers ────────────────────────────────────────────────────
   function togglePass(id: string) {
     Haptics.selectionAsync();
     setSelected((prev) => {
@@ -210,6 +307,7 @@ export default function WalletImportScreen() {
     setSelected(new Set());
   }
 
+  // ── Import ───────────────────────────────────────────────────────────────
   async function handleImport() {
     if (selected.size === 0) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -263,6 +361,7 @@ export default function WalletImportScreen() {
   const selectedCount = selected.size;
   const hasPasses = passes.length > 0;
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: insets.top }}>
       {/* Header */}
@@ -282,26 +381,39 @@ export default function WalletImportScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: insets.bottom + 120 }}
       >
-        {/* IDLE / EMPTY */}
+
+        {/* ── SCANNING FROM GALLERY ── */}
+        {importState === "scanning" && (
+          <Animated.View entering={FadeIn.duration(200)} style={{ alignItems: "center", paddingTop: 100, gap: 16 }}>
+            <ActivityIndicator size="large" color={C.accent} />
+            <Text style={{ fontSize: 15, color: C.textSec, fontFamily: "DMSans_400Regular" }}>
+              Reading barcode from image…
+            </Text>
+          </Animated.View>
+        )}
+
+        {/* ── IDLE / EMPTY STATE ── */}
         {importState === "idle" && !hasPasses && (
           <Animated.View entering={FadeIn.duration(300)} style={{ alignItems: "center", paddingTop: 40 }}>
+            {/* Icon */}
             <View style={{ width: 90, height: 90, borderRadius: 26, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
               <Ionicons name="scan" size={44} color={C.accent} />
             </View>
 
             <Text style={{ fontSize: 22, color: C.text, fontFamily: "DMSans_700Bold", textAlign: "center", marginBottom: 12 }}>
-              Scan Your Boarding Pass
+              Import a Boarding Pass
             </Text>
             <Text style={{ fontSize: 15, color: C.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 22, marginBottom: 28 }}>
-              Point your camera at the barcode on any boarding pass — physical, PDF, or on another screen — and Logbook will extract your flight automatically.
+              Scan the barcode with your camera or pick a boarding pass image from your photo library.
             </Text>
 
+            {/* Feature list */}
             <View style={{ width: "100%", gap: 12, marginBottom: 32 }}>
               {[
                 { icon: "shield-checkmark-outline", text: "100% private — decoded on-device, nothing uploaded" },
                 { icon: "time-outline", text: "Works with old passes too — build your full flight history" },
                 { icon: "flash-outline", text: "Real flight data enriched automatically via API" },
-                { icon: "layers-outline", text: "Scan multiple passes one by one" },
+                { icon: "images-outline", text: "Pick from gallery — photos, screenshots, PDFs" },
               ].map((item) => (
                 <View key={item.icon} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                   <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center" }}>
@@ -319,6 +431,7 @@ export default function WalletImportScreen() {
               </View>
             )}
 
+            {/* Primary: Scan */}
             <Pressable
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -327,33 +440,61 @@ export default function WalletImportScreen() {
               style={({ pressed }) => [{
                 flexDirection: "row", alignItems: "center",
                 backgroundColor: C.accent, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30,
+                width: "100%", justifyContent: "center", marginBottom: 12,
               }, { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
             >
               <Ionicons name="scan-outline" size={20} color={C.white} style={{ marginRight: 10 }} />
               <Text style={{ fontSize: 16, color: C.white, fontFamily: "DMSans_700Bold" }}>Scan Boarding Pass</Text>
             </Pressable>
+
+            {/* Secondary: Gallery */}
+            <Pressable
+              onPress={handlePickFromGallery}
+              style={({ pressed }) => [{
+                flexDirection: "row", alignItems: "center", justifyContent: "center",
+                backgroundColor: C.card, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30,
+                width: "100%", borderWidth: 1, borderColor: C.border,
+              }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
+            >
+              <Ionicons name="images-outline" size={20} color={C.accent} style={{ marginRight: 10 }} />
+              <Text style={{ fontSize: 16, color: C.accent, fontFamily: "DMSans_700Bold" }}>Pick from Gallery</Text>
+            </Pressable>
           </Animated.View>
         )}
 
-        {/* PASSES LIST */}
+        {/* ── PASSES LIST ── */}
         {importState === "idle" && hasPasses && (
           <Animated.View entering={FadeIn.duration(250)}>
-            <Pressable
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push("/boarding-pass-scan");
-              }}
-              style={({ pressed }) => [{
-                flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-                paddingVertical: 12, borderRadius: 12,
-                backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-                marginBottom: 16,
-              }, { opacity: pressed ? 0.8 : 1 }]}
-            >
-              <Ionicons name="add-circle-outline" size={18} color={C.accent} />
-              <Text style={{ fontSize: 14, color: C.accent, fontFamily: "DMSans_700Bold" }}>Scan Another Pass</Text>
-            </Pressable>
+            {/* Add more buttons */}
+            <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push("/boarding-pass-scan");
+                }}
+                style={({ pressed }) => [{
+                  flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+                  paddingVertical: 12, borderRadius: 12,
+                  backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
+                }, { opacity: pressed ? 0.8 : 1 }]}
+              >
+                <Ionicons name="scan-outline" size={16} color={C.accent} />
+                <Text style={{ fontSize: 13, color: C.accent, fontFamily: "DMSans_700Bold" }}>Scan More</Text>
+              </Pressable>
+              <Pressable
+                onPress={handlePickFromGallery}
+                style={({ pressed }) => [{
+                  flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+                  paddingVertical: 12, borderRadius: 12,
+                  backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
+                }, { opacity: pressed ? 0.8 : 1 }]}
+              >
+                <Ionicons name="images-outline" size={16} color={C.accent} />
+                <Text style={{ fontSize: 13, color: C.accent, fontFamily: "DMSans_700Bold" }}>From Gallery</Text>
+              </Pressable>
+            </View>
 
+            {/* List header */}
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
               <View>
                 <Text style={{ fontSize: 17, color: C.text, fontFamily: "DMSans_700Bold" }}>
@@ -389,7 +530,7 @@ export default function WalletImportScreen() {
           </Animated.View>
         )}
 
-        {/* IMPORTING */}
+        {/* ── IMPORTING ── */}
         {importState === "importing" && (
           <Animated.View entering={FadeIn.duration(200)} style={{ alignItems: "center", paddingTop: 80, gap: 16 }}>
             <ActivityIndicator size="large" color={C.accent} />
@@ -416,7 +557,7 @@ export default function WalletImportScreen() {
           </Animated.View>
         )}
 
-        {/* DONE */}
+        {/* ── DONE ── */}
         {importState === "done" && (
           <Animated.View entering={FadeInDown.springify()} style={{ alignItems: "center", paddingTop: 60 }}>
             <View style={{ marginBottom: 20 }}>
