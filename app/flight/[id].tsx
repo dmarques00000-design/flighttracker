@@ -681,7 +681,7 @@ export default function FlightDetailScreen() {
           <View style={{ flex: 1, alignItems: "center", paddingVertical: 18, gap: 4, paddingHorizontal: 4 }}>
             <Ionicons name="leaf-outline" size={18} color={C.green} />
             <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_700Bold" }} adjustsFontSizeToFit numberOfLines={1}>{flight.co2Kg}</Text>
-            <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular" }}>kg CO\u2082</Text>
+            <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular" }}>kg CO₂</Text>
           </View>
           <View style={{ width: 1, backgroundColor: C.border, marginVertical: 12 }} />
           <View style={{ flex: 1, alignItems: "center", paddingVertical: 18, gap: 4, paddingHorizontal: 4 }}>
