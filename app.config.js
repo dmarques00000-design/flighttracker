@@ -54,6 +54,16 @@ export default {
         "Logbook needs calendar access to add your flights as events.",
       NSCalendarsFullAccessUsageDescription:
         "Logbook needs full calendar access to create flight events in Apple Calendar.",
+      // Declare that Logbook can open .pkpass files shared from Apple Wallet
+      CFBundleDocumentTypes: [
+        {
+          CFBundleTypeName: "Boarding Pass",
+          CFBundleTypeRole: "Viewer",
+          LSHandlerRank: "Alternate",
+          LSItemContentTypes: ["com.apple.pkpass"],
+          CFBundleTypeIconFiles: [],
+        },
+      ],
     },
   },
 
@@ -67,6 +77,7 @@ export default {
     "expo-web-browser",
     "expo-apple-authentication",
     "expo-calendar",
+    "expo-document-picker",
     [
       "@react-native-google-signin/google-signin",
       {
