@@ -484,7 +484,7 @@ export default function ProfileScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 14, color: C.text, fontFamily: "DMSans_600SemiBold", marginBottom: 3 }}>Share your feedback</Text>
-                      <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_400Regular", lineHeight: 18 }}>Found a bug or have an idea? Let us know \u2014 your feedback shapes the next release.</Text>
+                      <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_400Regular", lineHeight: 18 }}>{"Found a bug or have an idea? Let us know \u2014 your feedback shapes the next release."}</Text>
                     </View>
                   </View>
                   <Pressable
