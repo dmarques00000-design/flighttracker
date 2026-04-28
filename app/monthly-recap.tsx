@@ -12,6 +12,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Linking,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -234,7 +235,7 @@ export default function MonthlyRecapScreen() {
         {/* ── Story hint ── */}
         <Animated.View entering={FadeInDown.delay(100).springify()} style={m.hintRow}>
           <Ionicons name="phone-portrait-outline" size={13} color={Colors.textSec} />
-          <Text style={m.hintText}>9:16 story card \u2014 perfect for Instagram Stories, WhatsApp and more.</Text>
+          <Text style={m.hintText}>9:16 story card — perfect for Instagram Stories, WhatsApp and more.</Text>
         </Animated.View>
 
         {/* ── PRIMARY CTA ── */}
@@ -339,5 +340,3 @@ const m = StyleSheet.create({
   quickIcon:  { width: 56, height: 56, borderRadius: 17, alignItems: "center", justifyContent: "center" },
   quickLabel: { fontSize: 12, color: Colors.textSec, fontFamily: "DMSans_400Regular" },
 });
-
-import { Linking } from "react-native";

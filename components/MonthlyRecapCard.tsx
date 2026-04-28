@@ -68,39 +68,6 @@ function getUniqueDestinations(flights: Flight[]): number {
   return new Set(flights.map((f) => f.arrivalCity)).size;
 }
 
-// ─── Logo mark ────────────────────────────────────────────────────────────────────────
-function LogoMark({ size = 28 }: { size?: number }) {
-  const s = size, pad = s * 0.10, bw = s - pad * 2, bh = bw * 0.72, bx = pad, by = (s - bh) / 2, spX = bx + bw / 2;
-  const lx1=bx,ly1=by+bh*0.06,lx2=spX-1,ly2=by,lx3=spX-1,ly3=by+bh,lx4=bx,ly4=by+bh*0.94;
-  const rx1=spX+1,ry1=by,rx2=bx+bw,ry2=by+bh*0.06,rx3=bx+bw,ry3=by+bh*0.94,rx4=spX+1,ry4=by+bh;
-  const arcPad=bw*0.1,arcX0=spX+arcPad+2,arcX3=bx+bw-arcPad,arcCX=(arcX0+arcX3)/2,arcY=by+bh*0.5,arcCY=arcY-bh*0.22;
-  return (
-    <Svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
-      <Defs>
-        <ClipPath id="mrc_clip"><Rect x="0" y="0" width={s} height={s} rx={s * 0.22} ry={s * 0.22} /></ClipPath>
-        <SvgLG id="mrc_bg" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0%" stopColor="#16161E" stopOpacity="1" />
-          <Stop offset="100%" stopColor="#0E0E18" stopOpacity="1" />
-        </SvgLG>
-      </Defs>
-      <Rect x="0" y="0" width={s} height={s} rx={s * 0.22} ry={s * 0.22} fill="url(#mrc_bg)" />
-      <G clipPath="url(#mrc_clip)">
-        <Path d={`M${lx1},${ly1} L${lx2},${ly2} L${lx3},${ly3} L${lx4},${ly4} Z`} fill="#16161E" stroke="#2A2A3A" strokeWidth={s * 0.025} />
-        <Path d={`M${rx1},${ry1} L${rx2},${ry2} L${rx3},${ry3} L${rx4},${ry4} Z`} fill="#16161E" stroke="#2A2A3A" strokeWidth={s * 0.025} />
-        <Rect x={spX - s * 0.03} y={by} width={s * 0.06} height={bh} fill="#000" opacity={0.4} />
-        <Path d={`M${spX},${by+bh*0.04} L${spX},${by+bh*0.96}`} stroke="#4F8EF7" strokeWidth={s*0.022} strokeLinecap="round" opacity={0.8} />
-        <Path d={`M${arcX0},${arcY} Q${arcCX},${arcCY} ${arcX3},${arcY}`} fill="none" stroke="#4F8EF7" strokeWidth={s*0.1} strokeLinecap="round" opacity={0.1} />
-        <Path d={`M${arcX0},${arcY} Q${arcCX},${arcCY} ${arcX3},${arcY}`} fill="none" stroke="#4F8EF7" strokeWidth={s*0.038} strokeLinecap="round" />
-        <Circle cx={arcX0} cy={arcY} r={s*0.042} fill="#4F8EF7" />
-        <Circle cx={arcX0} cy={arcY} r={s*0.018} fill="#FFF" opacity={0.9} />
-        <Circle cx={arcX3} cy={arcY} r={s*0.042} fill="#4F8EF7" />
-        <Circle cx={arcX3} cy={arcY} r={s*0.018} fill="#FFF" opacity={0.9} />
-      </G>
-      <Rect x={s*0.015} y={s*0.015} width={s*0.97} height={s*0.97} rx={s*0.21} ry={s*0.21} fill="none" stroke="#2A2A3A" strokeWidth={s*0.02} opacity={0.6} />
-    </Svg>
-  );
-}
-
 // ─── App Store badge ─────────────────────────────────────────────────────────────────────
 function AppStoreBadge({ width = 118, t }: { width?: number; t: CardThemeTokens }) {
   const h = width * 0.33, r = h * 0.28;
@@ -113,14 +80,12 @@ function AppStoreBadge({ width = 118, t }: { width?: number; t: CardThemeTokens 
         </SvgLG>
       </Defs>
       <Rect x={0} y={0} width={width} height={h} rx={r} ry={r} fill="url(#mbadge_bg2)" stroke={t.badgeBorder} strokeWidth={0.8} />
-      {/* "Available on the" */}
       <Svg x={0} y={0} width={width} height={h}>
         <Path
           d={`M0 0`}
           fill="none"
         />
       </Svg>
-      {/* Render badge text as RN Text overlaid via foreignObject isn't possible — use View overlay instead */}
     </Svg>
   );
 }
@@ -236,7 +201,6 @@ export default function MonthlyRecapCard({ flights, month, year, theme = "dark" 
 
         {/* TOP BRANDING */}
         <View style={s.topRow}>
-          <LogoMark size={34} />
           <View style={s.topBrand}>
             <Text style={[s.brandName, { color: tk.textPrimary }]}>Logbook</Text>
             <Text style={[s.brandSub,  { color: tk.textAccent  }]}>Flight Journal</Text>
