@@ -4,7 +4,7 @@
  * Supports dark and light themes via the `theme` prop.
  */
 import React from "react";
-import { View, Text, Image, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path, Rect, Defs, LinearGradient as SvgLG, Stop } from "react-native-svg";
 import { Flight } from "@/context/flights";
@@ -35,50 +35,6 @@ function computeRank(n: number): number {
   if (n <= 40) return 96; return 99;
 }
 
-function AppStoreBadge({ width = 148, t }: { width?: number; t: ReturnType<typeof THEMES["dark"][""] extends never ? never : typeof THEMES["dark"]> }) {
-  const h = width * 0.31;
-  const r = h * 0.26;
-  const appleH = h * 0.58;
-  const appleW = appleH * 0.814;
-  const appleX = width * 0.07;
-  const appleY = (h - appleH) / 2;
-  const aS = appleH / 1000;
-  return (
-    <Svg width={width} height={h} viewBox={`0 0 ${width} ${h}`}>
-      <Defs>
-        <SvgLG id="as_bg2" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0%" stopColor={t.badgeBg1} stopOpacity="1" />
-          <Stop offset="100%" stopColor={t.badgeBg2} stopOpacity="1" />
-        </SvgLG>
-      </Defs>
-      <Rect x={0} y={0} width={width} height={h} rx={r} ry={r}
-        fill="url(#as_bg2)" stroke={t.badgeBorder} strokeWidth={0.9} />
-      <Path
-        transform={`translate(${appleX}, ${appleY}) scale(${aS})`}
-        d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-57.8-155.5-127.4C46 790.8 0 663.5 0 541.8c0-207.4 135.4-317 269-317 71 0 130.3 46.9 174.9 46.9 42.8 0 109.8-49.5 190.5-49.5 30.5 0 110.8 2.6 173 66.3zm-180.9-157.4c32.1-38.1 55.3-91 55.3-143.9 0-7.4-.6-14.8-1.9-20.8-52.3 1.9-114.5 34.7-151.7 75.8-28.8 32.7-56.5 85-56.5 138.6 0 8.3 1.3 16.6 1.9 19.2 3.2.6 8.3 1.3 13.4 1.3 46.9 0 105.8-31.4 139.5-70.2z"
-        fill="#FFFFFF"
-        opacity={0.95}
-      />
-      <Path
-        x={appleX + appleW + width * 0.06}
-        y={h * 0.38}
-        fontSize={h * 0.26}
-        fill="rgba(255,255,255,0.60)"
-        fontFamily="DMSans_400Regular"
-        letterSpacing={0.4}
-      />
-      <Path
-        x={appleX + appleW + width * 0.06}
-        y={h * 0.76}
-        fontSize={h * 0.40}
-        fill="#FFFFFF"
-        fontFamily="DMSans_700Bold"
-        letterSpacing={-0.3}
-      />
-    </Svg>
-  );
-}
-
 export interface StoryCardProps {
   flights: Flight[];
   periodLabel: string;
@@ -105,8 +61,8 @@ export default function StoryCard({ flights, periodLabel, theme = "dark" }: Stor
 
   const isAllTime = periodLabel.toLowerCase() === "all time";
   const headline  = isAllTime
-    ? `You’ve taken ${count} flight${count !== 1 ? "s" : ""} — all time`
-    : `You’ve taken ${count} flight${count !== 1 ? "s" : ""} in ${periodLabel}`;
+    ? `You've taken ${count} flight${count !== 1 ? "s" : ""} — all time`
+    : `You've taken ${count} flight${count !== 1 ? "s" : ""} in ${periodLabel}`;
 
   return (
     <View style={[c.card, { backgroundColor: tk.cardBg }]}>
@@ -124,7 +80,6 @@ export default function StoryCard({ flights, periodLabel, theme = "dark" }: Stor
 
         {/* TOP BRANDING */}
         <View style={c.topRow}>
-          <Image source={require("@/assets/images/icon.png")} style={c.logoIcon} resizeMode="cover" />
           <View style={c.topBrand}>
             <Text style={[c.brandName, { color: tk.textPrimary }]}>Logbook</Text>
             <Text style={[c.brandSub, { color: tk.textAccent }]}>Flight Journal</Text>
@@ -144,7 +99,7 @@ export default function StoryCard({ flights, periodLabel, theme = "dark" }: Stor
         {/* PERIOD + HEADLINE */}
         <View style={c.headlineBlock}>
           <Text style={[c.headlinePeriod, { color: tk.textMuted }]}>
-            {`${isAllTime ? "ALL TIME" : periodLabel.toUpperCase()} · YEAR RECAP`}
+            {`${isAllTime ? "ALL TIME" : periodLabel.toUpperCase()} \u00B7 YEAR RECAP`}
           </Text>
           <Text style={[c.headline, { color: tk.textPrimary }]}>{headline}</Text>
         </View>
@@ -162,7 +117,7 @@ export default function StoryCard({ flights, periodLabel, theme = "dark" }: Stor
           <View style={[c.statDivider, { backgroundColor: tk.dividerColor }]} />
           <StatItem icon="time" color="#F59E0B" value={formatHours(flightMin)} label="in air" tk={tk} />
           <View style={[c.statDivider, { backgroundColor: tk.dividerColor }]} />
-          <StatItem icon="leaf" color="#10B981" value={`${formatNum(co2)}kg`} label="CO₂" tk={tk} />
+          <StatItem icon="leaf" color="#10B981" value={`${formatNum(co2)}kg`} label="CO\u2082" tk={tk} />
           {delayMin > 0 && (
             <><View style={[c.statDivider, { backgroundColor: tk.dividerColor }]} />
             <StatItem icon="hourglass" color="#EF4444" value={formatHours(delayMin)} label="delayed" tk={tk} /></>
@@ -173,19 +128,19 @@ export default function StoryCard({ flights, periodLabel, theme = "dark" }: Stor
         <View style={c.factsBlock}>
           {timeFact && (
             <View style={[c.factRow, { backgroundColor: tk.factBg, borderColor: tk.factBorder }]}>
-              <Text style={c.factEmoji}>{"⏰"}</Text>
+              <Text style={c.factEmoji}>{"\u23F0"}</Text>
               <Text style={[c.factText, { color: tk.textSecondary }]}>
                 <Text style={[c.factHighlight, { color: tk.textPrimary }]}>{formatHours(flightMin)} in the air.</Text>
-                {` That’s `}{timeFact}
+                {` That's `}{timeFact}
               </Text>
             </View>
           )}
           {co2Fact && (
             <View style={[c.factRow, { backgroundColor: tk.factBg, borderColor: tk.factBorder }]}>
-              <Text style={c.factEmoji}>{"🍃"}</Text>
+              <Text style={c.factEmoji}>{"\uD83C\uDF43"}</Text>
               <Text style={[c.factText, { color: tk.textSecondary }]}>
-                <Text style={[c.factHighlight, { color: tk.textPrimary }]}>{formatNum(co2)} kg CO₂.</Text>
-                {` That’s like `}{co2Fact}
+                <Text style={[c.factHighlight, { color: tk.textPrimary }]}>{formatNum(co2)} kg CO\u2082.</Text>
+                {` That's like `}{co2Fact}
               </Text>
             </View>
           )}
@@ -270,7 +225,6 @@ const c = StyleSheet.create({
   inner: {flex:1,paddingHorizontal:32,paddingTop:38,paddingBottom:30,justifyContent:"space-between"},
 
   topRow:   {flexDirection:"row",alignItems:"center",gap:12},
-  logoIcon: {width:52,height:52,borderRadius:52*0.22,overflow:"hidden"},
   topBrand: {flex:1,gap:2},
   brandName:{fontSize:26,fontFamily:"DMSans_700Bold",letterSpacing:-0.5,lineHeight:28},
   brandSub: {fontSize:12,fontFamily:"DMSans_400Regular",letterSpacing:0.6},
