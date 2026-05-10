@@ -32,11 +32,10 @@ import {
   cancelFlightReminder,
   requestNotificationPermission,
 } from "@/utils/notifications";
+import { useAddToWallet } from "@/hooks/useAddToWallet";
 
 // ---------------------------------------------------------------------------
 // Lazy loaders for optional native packages
-// expo-calendar requires a native rebuild — lazy load so the app doesn't
-// crash on older builds that don't yet have the native module compiled in.
 // ---------------------------------------------------------------------------
 type CalendarModule = typeof import("expo-calendar");
 let _cal: CalendarModule | null | undefined = undefined;
@@ -238,10 +237,8 @@ async function addFlightToCalendar(flight: {
   const { status } = await Cal.requestCalendarPermissionsAsync();
   if (status !== "granted") return "denied";
 
-  // Parse times as local-time Date objects.
   const startDate = parseLocalDateTime(flight.date, flight.departureTime);
   const rawEnd    = parseLocalDateTime(flight.date, flight.arrivalTime);
-  // If arrival is before departure (overnight flight), add a day.
   const endDate   = rawEnd <= startDate
     ? new Date(rawEnd.getTime() + 24 * 60 * 60 * 1000)
     : rawEnd;
@@ -260,7 +257,6 @@ async function addFlightToCalendar(flight: {
 
   const calendars = await Cal.getCalendarsAsync(Cal.EntityTypes.EVENT);
 
-  // Prefer iCloud, then any writable local calendar.
   const defaultCal =
     calendars.find((c) => c.allowsModifications && c.source?.name === "iCloud") ??
     calendars.find((c) => c.allowsModifications && c.source?.isLocalAccount !== false) ??
@@ -268,11 +264,6 @@ async function addFlightToCalendar(flight: {
 
   if (!defaultCal) return "no_calendar";
 
-  // expo-calendar's createEventAsync on iOS requires Date objects (not strings)
-  // and must NOT receive timeZone:'local' — that is not a valid IANA tz identifier
-  // and causes the native saveEventAsync to throw. Omitting timeZone lets the
-  // system use the device's current timezone, which is the correct behaviour
-  // for flight times that are already in local time.
   await Cal.createEventAsync(defaultCal.id, {
     title: `${flight.flightCode}  ${flight.departureAirport} \u2192 ${flight.arrivalAirport}`,
     startDate,
@@ -298,13 +289,15 @@ export default function FlightDetailScreen() {
   const [calendarAdded, setCalendarAdded] = useState(false);
   const [togglingOffset, setTogglingOffset] = useState<ReminderOffset | null>(null);
 
+  // ─── Apple Wallet ─────────────────────────────────────────────────────────
+  const { addToWallet, isLoading: walletLoading } = useAddToWallet();
+
   const topPad    = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom + 20;
 
   const TODAY      = new Date().toISOString().substring(0, 10);
   const isUpcoming = !!flight && flight.date >= TODAY;
 
-  // Calendar available once native module is compiled in (after rebuild)
   const calendarAvailable = isUpcoming && Platform.OS !== "web" && getCal() !== null;
 
   const { scheduled, refresh: refreshReminders } = useScheduledReminders(flight?.id ?? "");
@@ -386,6 +379,32 @@ export default function FlightDetailScreen() {
     }
   }
 
+  // ─── Add to Apple Wallet ─────────────────────────────────────────────────
+  function handleAddToWallet() {
+    if (!flight) return;
+    addToWallet({
+      flightCode:        flight.flightCode,
+      airlineCode:       flight.airlineCode,
+      airline:           flight.airline,
+      departureAirport:  flight.departureAirport,
+      arrivalAirport:    flight.arrivalAirport,
+      departureCity:     flight.departureCity,
+      arrivalCity:       flight.arrivalCity,
+      date:              flight.date,
+      departureTime:     flight.departureTime,
+      arrivalTime:       flight.arrivalTime,
+      seat:              flight.seat,
+      boardingGroup:     flight.boardingGroup,
+      passengerName:     flight.passengerName,
+      bookingRef:        flight.bookingRef,
+      aircraft:          flight.aircraft,
+      departureTerminal: flight.departureTerminal,
+      departureGate:     flight.departureGate,
+      arrivalTerminal:   flight.arrivalTerminal,
+      arrivalGate:       flight.arrivalGate,
+    });
+  }
+
   // ─── Per-flight reminder toggle ──────────────────────────────────────────
   async function handleReminderToggle(offset: ReminderOffset, currentlyOn: boolean) {
     Haptics.selectionAsync();
@@ -438,7 +457,6 @@ export default function FlightDetailScreen() {
 
   const activeReminderCount = scheduled.size;
 
-  // Suppress unused variable warning — calendarAvailable is read in JSX below
   void calendarAvailable;
 
   return (
@@ -593,7 +611,7 @@ export default function FlightDetailScreen() {
 
         {/* ─── ADD TO CALENDAR BUTTON (upcoming flights, iOS only) ─── */}
         {isUpcoming && Platform.OS !== "web" && (
-          <Animated.View entering={FadeInDown.delay(55).springify()} style={{ marginBottom: 14 }}>
+          <Animated.View entering={FadeInDown.delay(55).springify()} style={{ marginBottom: 10 }}>
             <Pressable
               onPress={handleAddToCalendar}
               disabled={addingCalendar}
@@ -632,9 +650,42 @@ export default function FlightDetailScreen() {
           </Animated.View>
         )}
 
+        {/* ─── ADD TO APPLE WALLET BUTTON (iOS only, all flights) ─── */}
+        {Platform.OS === "ios" && (
+          <Animated.View entering={FadeInDown.delay(70).springify()} style={{ marginBottom: 14 }}>
+            <Pressable
+              onPress={handleAddToWallet}
+              disabled={walletLoading}
+              style={({ pressed }) => ([
+                {
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 10,
+                  paddingVertical: 16,
+                  borderRadius: 16,
+                  backgroundColor: walletLoading ? "#1a1a1a" : "#000000",
+                  borderWidth: 1,
+                  borderColor: "#333333",
+                },
+                { opacity: walletLoading || pressed ? 0.75 : 1 },
+              ])}
+            >
+              {walletLoading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="wallet" size={20} color="#FFFFFF" />
+              )}
+              <Text style={{ fontSize: 15, color: "#FFFFFF", fontFamily: "DMSans_700Bold" }}>
+                {walletLoading ? "Preparing Pass\u2026" : "Add to Apple Wallet"}
+              </Text>
+            </Pressable>
+          </Animated.View>
+        )}
+
         {/* ─── REMINDERS BUTTON ─── */}
         {remindersAvailable && (
-          <Animated.View entering={FadeInDown.delay(65).springify()} style={{ marginBottom: 20 }}>
+          <Animated.View entering={FadeInDown.delay(85).springify()} style={{ marginBottom: 20 }}>
             <Pressable
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
               style={({ pressed }) => [{
@@ -662,7 +713,7 @@ export default function FlightDetailScreen() {
         )}
 
         {/* ─── STATS ROW ─── */}
-        <Animated.View entering={FadeInDown.delay(80).springify()} style={{
+        <Animated.View entering={FadeInDown.delay(100).springify()} style={{
           backgroundColor: C.card, borderRadius: 16, flexDirection: "row",
           marginBottom: 24, borderWidth: 1, borderColor: C.border, overflow: "hidden",
         }}>
@@ -695,7 +746,7 @@ export default function FlightDetailScreen() {
 
         {/* ─── PER-FLIGHT REMINDERS ─── */}
         {remindersAvailable && (
-          <Animated.View entering={FadeInDown.delay(120).springify()} style={{ marginBottom: 16 }}>
+          <Animated.View entering={FadeInDown.delay(140).springify()} style={{ marginBottom: 16 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 10 }}>
               <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase" }}>Flight Reminders</Text>
               {activeReminderCount > 0 && (
@@ -785,7 +836,7 @@ export default function FlightDetailScreen() {
         )}
 
         {/* ─── FLIGHT INFO ─── */}
-        <Animated.View entering={FadeInDown.delay(isUpcoming ? 160 : 120).springify()} style={{ marginBottom: 16 }}>
+        <Animated.View entering={FadeInDown.delay(isUpcoming ? 180 : 120).springify()} style={{ marginBottom: 16 }}>
           <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Flight Info</Text>
           <View style={{ backgroundColor: C.card, borderRadius: 16, paddingHorizontal: 16, borderWidth: 1, borderColor: C.border }}>
             <InfoRow label="Airline"  value={flight.airline} />
@@ -815,7 +866,7 @@ export default function FlightDetailScreen() {
         </Animated.View>
 
         {/* ─── ENV IMPACT ─── */}
-        <Animated.View entering={FadeInDown.delay(isUpcoming ? 200 : 160).springify()} style={{ marginBottom: 16 }}>
+        <Animated.View entering={FadeInDown.delay(isUpcoming ? 220 : 160).springify()} style={{ marginBottom: 16 }}>
           <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 10 }}>Environmental Impact</Text>
           <View style={{ backgroundColor: C.card, borderRadius: 16, paddingHorizontal: 16, borderWidth: 1, borderColor: C.border }}>
             <InfoRow label="CO\u2082 Emitted"   value={`${flight.co2Kg} kg`} accent={C.green} />
