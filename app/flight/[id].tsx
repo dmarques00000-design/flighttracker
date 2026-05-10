@@ -33,6 +33,7 @@ import {
   requestNotificationPermission,
 } from "@/utils/notifications";
 import { useAddToWallet } from "@/hooks/useAddToWallet";
+import { openAirportInMaps } from "@/utils/appleMaps";
 
 // ---------------------------------------------------------------------------
 // Lazy loaders for optional native packages
@@ -92,7 +93,20 @@ const OFFSET_SUBLABEL_MAP: Record<ReminderOffset, string> = {
   3:  "Final call \u2014 check in & gate ready",
 };
 
-function InfoRow({ label, value, accent }: { label: string; value: string; accent?: string }) {
+// ---------------------------------------------------------------------------
+// InfoRow — optionally renders an "Open in Maps" chip on the right
+// ---------------------------------------------------------------------------
+function InfoRow({
+  label,
+  value,
+  accent,
+  onMaps,
+}: {
+  label: string;
+  value: string;
+  accent?: string;
+  onMaps?: () => void;
+}) {
   const C = useColors();
   return (
     <View style={{
@@ -100,10 +114,33 @@ function InfoRow({ label, value, accent }: { label: string; value: string; accen
       paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.border,
     }}>
       <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_400Regular", flexShrink: 0 }}>{label}</Text>
-      <Text style={[
-        { fontSize: 14, color: C.text, fontFamily: "DMSans_500Medium", textAlign: "right", flex: 1, marginLeft: 16 },
-        accent ? { color: accent } : undefined,
-      ]}>{value}</Text>
+
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, justifyContent: "flex-end", marginLeft: 16 }}>
+        <Text style={[
+          { fontSize: 14, color: C.text, fontFamily: "DMSans_500Medium", textAlign: "right", flexShrink: 1 },
+          accent ? { color: accent } : undefined,
+        ]}>{value}</Text>
+
+        {onMaps && Platform.OS === "ios" && (
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onMaps(); }}
+            style={({ pressed }) => ([
+              {
+                flexDirection: "row", alignItems: "center", gap: 3,
+                backgroundColor: C.accentDim,
+                borderWidth: 1, borderColor: C.accent + "50",
+                paddingHorizontal: 8, paddingVertical: 4,
+                borderRadius: 10, flexShrink: 0,
+              },
+              { opacity: pressed ? 0.7 : 1 },
+            ])}
+            hitSlop={6}
+          >
+            <Ionicons name="map-outline" size={12} color={C.accent} />
+            <Text style={{ fontSize: 11, color: C.accent, fontFamily: "DMSans_600SemiBold" }}>Maps</Text>
+          </Pressable>
+        )}
+      </View>
     </View>
   );
 }
@@ -289,7 +326,7 @@ export default function FlightDetailScreen() {
   const [calendarAdded, setCalendarAdded] = useState(false);
   const [togglingOffset, setTogglingOffset] = useState<ReminderOffset | null>(null);
 
-  // ─── Apple Wallet ─────────────────────────────────────────────────────────
+  // ─── Apple Wallet ────────────────────────────────────────────────────────
   const { addToWallet, isLoading: walletLoading } = useAddToWallet();
 
   const topPad    = Platform.OS === "web" ? 67 : insets.top;
@@ -306,7 +343,7 @@ export default function FlightDetailScreen() {
 
   const remindersAvailable = isUpcoming && Platform.OS !== "web" && getNotif() !== null;
 
-  // ─── Share ───────────────────────────────────────────────────────────────
+  // ─── Share ────────────────────────────────────────────────────────────────
   async function handleShare() {
     if (!flight) return;
     setSharing(true);
@@ -335,7 +372,7 @@ export default function FlightDetailScreen() {
     }
   }
 
-  // ─── Add to Calendar ─────────────────────────────────────────────────────
+  // ─── Add to Calendar ──────────────────────────────────────────────────────
   async function handleAddToCalendar() {
     if (!flight) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -379,7 +416,7 @@ export default function FlightDetailScreen() {
     }
   }
 
-  // ─── Add to Apple Wallet ─────────────────────────────────────────────────
+  // ─── Add to Apple Wallet ──────────────────────────────────────────────────
   function handleAddToWallet() {
     if (!flight) return;
     addToWallet({
@@ -405,7 +442,28 @@ export default function FlightDetailScreen() {
     });
   }
 
-  // ─── Per-flight reminder toggle ──────────────────────────────────────────
+  // ─── Apple Maps handlers ──────────────────────────────────────────────────
+  function handleOpenDepartureInMaps() {
+    openAirportInMaps(
+      flight.departureAirport,
+      flight.departureCity,
+    ).catch((e) => {
+      console.warn("Maps open failed:", e);
+      Alert.alert("Maps Unavailable", "Could not open Apple Maps on this device.");
+    });
+  }
+
+  function handleOpenArrivalInMaps() {
+    openAirportInMaps(
+      flight.arrivalAirport,
+      flight.arrivalCity,
+    ).catch((e) => {
+      console.warn("Maps open failed:", e);
+      Alert.alert("Maps Unavailable", "Could not open Apple Maps on this device.");
+    });
+  }
+
+  // ─── Per-flight reminder toggle ───────────────────────────────────────────
   async function handleReminderToggle(offset: ReminderOffset, currentlyOn: boolean) {
     Haptics.selectionAsync();
     setTogglingOffset(offset);
@@ -650,7 +708,7 @@ export default function FlightDetailScreen() {
           </Animated.View>
         )}
 
-        {/* ─── ADD TO APPLE WALLET BUTTON (iOS only, all flights) ─── */}
+        {/* ─── ADD TO APPLE WALLET BUTTON (iOS only) ─── */}
         {Platform.OS === "ios" && (
           <Animated.View entering={FadeInDown.delay(70).springify()} style={{ marginBottom: 14 }}>
             <Pressable
@@ -732,7 +790,7 @@ export default function FlightDetailScreen() {
           <View style={{ flex: 1, alignItems: "center", paddingVertical: 18, gap: 4, paddingHorizontal: 4 }}>
             <Ionicons name="leaf-outline" size={18} color={C.green} />
             <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_700Bold" }} adjustsFontSizeToFit numberOfLines={1}>{flight.co2Kg}</Text>
-            <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular" }}>kg CO₂</Text>
+            <Text style={{ fontSize: 10, color: C.textSec, fontFamily: "DMSans_400Regular" }}>kg CO\u2082</Text>
           </View>
           <View style={{ width: 1, backgroundColor: C.border, marginVertical: 12 }} />
           <View style={{ flex: 1, alignItems: "center", paddingVertical: 18, gap: 4, paddingHorizontal: 4 }}>
@@ -847,10 +905,12 @@ export default function FlightDetailScreen() {
             <InfoRow
               label="Departure"
               value={`${flight.departureAirport}  \u00b7  ${flight.departureTime}${flight.departureTerminal ? `  \u00b7  T${flight.departureTerminal}` : ""}${flight.departureGate ? `  \u00b7  Gate ${flight.departureGate}` : ""}`}
+              onMaps={handleOpenDepartureInMaps}
             />
             <InfoRow
               label="Arrival"
               value={`${flight.arrivalAirport}  \u00b7  ${flight.arrivalTime} (local)${flight.arrivalTerminal ? `  \u00b7  T${flight.arrivalTerminal}` : ""}${flight.arrivalGate ? `  \u00b7  Gate ${flight.arrivalGate}` : ""}`}
+              onMaps={handleOpenArrivalInMaps}
             />
             {actualDuration !== null && (
               <InfoRow label="Block Time" value={`${actualDuration} (tz-corrected)  \u00b7  ${scheduledDuration} scheduled`} />
