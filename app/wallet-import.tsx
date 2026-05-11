@@ -6,8 +6,9 @@
  *  1. Scan Boarding Pass  → camera (boarding-pass-scan.tsx) → BCBP barcode
  *  2. Pick from Gallery   → image picker → scanFromURLAsync → BCBP barcode
  *  3. Import from Wallet  → document picker → .pkpass file → pkpassParser
+ *  4. Share from Wallet   → iOS share sheet → fileUri param → pkpassParser
  *
- * All three paths converge at mergePasses() → flight enrichment → addFlight()
+ * All paths converge at mergePasses() → flight enrichment → addFlight()
  */
 import React, { useState, useEffect } from "react";
 import {
@@ -54,7 +55,7 @@ interface ScannedPass extends BCBPFlight {
   arrivalTime: string;
   aircraft: string;
   /** source lets us show a subtle badge on the card */
-  source?: "camera" | "gallery" | "pkpass";
+  source?: "camera" | "gallery" | "pkpass" | "wallet-share";
 }
 
 // ─── PassCard ─────────────────────────────────────────────────────────────────
@@ -76,9 +77,10 @@ function PassCard({
   const isUpcoming = pass.date >= new Date().toISOString().substring(0, 10);
 
   const sourceBadge: Record<string, { icon: string; label: string }> = {
-    pkpass:  { icon: "wallet-outline",  label: "Wallet" },
-    gallery: { icon: "images-outline",  label: "Gallery" },
-    camera:  { icon: "scan-outline",    label: "Scan" },
+    pkpass:        { icon: "wallet-outline",  label: "Wallet" },
+    gallery:       { icon: "images-outline",  label: "Gallery" },
+    camera:        { icon: "scan-outline",    label: "Scan" },
+    "wallet-share": { icon: "share-outline",   label: "Shared" },
   };
   const badge = pass.source ? sourceBadge[pass.source] : null;
 
@@ -171,7 +173,7 @@ export default function WalletImportScreen() {
   const C = useColors();
   const insets = useSafeAreaInsets();
   const { flights, addFlight } = useFlights();
-  const params = useLocalSearchParams<{ scanned?: string }>();
+  const params = useLocalSearchParams<{ scanned?: string; fileUri?: string }>();
 
   const [passes, setPasses] = useState<ScannedPass[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -192,6 +194,43 @@ export default function WalletImportScreen() {
       Alert.alert("Scan Error", "Could not read the boarding pass barcode. Try scanning again.");
     }
   }, [params.scanned]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Receive .pkpass file shared from Apple Wallet (iOS share sheet) ───────
+  useEffect(() => {
+    if (!params.fileUri) return;
+    handleImportFromUri(decodeURIComponent(params.fileUri));
+  }, [params.fileUri]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Import a .pkpass directly from a known URI (share-sheet path) ─────────
+  async function handleImportFromUri(uri: string) {
+    setImportState("scanning");
+    const parseResult = await parsePkpassFile(uri);
+    setImportState("idle");
+
+    if (!parseResult.ok) {
+      Alert.alert(
+        "Could Not Read Pass",
+        parseResult.error + "\n\nMake sure you shared a valid boarding pass .pkpass file from Apple Wallet."
+      );
+      return;
+    }
+
+    const bcbpFlights: BCBPFlight[] = parseResult.flights.map((f) => ({
+      flightCode:       f.flightCode,
+      airlineCode:      f.airlineCode,
+      flightNumber:     f.flightNumber,
+      departureAirport: f.departureAirport,
+      arrivalAirport:   f.arrivalAirport,
+      date:             f.date,
+      seat:             f.seat,
+      boardingGroup:    f.boardingGroup,
+      passengerName:    f.passengerName,
+      bookingRef:       f.bookingRef,
+    }));
+
+    mergePasses(bcbpFlights, "wallet-share");
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
 
   // ── Shared helper: merge new BCBPFlights into state ───────────────────────
   function mergePasses(decoded: BCBPFlight[], source?: ScannedPass["source"]) {
@@ -229,8 +268,6 @@ export default function WalletImportScreen() {
     let result;
     try {
       result = await DocumentPicker.getDocumentAsync({
-        // Accept .pkpass files; also allow * as fallback since some Android
-        // file managers don't know the MIME type.
         type: Platform.OS === "ios"
           ? ["com.apple.pkpass", "public.data"]
           : ["application/octet-stream", "*/*"],
@@ -245,11 +282,8 @@ export default function WalletImportScreen() {
     if (result.canceled || !result.assets?.[0]) return;
 
     const asset = result.assets[0];
-
-    // Validate extension
     const name = asset.name ?? asset.uri ?? "";
     if (!name.toLowerCase().endsWith(".pkpass") && !name.toLowerCase().endsWith(".pkpass)")) {
-      // On iOS the system will only show .pkpass files; on Android warn if wrong type selected
       Alert.alert(
         "Wrong File Type",
         "Please select a .pkpass boarding pass file. You can export it by tapping Share on a pass in Apple Wallet."
@@ -258,9 +292,7 @@ export default function WalletImportScreen() {
     }
 
     setImportState("scanning");
-
     const parseResult = await parsePkpassFile(asset.uri);
-
     setImportState("idle");
 
     if (!parseResult.ok) {
@@ -271,7 +303,6 @@ export default function WalletImportScreen() {
       return;
     }
 
-    // Convert PkpassFlight → BCBPFlight shape so mergePasses() can handle it
     const bcbpFlights: BCBPFlight[] = parseResult.flights.map((f) => ({
       flightCode:       f.flightCode,
       airlineCode:      f.airlineCode,
@@ -494,7 +525,7 @@ export default function WalletImportScreen() {
             {/* Feature list */}
             <View style={{ width: "100%", gap: 12, marginBottom: 32 }}>
               {[
-                { icon: "wallet-outline",        text: "Export a pass from Wallet → Share → Logbook (.pkpass file)" },
+                { icon: "wallet-outline",        text: "Share a pass from Wallet → tap ··· → Share → Logbook" },
                 { icon: "shield-checkmark-outline", text: "100% private — decoded on-device, nothing uploaded" },
                 { icon: "time-outline",           text: "Works with old passes too — build your full flight history" },
                 { icon: "flash-outline",          text: "Real flight data enriched automatically via API" },
@@ -512,8 +543,8 @@ export default function WalletImportScreen() {
             <View style={{ width: "100%", flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: C.accentDim, borderRadius: 12, padding: 14, marginBottom: 28, borderWidth: 1, borderColor: C.accent + "33" }}>
               <Ionicons name="information-circle-outline" size={16} color={C.accent} style={{ marginTop: 1 }} />
               <Text style={{ flex: 1, fontSize: 13, color: C.text, fontFamily: "DMSans_400Regular", lineHeight: 20 }}>
-                <Text style={{ fontFamily: "DMSans_700Bold" }}>How to export from Wallet:{"\n"}</Text>
-                Open Wallet → tap a boarding pass → tap ··· (top-right) → Share → select Logbook or Save to Files, then import below.
+                <Text style={{ fontFamily: "DMSans_700Bold" }}>How to share from Wallet:{"\n"}</Text>
+                Open Wallet → tap a boarding pass → tap ··· (top-right) → Share → tap Logbook. The pass imports automatically.
               </Text>
             </View>
 

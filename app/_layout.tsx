@@ -1,6 +1,8 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import * as Linking from "expo-linking";
+import { router } from "expo-router";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -22,9 +24,31 @@ import {
 
 SplashScreen.preventAutoHideAsync();
 
+/**
+ * Route an incoming URL to the wallet-import screen if it looks like a pkpass.
+ * Called both on cold-start (getInitialURL) and warm (Linking event).
+ */
+function handleIncomingUrl(url: string | null) {
+  if (!url) return;
+  const lower = url.toLowerCase();
+  if (lower.includes(".pkpass") || lower.includes("pkpass")) {
+    router.push({ pathname: "/wallet-import", params: { fileUri: url } });
+  }
+}
+
 function RootLayoutNav() {
   const { isDark } = useTheme();
   const C = useColors();
+
+  useEffect(() => {
+    // Cold-start: app was launched by tapping a shared .pkpass
+    Linking.getInitialURL().then(handleIncomingUrl);
+
+    // Warm: app already running when user shares from Wallet
+    const sub = Linking.addEventListener("url", ({ url }) => handleIncomingUrl(url));
+    return () => sub.remove();
+  }, []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
       <KeyboardProvider>

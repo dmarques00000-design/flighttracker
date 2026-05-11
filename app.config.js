@@ -60,8 +60,29 @@ export default {
           CFBundleTypeName: "Boarding Pass",
           CFBundleTypeRole: "Viewer",
           LSHandlerRank: "Alternate",
-          LSItemContentTypes: ["com.apple.pkpass"],
+          LSItemContentTypes: ["com.apple.pkpass", "com.apple.pkpasses"],
           CFBundleTypeIconFiles: [],
+        },
+      ],
+      // Register the UTI so iOS knows what com.apple.pkpass is
+      UTImportedTypeDeclarations: [
+        {
+          UTTypeIdentifier: "com.apple.pkpass",
+          UTTypeDescription: "Apple Wallet Pass",
+          UTTypeConformsTo: ["public.data", "public.zip-based"],
+          UTTypeTagSpecification: {
+            "public.filename-extension": ["pkpass"],
+            "public.mime-type": "application/vnd.apple.pkpass",
+          },
+        },
+        {
+          UTTypeIdentifier: "com.apple.pkpasses",
+          UTTypeDescription: "Apple Wallet Passes Bundle",
+          UTTypeConformsTo: ["public.data", "public.zip-based"],
+          UTTypeTagSpecification: {
+            "public.filename-extension": ["pkpasses"],
+            "public.mime-type": "application/vnd.apple.pkpasses",
+          },
         },
       ],
     },
