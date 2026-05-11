@@ -250,7 +250,7 @@ function StatCard({ label, value, icon, accent }: { label: string; value: string
   return (
     <View style={{ width: "48%", backgroundColor: C.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: C.border }}>
       <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: accent + "1A", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
-        <Ionicons name={icon as never} size={18} color={accent} />
+        <Ionicons name={icon as never} size={18} color={accent} accessible={false} />
       </View>
       <Text style={{ fontSize: 22, color: C.text, fontFamily: "DMSans_700Bold" }} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
       <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 2 }}>{label}</Text>
@@ -271,13 +271,16 @@ function NextFlightCard({ flight, today }: { flight: Flight; today: string }) {
         onPressIn={() => { scale.value = withSpring(0.97, { stiffness: 300 }); }}
         onPressOut={() => { scale.value = withSpring(1, { stiffness: 300 }); }}
         onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push({ pathname: "/flight/[id]", params: { id: flight.id } }); }}
+        accessibilityRole="button"
+        accessibilityLabel={`Next flight: ${flight.departureAirport} to ${flight.arrivalAirport}, ${flight.flightCode}, ${urgencyLabel}`}
+        accessibilityHint="Opens flight details"
       >
         <View style={{ borderRadius: 22, overflow: "hidden", borderWidth: 1.5, borderColor: urgencyColor + "55", backgroundColor: C.card, shadowColor: urgencyColor, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.18, shadowRadius: 18, elevation: 6 }}>
           <View style={{ height: 4, backgroundColor: urgencyColor }} />
           <View style={{ padding: 20 }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <Ionicons name="airplane-outline" size={14} color={urgencyColor} />
+                <Ionicons name="airplane-outline" size={14} color={urgencyColor} accessible={false} />
                 <Text style={{ fontSize: 11, color: urgencyColor, fontFamily: "DMSans_700Bold", letterSpacing: 1, textTransform: "uppercase" }}>Next Flight</Text>
               </View>
               <View style={{ backgroundColor: urgencyColor + "22", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 }}>
@@ -292,7 +295,7 @@ function NextFlightCard({ flight, today }: { flight: Flight; today: string }) {
               <View style={{ flex: 1, flexDirection: "row", alignItems: "center", marginHorizontal: 12, gap: 4 }}>
                 <View style={{ flex: 1, height: 1.5, backgroundColor: C.border }} />
                 <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: urgencyColor + "18", alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="airplane" size={14} color={urgencyColor} />
+                  <Ionicons name="airplane" size={14} color={urgencyColor} accessible={false} />
                 </View>
                 <View style={{ flex: 1, height: 1.5, backgroundColor: C.border }} />
               </View>
@@ -303,16 +306,16 @@ function NextFlightCard({ flight, today }: { flight: Flight; today: string }) {
             </View>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 14, borderTopWidth: 1, borderTopColor: C.border }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <Ionicons name="calendar-outline" size={13} color={C.textMuted} />
+                <Ionicons name="calendar-outline" size={13} color={C.textMuted} accessible={false} />
                 <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium" }}>{formatDateShort(flight.date)}</Text>
               </View>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <Ionicons name="business-outline" size={13} color={C.textMuted} />
+                <Ionicons name="business-outline" size={13} color={C.textMuted} accessible={false} />
                 <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium" }}>{flight.flightCode}</Text>
               </View>
               {flight.durationMinutes > 0 && (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Ionicons name="time-outline" size={13} color={C.textMuted} />
+                  <Ionicons name="time-outline" size={13} color={C.textMuted} accessible={false} />
                   <Text style={{ fontSize: 13, color: C.textSec, fontFamily: "DMSans_500Medium" }}>{formatHours(flight.durationMinutes)}</Text>
                 </View>
               )}
@@ -327,8 +330,14 @@ function NextFlightCard({ flight, today }: { flight: Flight; today: string }) {
 function FlightRow({ flight, isUpcoming, today }: { flight: Flight; isUpcoming: boolean; today: string }) {
   const C = useColors();
   const days = isUpcoming ? daysUntil(flight.date, today) : null;
+  const statusLabel = flight.status === "delayed" ? "Delayed" : flight.status === "cancelled" ? "Cancelled" : "Completed";
+  const daysLabel = days === 0 ? "Today" : days === 1 ? "Tomorrow" : days !== null ? `In ${days} days` : "";
   return (
-    <Pressable onPress={() => router.push({ pathname: "/flight/[id]", params: { id: flight.id } })}
+    <Pressable
+      onPress={() => router.push({ pathname: "/flight/[id]", params: { id: flight.id } })}
+      accessibilityRole="button"
+      accessibilityLabel={`${flight.departureAirport} to ${flight.arrivalAirport}, ${flight.flightCode}, ${formatDateShort(flight.date)}${isUpcoming ? `, ${daysLabel}` : `, ${statusLabel}`}`}
+      accessibilityHint="Opens flight details"
       style={({ pressed }) => [{ flexDirection: "row", backgroundColor: C.card, borderRadius: 14, marginBottom: 8, borderWidth: 1, borderColor: C.border, overflow: "hidden", opacity: pressed ? 0.8 : 1 }]}>
       <View style={{ width: 3, backgroundColor: isUpcoming ? C.accent : C.green }} />
       <View style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 13 }}>
@@ -336,7 +345,7 @@ function FlightRow({ flight, isUpcoming, today }: { flight: Flight; isUpcoming: 
           <Text style={{ fontSize: 18, color: C.text, fontFamily: "DMSans_700Bold" }}>{flight.departureAirport}</Text>
           <View style={{ flex: 1, flexDirection: "row", alignItems: "center", marginHorizontal: 8, gap: 3 }}>
             <View style={{ flex: 1, height: 1, backgroundColor: C.border }} />
-            <Ionicons name="airplane" size={12} color={isUpcoming ? C.accent : C.green} />
+            <Ionicons name="airplane" size={12} color={isUpcoming ? C.accent : C.green} accessible={false} />
             <View style={{ flex: 1, height: 1, backgroundColor: C.border }} />
           </View>
           <Text style={{ fontSize: 18, color: C.text, fontFamily: "DMSans_700Bold" }}>{flight.arrivalAirport}</Text>
@@ -352,7 +361,7 @@ function FlightRow({ flight, isUpcoming, today }: { flight: Flight; isUpcoming: 
           ) : (
             <View style={{ paddingHorizontal: 9, paddingVertical: 3, borderRadius: 8, backgroundColor: C.green + "18" }}>
               <Text style={{ fontSize: 11, fontFamily: "DMSans_700Bold", color: C.green }}>
-                {flight.status === "delayed" ? "Delayed" : flight.status === "cancelled" ? "Cancelled" : "Completed"}
+                {statusLabel}
               </Text>
             </View>
           )}
@@ -382,16 +391,18 @@ function HamburgerMenu({ visible, onClose, onSelect, topOffset }: { visible: boo
             <Animated.View entering={FadeIn.duration(150)} style={{ position: "absolute", top: topOffset, right: 20, width: 260, backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 24, elevation: 10 }}>
               {MENU_ITEMS.map((item, i) => (
                 <Pressable key={item.id} onPress={() => { onSelect(item.id); onClose(); }}
+                  accessibilityRole="menuitem"
+                  accessibilityLabel={item.label}
                   style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 12, backgroundColor: pressed ? C.surface : C.card },
                     i < MENU_ITEMS.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.border }]}>
                   <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name={item.icon as never} size={18} color={C.accent} />
+                    <Ionicons name={item.icon as never} size={18} color={C.accent} accessible={false} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, color: C.text,    fontFamily: "DMSans_700Bold" }}>{item.label}</Text>
                     <Text style={{ fontSize: 11, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 1 }}>{item.sub}</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={14} color={C.textMuted} />
+                  <Ionicons name="chevron-forward" size={14} color={C.textMuted} accessible={false} />
                 </Pressable>
               ))}
             </Animated.View>
@@ -408,18 +419,26 @@ function LoginPromptBanner({ onSignUp, onDismiss }: { onSignUp: () => void; onDi
     <Animated.View entering={FadeInDown.delay(30).springify()}
       style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: C.accentDim, borderRadius: 14, borderWidth: 1, borderColor: C.accent + "33", padding: 12, marginBottom: 16 }}>
       <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.accent + "22", alignItems: "center", justifyContent: "center" }}>
-        <Ionicons name="cloud-upload-outline" size={18} color={C.accent} />
+        <Ionicons name="cloud-upload-outline" size={18} color={C.accent} accessible={false} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 13, color: C.text,    fontFamily: "DMSans_700Bold" }}>Back up your flights</Text>
         <Text style={{ fontSize: 11, color: C.textSec, fontFamily: "DMSans_400Regular", marginTop: 1 }}>Create a free account to sync across devices.</Text>
       </View>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <Pressable onPress={onSignUp} style={{ backgroundColor: C.accent, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 }}>
+        <Pressable
+          onPress={onSignUp}
+          accessibilityRole="button"
+          accessibilityLabel="Sign up for a free account"
+          style={{ backgroundColor: C.accent, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20 }}>
           <Text style={{ fontSize: 12, color: C.white, fontFamily: "DMSans_700Bold" }}>Sign Up</Text>
         </Pressable>
-        <Pressable onPress={onDismiss} hitSlop={8}>
-          <Ionicons name="close" size={16} color={C.textMuted} />
+        <Pressable
+          onPress={onDismiss}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss sign-up prompt">
+          <Ionicons name="close" size={16} color={C.textMuted} accessible={false} />
         </Pressable>
       </View>
     </Animated.View>
@@ -434,10 +453,12 @@ function PeriodDropdown({ period, years, onChange }: { period: "all" | number; y
   return (
     <>
       <Pressable onPress={() => { Haptics.selectionAsync(); setOpen(true); }}
+        accessibilityRole="button"
+        accessibilityLabel={`Filter by period, currently ${label}`}
         style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", backgroundColor: C.accentDim, borderRadius: 20, borderWidth: 1, borderColor: C.accent + "55", paddingHorizontal: 12, paddingVertical: 6, opacity: pressed ? 0.8 : 1 }]}>
-        <Ionicons name="calendar-outline" size={13} color={C.accent} />
+        <Ionicons name="calendar-outline" size={13} color={C.accent} accessible={false} />
         <Text style={{ fontSize: 13, color: C.accent, fontFamily: "DMSans_700Bold" }}>{label}</Text>
-        <Ionicons name="chevron-down" size={13} color={C.accent} />
+        <Ionicons name="chevron-down" size={13} color={C.accent} accessible={false} />
       </Pressable>
       <Modal transparent animationType="fade" visible={open} onRequestClose={() => setOpen(false)}>
         <TouchableWithoutFeedback onPress={() => setOpen(false)}>
@@ -450,11 +471,14 @@ function PeriodDropdown({ period, years, onChange }: { period: "all" | number; y
                   const optLabel = opt === "all" ? "All Time" : String(opt);
                   return (
                     <Pressable key={String(opt)} onPress={() => { Haptics.selectionAsync(); onChange(opt); setOpen(false); }}
+                      accessibilityRole="radio"
+                      accessibilityLabel={optLabel}
+                      accessibilityState={{ checked: isActive }}
                       style={({ pressed }) => [{ flexDirection: "row" as const, alignItems: "center" as const, justifyContent: "space-between" as const, paddingHorizontal: 24, paddingVertical: 16, opacity: pressed ? 0.8 : 1 },
                         i < options.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.border },
                         isActive && { backgroundColor: C.accentDim }]}>
                       <Text style={{ fontSize: 16, fontFamily: isActive ? "DMSans_700Bold" : "DMSans_400Regular", color: isActive ? C.accent : C.text }}>{optLabel}</Text>
-                      {isActive && <Ionicons name="checkmark" size={16} color={C.accent} />}
+                      {isActive && <Ionicons name="checkmark" size={16} color={C.accent} accessible={false} />}
                     </Pressable>
                   );
                 })}
@@ -474,19 +498,26 @@ function HomeHeader({ isLoggedIn, avatarInitials, onProfilePress, onMenuPress }:
     <Animated.View entering={FadeInDown.delay(0).springify()} style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
       <LogbookLogo size={38} showName hideIcon />
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <Pressable onPress={onProfilePress} style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]} hitSlop={6}>
+        <Pressable
+          onPress={onProfilePress}
+          accessibilityRole="button"
+          accessibilityLabel={isLoggedIn ? "Go to profile" : "Sign in"}
+          style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}
+          hitSlop={6}>
           {isLoggedIn && avatarInitials ? (
             <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.accent, alignItems: "center", justifyContent: "center", shadowColor: C.accent, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 3 }}>
-              <Text style={{ fontSize: 13, color: C.white, fontFamily: "DMSans_700Bold" }}>{avatarInitials}</Text>
+              <Text style={{ fontSize: 13, color: C.white, fontFamily: "DMSans_700Bold" }} accessible={false}>{avatarInitials}</Text>
             </View>
           ) : (
             <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.surface, borderWidth: 1.5, borderColor: C.border, alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name="person-outline" size={18} color={C.textSec} />
+              <Ionicons name="person-outline" size={18} color={C.textSec} accessible={false} />
             </View>
           )}
         </Pressable>
         <Pressable
           onPress={onMenuPress}
+          accessibilityRole="button"
+          accessibilityLabel="Open menu"
           style={({ pressed }) => [{
             width: 44,
             height: 44,
@@ -502,9 +533,9 @@ function HomeHeader({ isLoggedIn, avatarInitials, onProfilePress, onMenuPress }:
           hitSlop={12}
           pressRetentionOffset={12}
         >
-          <View style={{ width: 18, height: 2, borderRadius: 1, backgroundColor: C.text }} />
-          <View style={{ width: 14, height: 2, borderRadius: 1, backgroundColor: C.text }} />
-          <View style={{ width: 10, height: 2, borderRadius: 1, backgroundColor: C.text }} />
+          <View style={{ width: 18, height: 2, borderRadius: 1, backgroundColor: C.text }} accessible={false} />
+          <View style={{ width: 14, height: 2, borderRadius: 1, backgroundColor: C.text }} accessible={false} />
+          <View style={{ width: 10, height: 2, borderRadius: 1, backgroundColor: C.text }} accessible={false} />
         </Pressable>
       </View>
     </Animated.View>
@@ -608,7 +639,7 @@ export default function HomeScreen() {
                   <View style={{ alignItems: "flex-end", gap: 10 }}>
                     <PeriodDropdown period={period} years={years} onChange={(p) => { Haptics.selectionAsync(); setPeriod(p); }} />
                     <View style={{ width: 52, height: 52, borderRadius: 14, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center" }}>
-                      <Ionicons name="airplane" size={28} color={C.accent} />
+                      <Ionicons name="airplane" size={28} color={C.accent} accessible={false} />
                     </View>
                   </View>
                 </View>
@@ -628,7 +659,7 @@ export default function HomeScreen() {
 
                 {stats.co2 > 0 && (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.green + "12", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 }}>
-                    <Ionicons name="leaf" size={14} color={C.green} />
+                    <Ionicons name="leaf" size={14} color={C.green} accessible={false} />
                     <Text style={{ fontSize: 13, color: C.green, fontFamily: "DMSans_500Medium", flex: 1, lineHeight: 18 }}>
                       {"That's like "}{getCO2FunFact(stats.co2)}
                     </Text>
@@ -642,10 +673,12 @@ export default function HomeScreen() {
                   <Pressable
                     onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/globe"); }}
                     hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Expand globe view"
                     style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: 4, opacity: pressed ? 0.6 : 1 }]}
                   >
                     <Text style={{ fontSize: 13, color: C.accent, fontFamily: "DMSans_500Medium" }}>Expand</Text>
-                    <Ionicons name="expand-outline" size={14} color={C.accent} />
+                    <Ionicons name="expand-outline" size={14} color={C.accent} accessible={false} />
                   </Pressable>
                 </View>
                 <GlobeView
@@ -674,7 +707,11 @@ export default function HomeScreen() {
                       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: C.accent }} />
                       <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase" }}>Upcoming</Text>
                     </View>
-                    <Pressable onPress={() => { Haptics.selectionAsync(); router.push({ pathname: "/(tabs)/flights", params: { filter: "upcoming" } }); }} hitSlop={10}>
+                    <Pressable
+                      onPress={() => { Haptics.selectionAsync(); router.push({ pathname: "/(tabs)/flights", params: { filter: "upcoming" } }); }}
+                      hitSlop={10}
+                      accessibilityRole="link"
+                      accessibilityLabel="See all upcoming flights">
                       <Text style={{ fontSize: 13, color: C.accent, fontFamily: "DMSans_500Medium" }}>See all</Text>
                     </Pressable>
                   </View>
@@ -689,7 +726,11 @@ export default function HomeScreen() {
                       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: C.green }} />
                       <Text style={{ fontSize: 12, color: C.textSec, fontFamily: "DMSans_500Medium", letterSpacing: 0.8, textTransform: "uppercase" }}>Past Flights</Text>
                     </View>
-                    <Pressable onPress={() => { Haptics.selectionAsync(); router.push({ pathname: "/(tabs)/flights", params: { filter: "past" } }); }} hitSlop={10}>
+                    <Pressable
+                      onPress={() => { Haptics.selectionAsync(); router.push({ pathname: "/(tabs)/flights", params: { filter: "past" } }); }}
+                      hitSlop={10}
+                      accessibilityRole="link"
+                      accessibilityLabel="See all past flights">
                       <Text style={{ fontSize: 13, color: C.accent, fontFamily: "DMSans_500Medium" }}>See all</Text>
                     </Pressable>
                   </View>
@@ -702,7 +743,10 @@ export default function HomeScreen() {
               <LogbookLogo size={72} />
               <Text style={{ fontSize: 22, color: C.text,    fontFamily: "DMSans_700Bold",    marginBottom: 10, marginTop: 24 }}>Welcome to Logbook</Text>
               <Text style={{ fontSize: 15, color: C.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 22, marginBottom: 28 }}>Tap the + button to add your first flight and start tracking your year in the air.</Text>
-              <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-flight"); }}
+              <Pressable
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-flight"); }}
+                accessibilityRole="button"
+                accessibilityLabel="Add your first flight"
                 style={({ pressed }) => [{ backgroundColor: C.accent, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30, opacity: pressed ? 0.8 : 1 }]}>
                 <Text style={{ fontSize: 15, color: C.white, fontFamily: "DMSans_700Bold" }}>Add First Flight</Text>
               </Pressable>
@@ -711,9 +755,13 @@ export default function HomeScreen() {
         </ScrollView>
       )}
 
-      <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-flight"); }}
+      <Pressable
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-flight"); }}
+        accessibilityRole="button"
+        accessibilityLabel="Add flight"
+        accessibilityHint="Opens the add flight form"
         style={({ pressed }) => [{ position: "absolute", right: 20, bottom: (Platform.OS === "web" ? 34 : insets.bottom) + 80, width: 52, height: 52, borderRadius: 26, backgroundColor: C.accent, alignItems: "center", justifyContent: "center", shadowColor: C.accent, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 6, opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] }]}>
-        <Ionicons name="add" size={26} color={C.white} />
+        <Ionicons name="add" size={26} color={C.white} accessible={false} />
       </Pressable>
     </View>
   );
