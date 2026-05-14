@@ -6,6 +6,11 @@
 const googleIosUrlScheme =
   process.env.GOOGLE_IOS_URL_SCHEME || "com.googleusercontent.apps.placeholder";
 
+// App Group shared between the main app and the widget extension.
+// Must match the value in targets/logbook-widget/LogbookWidget.entitlements
+// and in utils/widgetData.ts.
+const APP_GROUP = "group.com.logbookapp.shared";
+
 /** @type {import('expo/config').ExpoConfig} */
 export default {
   name: "Logbook",
@@ -28,6 +33,11 @@ export default {
     bundleIdentifier: "com.logbookapp",
     buildNumber: "1",
     usesAppleSignIn: true,
+    // Grant the main app membership in the shared App Group so it can
+    // write widget data via UserDefaults(suiteName:).
+    entitlements: {
+      "com.apple.security.application-groups": [APP_GROUP],
+    },
     privacyManifests: {
       NSPrivacyAccessedAPITypes: [
         {
@@ -54,7 +64,6 @@ export default {
         "Logbook needs calendar access to add your flights as events.",
       NSCalendarsFullAccessUsageDescription:
         "Logbook needs full calendar access to create flight events in Apple Calendar.",
-      // Declare that Logbook can open .pkpass files shared from Apple Wallet
       CFBundleDocumentTypes: [
         {
           CFBundleTypeName: "Boarding Pass",
@@ -64,7 +73,6 @@ export default {
           CFBundleTypeIconFiles: [],
         },
       ],
-      // Register the UTI so iOS knows what com.apple.pkpass is
       UTImportedTypeDeclarations: [
         {
           UTTypeIdentifier: "com.apple.pkpass",
@@ -103,6 +111,15 @@ export default {
       "@react-native-google-signin/google-signin",
       {
         iosUrlScheme: googleIosUrlScheme,
+      },
+    ],
+    // ── Widget extension ─────────────────────────────────────────────────
+    // expo-apple-targets reads the Swift sources from targets/<name>/
+    // and wires them into the Xcode project automatically during prebuild.
+    [
+      "expo-apple-targets",
+      {
+        appleTeamId: process.env.APPLE_TEAM_ID || "XXXXXXXXXX",
       },
     ],
   ],

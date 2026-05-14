@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, ReactNo
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE } from "@/constants/api";
 import { useUser } from "@/context/user";
+import { writeWidgetData } from "@/utils/widgetData";
 
 export interface Flight {
   id: string;
@@ -94,6 +95,11 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
   const [flights, setFlights] = useState<Flight[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // ── Write widget data whenever flights change ────────────────────────────
+  useEffect(() => {
+    if (!isLoading) writeWidgetData(flights);
+  }, [flights, isLoading]);
+
   // ── Load flights: API when logged in, AsyncStorage as fallback/guest ────────────
   useEffect(() => {
     let cancelled = false;
@@ -127,15 +133,12 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
   }, [isLoggedIn, profile.id]);
 
   // ── Persist locally for both guest mode and as offline fallback for logged-in users ──
-  // Always write to AsyncStorage so that if the API is unreachable on next launch,
-  // the cached list is shown instead of a blank screen.
   const persistLocal = useCallback(async (updated: Flight[]) => {
     await AsyncStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   }, []);
 
   // ── Add flight ───────────────────────────────────────────────────────────────────────
   const addFlight = useCallback(async (data: Omit<Flight, "id" | "addedAt">) => {
-    // ─ Client-side duplicate guard (fast path, covers both logged-in and guest) ─
     const isDuplicate = flights.some(
       (f) => f.flightCode === data.flightCode && f.date === data.date,
     );
@@ -153,10 +156,7 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
         console.warn("[FlightsContext] Network error saving flight:", err);
         throw err;
       }
-      if (res.status === 409) {
-        // Server confirmed it's a duplicate (race condition fallback)
-        throw new DuplicateFlightError();
-      }
+      if (res.status === 409) throw new DuplicateFlightError();
       if (!res.ok) {
         const err = new Error(`${res.status}`);
         console.warn("[FlightsContext] API returned", res.status, "saving flight");
@@ -169,7 +169,6 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Guest / not logged in — save locally.
     const flight: Flight = {
       ...data,
       id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
@@ -184,8 +183,6 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
   const removeFlight = useCallback(async (id: string) => {
     const snapshot = flights;
     const next = flights.filter((f) => f.id !== id);
-
-    // Optimistic update
     setFlights(next);
 
     if (isLoggedIn && profile.id) {
@@ -194,10 +191,7 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
           `${API_BASE}/api/flights/${encodeURIComponent(id)}?userId=${encodeURIComponent(profile.id)}`,
           { method: "DELETE" },
         );
-        if (!res.ok) {
-          throw new Error(`DELETE /api/flights/${id} responded with ${res.status}`);
-        }
-        // Keep local cache in sync after successful API delete
+        if (!res.ok) throw new Error(`DELETE /api/flights/${id} responded with ${res.status}`);
         await persistLocal(next);
       } catch (err) {
         console.warn("[FlightsContext] Failed to delete flight from API, reverting:", err);
@@ -205,7 +199,6 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
         throw err;
       }
     } else {
-      // Guest: persist the updated list immediately, single setState already done above
       await persistLocal(next);
     }
   }, [flights, isLoggedIn, profile.id, persistLocal]);
