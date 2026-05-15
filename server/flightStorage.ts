@@ -2,12 +2,17 @@ import { eq, desc, and } from "drizzle-orm";
 import { db } from "./db";
 import { flights, type InsertFlight, type Flight } from "../shared/schema";
 
-/** Return all flights for a user, newest first. */
+/** Return all real (non-mock) flights for a user, newest first. */
 export async function getFlightsByUser(userId: string): Promise<Flight[]> {
   return db
     .select()
     .from(flights)
-    .where(eq(flights.userId, userId))
+    .where(
+      and(
+        eq(flights.userId, userId),
+        eq(flights.isMock, false),
+      ),
+    )
     .orderBy(desc(flights.date), desc(flights.departureTime));
 }
 
@@ -24,7 +29,7 @@ export class DuplicateFlightError extends Error {
 }
 
 export async function createFlight(data: InsertFlight): Promise<Flight> {
-  // Duplicate guard: same user + flightCode + date
+  // Duplicate guard: same user + flightCode + date (only among real flights)
   if (data.flightCode && data.date) {
     const [existing] = await db
       .select({ id: flights.id })
@@ -34,6 +39,7 @@ export async function createFlight(data: InsertFlight): Promise<Flight> {
           eq(flights.userId, data.userId),
           eq(flights.flightCode, data.flightCode),
           eq(flights.date, data.date),
+          eq(flights.isMock, false),
         ),
       )
       .limit(1);
