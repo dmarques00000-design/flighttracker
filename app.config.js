@@ -61,10 +61,29 @@ export default {
     },
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+
+      // Camera — boarding pass / QR code scanning
+      NSCameraUsageDescription:
+        "Logbook uses the camera to scan boarding passes and QR codes to import your flights automatically.",
+
+      // Photo library read — choosing cover images for trips
+      NSPhotoLibraryUsageDescription:
+        "Logbook accesses your photo library so you can set a cover image for your trips.",
+
+      // Photo library write — saving shareable flight cards
+      NSPhotoLibraryAddUsageDescription:
+        "Logbook saves shareable flight cards to your photo library.",
+
+      // Location — suggesting nearest airport
+      NSLocationWhenInUseUsageDescription:
+        "Logbook uses your location to suggest your nearest airport when adding a flight.",
+
+      // Calendar — adding flights as calendar events
       NSCalendarsUsageDescription:
         "Logbook needs calendar access to add your flights as events.",
       NSCalendarsFullAccessUsageDescription:
         "Logbook needs full calendar access to create flight events in Apple Calendar.",
+
       CFBundleDocumentTypes: [
         {
           CFBundleTypeName: "Boarding Pass",
