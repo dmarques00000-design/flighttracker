@@ -16,10 +16,17 @@ import Animated, { FadeInDown, FadeIn, FadeInUp } from "react-native-reanimated"
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import Svg, { Path, Circle, Defs, RadialGradient, Stop, Rect } from "react-native-svg";
+import Constants from "expo-constants";
 import { useColors } from "@/constants/colors";
 import { useUser } from "@/context/user";
 import type { LoginParams } from "@/context/user";
 import * as AppleAuthentication from "expo-apple-authentication";
+
+// ─── Test account gate ────────────────────────────────────────────────────────
+// Only visible in development and preview EAS builds.
+// Set SHOW_TEST_ACCOUNT=true in eas.json dev/preview env; absent in production.
+const SHOW_TEST_ACCOUNT: boolean =
+  Constants.expoConfig?.extra?.showTestAccount === true;
 
 // ─── Google Sign-In lazy loader ─────────────────────────────────────────────────────
 type GoogleSigninType = typeof import("@react-native-google-signin/google-signin");
@@ -181,8 +188,6 @@ export default function AuthScreen() {
     if (!isExpoGo()) {
       const g = getGoogleSignin();
       if (g) {
-        // Only pass offlineAccess when the web client ID is available —
-        // passing it without a webClientId throws a native crash.
         const config: Record<string, unknown> = {
           iosClientId: GOOGLE_IOS_CLIENT_ID,
         };
@@ -322,24 +327,26 @@ export default function AuthScreen() {
             </Text>
           </Animated.View>
 
-          {/* ── TEST ACCOUNT BANNER ── */}
-          <Animated.View entering={FadeInDown.delay(40).springify()} style={{ marginBottom: 14 }}>
-            <Pressable onPress={handleTestLogin} disabled={loading} style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}>
-              <BlurView intensity={22} tint="dark" style={s.testBanner}>
-                <View style={[StyleSheet.absoluteFill, s.testBannerTint]} />
-                <View style={s.testBannerInner}>
-                  <View style={s.testIconWrap}>
-                    <Ionicons name="flask-outline" size={18} color="#F59E0B" />
+          {/* ── TEST ACCOUNT BANNER (dev / preview builds only) ── */}
+          {SHOW_TEST_ACCOUNT && (
+            <Animated.View entering={FadeInDown.delay(40).springify()} style={{ marginBottom: 14 }}>
+              <Pressable onPress={handleTestLogin} disabled={loading} style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}>
+                <BlurView intensity={22} tint="dark" style={s.testBanner}>
+                  <View style={[StyleSheet.absoluteFill, s.testBannerTint]} />
+                  <View style={s.testBannerInner}>
+                    <View style={s.testIconWrap}>
+                      <Ionicons name="flask-outline" size={18} color="#F59E0B" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.testTitle}>Use Test Account</Text>
+                      <Text style={s.testEmail}>{TEST_USER.email}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={15} color="#F59E0B" />
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.testTitle}>Use Test Account</Text>
-                    <Text style={s.testEmail}>{TEST_USER.email}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={15} color="#F59E0B" />
-                </View>
-              </BlurView>
-            </Pressable>
-          </Animated.View>
+                </BlurView>
+              </Pressable>
+            </Animated.View>
+          )}
 
           {/* ── SOCIAL BUTTONS ── */}
           <Animated.View entering={FadeInDown.delay(70).springify()} style={{ gap: 10, marginBottom: 16 }}>
