@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
+import Animated, { FadeInDown, FadeIn, useSharedValue, useAnimatedStyle, withRepeat, withTiming, interpolate } from "react-native-reanimated";
 import { useColors } from "@/constants/colors";
 import { useTrips, Trip } from "@/context/trips";
 import { useFlights, Flight } from "@/context/flights";
@@ -23,6 +23,51 @@ function tripDateRange(flights: Flight[]): string {
   const first = formatDateShort(sorted[0].date);
   const last  = formatDateShort(sorted[sorted.length - 1].date);
   return first === last ? first : `${first} \u2013 ${last}`;
+}
+
+// ─── Skeleton loader ──────────────────────────────────────────────────────────
+function TripCardSkeleton() {
+  const C = useColors();
+  const shimmer = useSharedValue(0);
+
+  React.useEffect(() => {
+    shimmer.value = withRepeat(withTiming(1, { duration: 1100 }), -1, true);
+  }, [shimmer]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(shimmer.value, [0, 1], [0.4, 0.9]),
+  }));
+
+  return (
+    <Animated.View style={[{
+      backgroundColor: C.card, borderRadius: 16, borderWidth: 1,
+      borderColor: C.border, marginBottom: 12, overflow: "hidden",
+    }, animStyle]}>
+      {/* Cover placeholder */}
+      <View style={{ height: 92, backgroundColor: C.surface }} />
+      <View style={{ padding: 16, gap: 10 }}>
+        {/* Title bar */}
+        <View style={{ height: 16, width: "55%", backgroundColor: C.surface, borderRadius: 6 }} />
+        {/* Meta bars */}
+        <View style={{ flexDirection: "row", gap: 12 }}>
+          <View style={{ height: 12, width: 70, backgroundColor: C.surface, borderRadius: 4 }} />
+          <View style={{ height: 12, width: 90, backgroundColor: C.surface, borderRadius: 4 }} />
+        </View>
+        {/* Date bar */}
+        <View style={{ height: 11, width: "40%", backgroundColor: C.surface, borderRadius: 4 }} />
+      </View>
+    </Animated.View>
+  );
+}
+
+function TripsSkeletonList() {
+  return (
+    <>
+      {[0, 1, 2].map((i) => (
+        <TripCardSkeleton key={i} />
+      ))}
+    </>
+  );
 }
 
 // ─── Flight picker row ────────────────────────────────────────────────────────
@@ -332,7 +377,7 @@ function SectionLabel({ icon, label, color }: { icon: string; label: string; col
 export default function TripsScreen() {
   const C = useColors();
   const insets = useSafeAreaInsets();
-  const { trips, addTrip, toggleStar } = useTrips();
+  const { trips, isLoading, addTrip, toggleStar } = useTrips();
   const { flights } = useFlights();
   const [showForm, setShowForm] = useState(false);
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
@@ -384,8 +429,11 @@ export default function TripsScreen() {
           </Pressable>
         </Animated.View>
 
-        {/* Empty state */}
-        {trips.length === 0 && (
+        {/* ── Loading skeleton ── */}
+        {isLoading && <TripsSkeletonList />}
+
+        {/* ── Empty state (only after loading completes) ── */}
+        {!isLoading && trips.length === 0 && (
           <Animated.View entering={FadeIn.delay(100)} style={{ alignItems: "center", paddingTop: 60, paddingHorizontal: 20 }}>
             <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
               <Ionicons name="briefcase-outline" size={30} color={C.accent} />
@@ -404,7 +452,7 @@ export default function TripsScreen() {
         )}
 
         {/* ── Starred section ── */}
-        {starredTrips.length > 0 && (
+        {!isLoading && starredTrips.length > 0 && (
           <Animated.View entering={FadeInDown.delay(30).springify()}>
             <SectionLabel icon="star" label="Starred" color={C.amber} />
             {starredTrips.map((trip, i) => (
@@ -424,7 +472,7 @@ export default function TripsScreen() {
         )}
 
         {/* ── All / remaining trips section ── */}
-        {regularTrips.length > 0 && (
+        {!isLoading && regularTrips.length > 0 && (
           <Animated.View entering={FadeInDown.delay(starredTrips.length > 0 ? 60 : 30).springify()}>
             {starredTrips.length > 0 && (
               <SectionLabel icon="time-outline" label="All Trips" color={C.textMuted} />
