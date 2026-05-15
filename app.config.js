@@ -9,6 +9,10 @@ const googleIosUrlScheme =
 // App Group shared between the main app and the widget extension.
 const APP_GROUP = "group.com.logbookapp.shared";
 
+// Test account banner is shown in development and preview builds only.
+// Never set SHOW_TEST_ACCOUNT in the production EAS profile.
+const showTestAccount = process.env.SHOW_TEST_ACCOUNT === "true";
+
 /** @type {import('expo/config').ExpoConfig} */
 export default {
   name: "Logbook",
@@ -152,6 +156,7 @@ export default {
   },
 
   extra: {
+    showTestAccount,
     router: {},
     eas: {
       projectId: "358b4684-35f7-49ac-b34a-2c72bcd425d0",
