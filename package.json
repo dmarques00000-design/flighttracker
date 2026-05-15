@@ -16,7 +16,7 @@
     "ios": "expo run:ios"
   },
   "dependencies": {
-    "@bacons/apple-targets": "^0.0.15",
+    "@bacons/apple-targets": "^4.0.2",
     "@expo-google-fonts/dm-sans": "^0.4.2",
     "@expo/vector-icons": "^15.0.3",
     "@gorhom/bottom-sheet": "^5.2.8",
