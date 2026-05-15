@@ -7,8 +7,6 @@ const googleIosUrlScheme =
   process.env.GOOGLE_IOS_URL_SCHEME || "com.googleusercontent.apps.placeholder";
 
 // App Group shared between the main app and the widget extension.
-// Must match the value in targets/logbook-widget/LogbookWidget.entitlements
-// and in utils/widgetData.ts.
 const APP_GROUP = "group.com.logbookapp.shared";
 
 /** @type {import('expo/config').ExpoConfig} */
@@ -33,8 +31,6 @@ export default {
     bundleIdentifier: "com.logbookapp",
     buildNumber: "1",
     usesAppleSignIn: true,
-    // Grant the main app membership in the shared App Group so it can
-    // write widget data via UserDefaults(suiteName:).
     entitlements: {
       "com.apple.security.application-groups": [APP_GROUP],
     },
@@ -113,11 +109,9 @@ export default {
         iosUrlScheme: googleIosUrlScheme,
       },
     ],
-    // ── Widget extension ─────────────────────────────────────────────────
-    // expo-apple-targets reads the Swift sources from targets/<name>/
-    // and wires them into the Xcode project automatically during prebuild.
+    // Widget extension — reads Swift sources from targets/logbook-widget/
     [
-      "expo-apple-targets",
+      "@bacons/apple-targets",
       {
         appleTeamId: process.env.APPLE_TEAM_ID || "XXXXXXXXXX",
       },
