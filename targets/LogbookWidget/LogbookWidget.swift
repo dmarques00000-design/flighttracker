@@ -6,10 +6,6 @@
 //   • Small  — NextFlightWidget  : "Next flight: LIS → GVA · Tomorrow 07:20 · T2"
 //   • Medium — MonthRecapWidget  : month recap (flights, miles, top route, CO₂)
 //
-// Data is written by the React Native app via App Group UserDefaults
-// (key: logbook_next_flight / logbook_month_recap) every time the
-// flights array changes. See utils/widgetData.ts.
-//
 // App Group: group.com.logbookapp.shared
 // Deployment target: iOS 16+
 //
@@ -37,8 +33,8 @@ struct NextFlightData: Codable {
     let flightCode: String
     let departureAirport: String
     let arrivalAirport: String
-    let date: String          // "yyyy-MM-dd"
-    let departureTime: String // "HH:mm"
+    let date: String
+    let departureTime: String
     let departureTerminal: String?
     let departureGate: String?
     let airline: String
@@ -69,8 +65,9 @@ fileprivate func loadMonthRecap() -> MonthRecapData {
         let data = json.data(using: .utf8),
         let decoded = try? JSONDecoder().decode(MonthRecapData.self, from: data)
     { return decoded }
-    // Placeholder when no data written yet
-    let label = Date().formatted(.dateTime.month(.wide).year())
+    let fmt = DateFormatter()
+    fmt.dateFormat = "MMMM yyyy"
+    let label = fmt.string(from: Date())
     return MonthRecapData(monthLabel: label, flightCount: 0, miles: 0, topRoute: nil, co2Kg: 0)
 }
 
@@ -113,11 +110,9 @@ struct NextFlightProvider: TimelineProvider {
             airline: "TAP Air Portugal"
         ))
     }
-
     func getSnapshot(in context: Context, completion: @escaping (NextFlightEntry) -> Void) {
         completion(NextFlightEntry(date: .now, flight: loadNextFlight()))
     }
-
     func getTimeline(in context: Context, completion: @escaping (Timeline<NextFlightEntry>) -> Void) {
         let entry = NextFlightEntry(date: .now, flight: loadNextFlight())
         let next = Calendar.current.date(byAdding: .hour, value: 1, to: .now) ?? .now
@@ -131,11 +126,7 @@ struct NextFlightWidgetView: View {
     @Environment(\.colorScheme) var scheme
 
     var body: some View {
-        if let f = entry.flight {
-            flightView(f)
-        } else {
-            emptyView
-        }
+        if let f = entry.flight { flightView(f) } else { emptyView }
     }
 
     @ViewBuilder
@@ -144,36 +135,36 @@ struct NextFlightWidgetView: View {
             HStack(spacing: 5) {
                 Image(systemName: "airplane.departure")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.accent)
+                    .foregroundColor(Color.accent)
                 Text("Next flight")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.accent)
+                    .foregroundColor(Color.accent)
             }
             .padding(.bottom, 8)
 
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(f.departureAirport)
                     .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
                 Image(systemName: "arrow.right")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.textSec)
+                    .foregroundColor(Color.textSec)
                 Text(f.arrivalAirport)
                     .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
             }
             .padding(.bottom, 4)
 
             HStack(spacing: 6) {
                 Text(f.flightCode)
                     .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Color.textSec)
+                    .foregroundColor(Color.textSec)
                 Circle()
                     .frame(width: 3, height: 3)
-                    .foregroundStyle(Color.textSec)
+                    .foregroundColor(Color.textSec)
                 Text(relativeDay(f.date))
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.textSec)
+                    .foregroundColor(Color.textSec)
             }
             .padding(.bottom, 6)
 
@@ -182,24 +173,24 @@ struct NextFlightWidgetView: View {
             HStack(spacing: 0) {
                 Label(f.departureTime, systemImage: "clock")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
 
                 if let terminal = f.departureTerminal {
                     Text(" · T")
                         .font(.system(size: 12))
-                        .foregroundStyle(Color.textSec)
+                        .foregroundColor(Color.textSec)
                     + Text(terminal)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.primary)
+                        .foregroundColor(.primary)
                 }
 
                 if let gate = f.departureGate {
                     Text(" · Gate ")
                         .font(.system(size: 12))
-                        .foregroundStyle(Color.textSec)
+                        .foregroundColor(Color.textSec)
                     + Text(gate)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.primary)
+                        .foregroundColor(.primary)
                 }
                 Spacer(minLength: 0)
             }
@@ -213,11 +204,11 @@ struct NextFlightWidgetView: View {
         VStack(spacing: 8) {
             Image(systemName: "airplane")
                 .font(.system(size: 28))
-                .foregroundStyle(Color.accent)
+                .foregroundColor(Color.accent)
             Text("No upcoming\nflights")
                 .font(.system(size: 13, weight: .medium))
                 .multilineTextAlignment(.center)
-                .foregroundStyle(Color.textSec)
+                .foregroundColor(Color.textSec)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.cardBg)
@@ -226,7 +217,6 @@ struct NextFlightWidgetView: View {
 
 struct NextFlightWidget: Widget {
     let kind = "NextFlightWidget"
-
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: NextFlightProvider()) { entry in
             NextFlightWidgetView(entry: entry)
@@ -248,18 +238,13 @@ struct MonthRecapEntry: TimelineEntry {
 struct MonthRecapProvider: TimelineProvider {
     func placeholder(in context: Context) -> MonthRecapEntry {
         MonthRecapEntry(date: .now, recap: MonthRecapData(
-            monthLabel: "May 2026",
-            flightCount: 4,
-            miles: 3_820,
-            topRoute: "LIS → GVA",
-            co2Kg: 412
+            monthLabel: "May 2026", flightCount: 4, miles: 3_820,
+            topRoute: "LIS \u{2192} GVA", co2Kg: 412
         ))
     }
-
     func getSnapshot(in context: Context, completion: @escaping (MonthRecapEntry) -> Void) {
         completion(MonthRecapEntry(date: .now, recap: loadMonthRecap()))
     }
-
     func getTimeline(in context: Context, completion: @escaping (Timeline<MonthRecapEntry>) -> Void) {
         let entry = MonthRecapEntry(date: .now, recap: loadMonthRecap())
         let next = Calendar.current.date(byAdding: .hour, value: 1, to: .now) ?? .now
@@ -277,14 +262,14 @@ struct StatTile: View {
             HStack(spacing: 4) {
                 Image(systemName: icon)
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Color.accent)
+                    .foregroundColor(Color.accent)
                 Text(label)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.textSec)
+                    .foregroundColor(Color.textSec)
             }
             Text(value)
                 .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
+                .foregroundColor(.primary)
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
         }
@@ -297,8 +282,6 @@ struct StatTile: View {
 
 struct MonthRecapWidgetView: View {
     let entry: MonthRecapEntry
-    @Environment(\.colorScheme) var scheme
-
     private var recap: MonthRecapData { entry.recap }
 
     var body: some View {
@@ -307,16 +290,16 @@ struct MonthRecapWidgetView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Logbook")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Color.accent)
+                        .foregroundColor(Color.accent)
                     Text(recap.monthLabel)
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.primary)
+                        .foregroundColor(.primary)
                 }
                 Spacer()
                 if let route = recap.topRoute {
                     Text(route)
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(Color.accent)
+                        .foregroundColor(Color.accent)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(Color.accentDim)
@@ -332,7 +315,7 @@ struct MonthRecapWidgetView: View {
                 )
                 StatTile(
                     icon: "globe",
-                    value: recap.miles > 0 ? "\(recap.miles.formatted())mi" : "0mi",
+                    value: recap.miles > 0 ? "\(recap.miles)mi" : "0mi",
                     label: "Miles"
                 )
                 StatTile(
@@ -350,7 +333,6 @@ struct MonthRecapWidgetView: View {
 
 struct MonthRecapWidget: Widget {
     let kind = "MonthRecapWidget"
-
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: MonthRecapProvider()) { entry in
             MonthRecapWidgetView(entry: entry)
