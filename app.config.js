@@ -23,7 +23,12 @@ export default {
   splash: {
     image: "./assets/images/splash-icon.png",
     resizeMode: "contain",
-    backgroundColor: "#0A0A0F",
+    backgroundColor: "#F7F6F2",
+    dark: {
+      image: "./assets/images/splash-icon.png",
+      resizeMode: "contain",
+      backgroundColor: "#0A0A0F",
+    },
   },
 
   ios: {
@@ -38,7 +43,7 @@ export default {
       NSPrivacyAccessedAPITypes: [
         {
           NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryFileTimestamp",
-          NSPrivacyAccessedAPITypeReasons: ["DDA9.1"],
+          NSPrivacyAccessedAPITypeReasons: ["C617.1"],
         },
         {
           NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryUserDefaults",
