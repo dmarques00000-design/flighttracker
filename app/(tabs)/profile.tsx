@@ -9,6 +9,7 @@ import {
   Platform,
   Alert,
   Switch,
+  Linking,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -28,6 +29,8 @@ import {
   syncGlobalReminders,
 } from "@/utils/notifications";
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
+
+const PRIVACY_POLICY_URL = "https://dmarques00000-design.github.io/flighttracker/privacy.html";
 
 const SEAT_OPTIONS: { value: UserProfile["seatPreference"]; label: string; icon: string }[] = [
   { value: "window", label: "Window", icon: "partly-sunny-outline" },
@@ -493,6 +496,34 @@ export default function ProfileScreen() {
                   >
                     <Ionicons name="send-outline" size={15} color={C.white} />
                     <Text style={{ fontSize: 14, color: C.white, fontFamily: "DMSans_700Bold" }}>Send Feedback</Text>
+                  </Pressable>
+                </SectionCard>
+              </Animated.View>
+            )}
+
+            {/* Legal */}
+            {!editing && (
+              <Animated.View entering={FadeInDown.delay(155).springify()}>
+                <SectionCard title="Legal" icon="shield-checkmark-outline" C={C}>
+                  <Pressable
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      Linking.openURL(PRIVACY_POLICY_URL);
+                    }}
+                    style={({ pressed }) => ({
+                      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                      paddingVertical: 12, opacity: pressed ? 0.6 : 1,
+                    })}
+                    accessibilityRole="link"
+                    accessibilityLabel="Open Privacy Policy"
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                      <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center" }}>
+                        <Ionicons name="document-text-outline" size={16} color={C.accent} />
+                      </View>
+                      <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_500Medium" }}>Privacy Policy</Text>
+                    </View>
+                    <Ionicons name="open-outline" size={16} color={C.textMuted} />
                   </Pressable>
                 </SectionCard>
               </Animated.View>
