@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       NSPrivacyTracking
+       Does this app (or any SDK) use data to track users across apps/sites?
+       Logbook does not use any advertising or cross-app tracking.
+  ═══════════════════════════════════════════════════════════════════ -->
+  <key>NSPrivacyTracking</key>
+  <false/>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       NSPrivacyTrackingDomains
+       List of domains used for tracking. Empty because tracking = false.
+  ═══════════════════════════════════════════════════════════════════ -->
+  <key>NSPrivacyTrackingDomains</key>
+  <array/>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       NSPrivacyCollectedDataTypes
+       All categories of data Logbook collects, linked to our Privacy Policy.
+  ═══════════════════════════════════════════════════════════════════ -->
+  <key>NSPrivacyCollectedDataTypes</key>
+  <array>
+
+    <!-- Email address (required for account creation / sign-in) -->
+    <dict>
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeEmailAddress</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+      </array>
+    </dict>
+
+    <!-- Name (display name set by the user) -->
+    <dict>
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeName</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+      </array>
+    </dict>
+
+    <!-- Other user content: flight logs, trip names, cover photos -->
+    <dict>
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeOtherUserContent</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+      </array>
+    </dict>
+
+    <!-- Photos / videos: user-chosen cover photos for trips -->
+    <dict>
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypePhotosorVideos</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+      </array>
+    </dict>
+
+  </array>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       NSPrivacyAccessedAPITypes
+       Required-reason API declarations. Every API category your app (or
+       any linked SDK) accesses must appear here with a valid reason code.
+       See: https://developer.apple.com/documentation/bundleresources/privacy_manifest_files/describing_use_of_required_reason_api
+  ═══════════════════════════════════════════════════════════════════ -->
+  <key>NSPrivacyAccessedAPITypes</key>
+  <array>
+
+    <!-- NSUserDefaults / AsyncStorage
+         Used to persist user preferences (theme, notification settings)
+         and local flight data when the user is in guest mode.
+         Reason: CA92.1 — Accessing info from same app, for app functionality -->
+    <dict>
+      <key>NSPrivacyAccessedAPIType</key>
+      <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+      <key>NSPrivacyAccessedAPITypeReasons</key>
+      <array>
+        <string>CA92.1</string>
+      </array>
+    </dict>
+
+    <!-- File timestamp APIs (NSFileSystemFreeSize, NSFileModificationDate, etc.)
+         Used internally by React Native / Hermes / Expo for module loading
+         and asset management.
+         Reason: C617.1 — Access file timestamps inside app container -->
+    <dict>
+      <key>NSPrivacyAccessedAPIType</key>
+      <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+      <key>NSPrivacyAccessedAPITypeReasons</key>
+      <array>
+        <string>C617.1</string>
+      </array>
+    </dict>
+
+    <!-- System boot time / NSProcessInfo.systemUptime
+         Used by React Native Reanimated and the JS timer infrastructure
+         for animation timestamps and scheduling.
+         Reason: 35F9.1 — Calculate absolute time intervals on device -->
+    <dict>
+      <key>NSPrivacyAccessedAPIType</key>
+      <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+      <key>NSPrivacyAccessedAPITypeReasons</key>
+      <array>
+        <string>35F9.1</string>
+      </array>
+    </dict>
+
+    <!-- Disk space (NSFileSystemFreeSize / NSFileSystemSize)
+         Used by Expo and React Native internals to check available storage
+         before caching assets.
+         Reason: E174.1 — Display disk space to user or take action if low -->
+    <dict>
+      <key>NSPrivacyAccessedAPIType</key>
+      <string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+      <key>NSPrivacyAccessedAPITypeReasons</key>
+      <array>
+        <string>E174.1</string>
+      </array>
+    </dict>
+
+  </array>
+
+</dict>
+</plist>
