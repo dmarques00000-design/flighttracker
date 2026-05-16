@@ -43,21 +43,25 @@ export interface CalendarFlight {
   id: string;
 }
 
-/** IATA flight code pattern — two alpha + 1-4 digits (optional space between) */
-const FLIGHT_CODE_RE = /\b([A-Z]{2})\s?(\d{1,4})\b/g;
-
 /** Known non-airline two-letter prefixes to skip (country codes, etc.) */
 const SKIP_PREFIXES = new Set([
   "AM", "PM", "UK", "US", "EU", "UN", "TV", "OK", "HI", "GO",
   "NO", "SO", "DO", "TO", "BY", "IN", "IT", "IS", "IF",
 ]);
 
+/**
+ * Extract all IATA flight codes from a text string.
+ * The regex is instantiated fresh on every call so concurrent invocations
+ * cannot corrupt each other's lastIndex state.
+ */
 function extractFlightCodes(text: string): { code: string; airlineCode: string }[] {
+  // A new RegExp instance per call guarantees lastIndex starts at 0
+  // and is never shared between concurrent scanCalendarForFlights() calls.
+  const re = /\b([A-Z]{2})\s?(\d{1,4})\b/g;
   const upper = text.toUpperCase();
   const out: { code: string; airlineCode: string }[] = [];
   let m: RegExpExecArray | null;
-  FLIGHT_CODE_RE.lastIndex = 0;
-  while ((m = FLIGHT_CODE_RE.exec(upper)) !== null) {
+  while ((m = re.exec(upper)) !== null) {
     const prefix = m[1];
     if (SKIP_PREFIXES.has(prefix)) continue;
     const code = prefix + m[2]; // normalise: no space
