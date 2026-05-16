@@ -481,9 +481,76 @@ export default function AddFlightScreen() {
                 <Ionicons name="close" size={24} color={C.textSec} />
               </Pressable>
             </View>
-            <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_400Regular", marginBottom: 24, lineHeight: 20 }}>
+            <Text style={{ fontSize: 14, color: C.textSec, fontFamily: "DMSans_400Regular", marginBottom: 20, lineHeight: 20 }}>
               Search by flight code or browse flights departing / arriving at an airport.
             </Text>
+          </Animated.View>
+
+          {/* ── Import shortcuts ── */}
+          <Animated.View entering={FadeInDown.delay(20).springify()} style={{ marginBottom: 24 }}>
+            <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_500Medium", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 10 }}>
+              Import
+            </Text>
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              {/* Apple Wallet */}
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push("/wallet-import");
+                }}
+                style={({ pressed }) => [{
+                  flex: 1,
+                  flexDirection: "row", alignItems: "center", gap: 10,
+                  backgroundColor: C.card,
+                  borderRadius: 14, borderWidth: 1, borderColor: C.border,
+                  paddingHorizontal: 14, paddingVertical: 14,
+                  opacity: pressed ? 0.8 : 1,
+                  transform: [{ scale: pressed ? 0.97 : 1 }],
+                }]}
+              >
+                <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="wallet-outline" size={17} color={C.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, color: C.text, fontFamily: "DMSans_700Bold" }}>Wallet</Text>
+                  <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 1 }}>Boarding pass</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={14} color={C.textMuted} />
+              </Pressable>
+
+              {/* Calendar Sync */}
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push("/calendar-sync");
+                }}
+                style={({ pressed }) => [{
+                  flex: 1,
+                  flexDirection: "row", alignItems: "center", gap: 10,
+                  backgroundColor: C.card,
+                  borderRadius: 14, borderWidth: 1, borderColor: C.border,
+                  paddingHorizontal: 14, paddingVertical: 14,
+                  opacity: pressed ? 0.8 : 1,
+                  transform: [{ scale: pressed ? 0.97 : 1 }],
+                }]}
+              >
+                <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="calendar-outline" size={17} color={C.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, color: C.text, fontFamily: "DMSans_700Bold" }}>Calendar</Text>
+                  <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 1 }}>Scan events</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={14} color={C.textMuted} />
+              </Pressable>
+            </View>
+          </Animated.View>
+
+          {/* Divider */}
+          <Animated.View entering={FadeInDown.delay(30).springify()} style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 20 }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: C.border }} />
+            <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular" }}>or search manually</Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: C.border }} />
           </Animated.View>
 
           {/* Mode toggle */}
