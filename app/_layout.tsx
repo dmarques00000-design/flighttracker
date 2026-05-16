@@ -69,6 +69,10 @@ function RootLayoutNav() {
           <Stack.Screen name="flight/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="trip/[id]"   options={{ headerShown: false }} />
           <Stack.Screen
+            name="calendar-sync"
+            options={{ headerShown: false, contentStyle: { backgroundColor: C.bg } }}
+          />
+          <Stack.Screen
             name="share"
             options={{ presentation: "modal", headerShown: false, contentStyle: { backgroundColor: "transparent" } }}
           />
