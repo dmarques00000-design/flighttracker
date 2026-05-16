@@ -158,25 +158,32 @@ export function UserProvider({ children }: { children: ReactNode }) {
   async function login(params: LoginParams) {
     const { id, name, email, provider, avatarUrl } = params;
 
+    // Apple only returns the user's full name on the very first sign-in.
+    // On every subsequent login the name field comes back as an empty string.
+    // Fall back to the cached name so the profile is never silently wiped.
+    const resolvedName = (provider === "apple" && !name.trim())
+      ? profile.name
+      : name.trim();
+
     // Persist user to DB — must succeed before we mark the user as logged in.
     const res = await fetch(`${API_BASE}/api/auth/upsert`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, email, name, avatarUrl, provider }),
+      body: JSON.stringify({ id, email, name: resolvedName, avatarUrl, provider }),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "(no body)");
       throw new Error(`[UserContext] /api/auth/upsert failed ${res.status}: ${body}`);
     }
 
-    const initials = name.trim()
-      ? name.trim().split(" ").filter(Boolean).map((p) => p[0].toUpperCase()).slice(0, 2).join("")
+    const initials = resolvedName
+      ? resolvedName.split(" ").filter(Boolean).map((p) => p[0].toUpperCase()).slice(0, 2).join("")
       : email[0]?.toUpperCase() ?? "?";
 
     const updated: UserProfile = {
       ...profile,
       id,
-      name: name.trim(),
+      name: resolvedName,
       email: email.trim(),
       provider,
       avatarUrl: avatarUrl ?? "",
