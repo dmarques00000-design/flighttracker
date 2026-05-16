@@ -381,6 +381,7 @@ export default function TripsScreen() {
   const { flights } = useFlights();
   const [showForm, setShowForm] = useState(false);
   const topPadding = Platform.OS === "web" ? 67 : insets.top;
+  const bottomPadding = Platform.OS === "web" ? 34 : 0;
 
   const starredTrips  = useMemo(() => trips.filter((t) => t.starred),  [trips]);
   const regularTrips  = useMemo(() => trips.filter((t) => !t.starred), [trips]);
@@ -408,7 +409,7 @@ export default function TripsScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 100 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomPadding + 100 }}
       >
         {/* Header */}
         <Animated.View
@@ -490,6 +491,38 @@ export default function TripsScreen() {
           </Animated.View>
         )}
       </ScrollView>
+
+      {/* ── Floating action button ── */}
+      <Pressable
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowForm(true); }}
+        accessibilityRole="button"
+        accessibilityLabel="New trip"
+        accessibilityHint="Opens the new trip form"
+        style={({ pressed }) => ([
+          {
+            position: "absolute",
+            right: 20,
+            bottom: (Platform.OS === "web" ? 34 : insets.bottom) + 80,
+            width: 52,
+            height: 52,
+            borderRadius: 26,
+            backgroundColor: C.accent,
+            // White ring distinguishes this from the flights ✈ FAB
+            borderWidth: 2.5,
+            borderColor: C.white,
+            alignItems: "center",
+            justifyContent: "center",
+            shadowColor: C.accent,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.4,
+            shadowRadius: 12,
+            elevation: 6,
+          },
+          { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.95 : 1 }] },
+        ])}
+      >
+        <Ionicons name="briefcase" size={22} color={C.white} accessible={false} />
+      </Pressable>
     </View>
   );
 }
