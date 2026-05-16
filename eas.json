@@ -5,6 +5,7 @@
   },
   "build": {
     "development": {
+      "channel": "development",
       "developmentClient": true,
       "distribution": "internal",
       "env": {
@@ -20,6 +21,7 @@
       "node": "20.18.0"
     },
     "preview": {
+      "channel": "preview",
       "distribution": "internal",
       "env": {
         "SHOW_TEST_ACCOUNT": "true"
@@ -30,6 +32,7 @@
       "node": "20.18.0"
     },
     "production": {
+      "channel": "production",
       "autoIncrement": true,
       "ios": {
         "image": "latest"
