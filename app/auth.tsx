@@ -4,7 +4,8 @@
  */
 import React, { useEffect, useState } from "react";
 import {
-  View, Text, TextInput, Pressable,
+  View, Text,
+  Pressable,
   KeyboardAvoidingView, Platform, ScrollView,
   ActivityIndicator, Alert, Image, StyleSheet, Dimensions,
 } from "react-native";
@@ -12,23 +13,21 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import Animated, { FadeInDown, FadeIn, FadeInUp } from "react-native-reanimated";
+import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import Svg, { Path, Circle, Defs, RadialGradient, Stop, Rect } from "react-native-svg";
 import Constants from "expo-constants";
-import { useColors } from "@/constants/colors";
 import { useUser } from "@/context/user";
-import type { LoginParams } from "@/context/user";
 import * as AppleAuthentication from "expo-apple-authentication";
 
-// ─── Test account gate ────────────────────────────────────────────────────────
+// ─── Test account gate ───────────────────────────────────────────────────────────────────────────────
 // Only visible in development and preview EAS builds.
 // Set SHOW_TEST_ACCOUNT=true in eas.json dev/preview env; absent in production.
 const SHOW_TEST_ACCOUNT: boolean =
   Constants.expoConfig?.extra?.showTestAccount === true;
 
-// ─── Google Sign-In lazy loader ─────────────────────────────────────────────────────
+// ─── Google Sign-In lazy loader ───────────────────────────────────────────────────────────────────────────────────
 type GoogleSigninType = typeof import("@react-native-google-signin/google-signin");
 let _googleModule: GoogleSigninType | null = null;
 function getGoogleSignin(): GoogleSigninType | null {
@@ -42,12 +41,11 @@ function isExpoGo(): boolean {
 const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "";
 const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? "";
 
-const TEST_USER = { id: "test-user-001", name: "Diogo Marques", email: "diogo.test@logbook.app", password: "test1234" };
-type Tab = "login" | "signup";
+const TEST_USER = { id: "test-user-001", name: "Diogo Marques", email: "diogo.test@logbook.app" };
 
 const { width: SW, height: SH } = Dimensions.get("window");
 
-// ─── Background scene ─────────────────────────────────────────────────────────────────
+// ─── Background scene ──────────────────────────────────────────────────────────────────────────────────────
 const STARS = [
   [8,  6,  1.8, 0.9], [18, 11, 1.2, 0.7], [32,  4, 2.2, 0.8], [47,  9, 1.5, 0.6],
   [61,  3, 1.8, 0.9], [75,  8, 1.2, 0.7], [88,  5, 2.0, 0.8], [94, 14, 1.5, 0.6],
@@ -135,52 +133,11 @@ function GlassCard({ children, style }: { children: React.ReactNode; style?: obj
   );
 }
 
-function GlassInput({
-  label, icon, value, onChangeText, placeholder, secureTextEntry,
-  keyboardType, autoCapitalize, autoCorrect, returnKeyType, onSubmitEditing, rightElement,
-}: {
-  label: string; icon: string; value: string;
-  onChangeText: (v: string) => void; placeholder: string;
-  secureTextEntry?: boolean; keyboardType?: any; autoCapitalize?: any;
-  autoCorrect?: boolean; returnKeyType?: any; onSubmitEditing?: () => void;
-  rightElement?: React.ReactNode;
-}) {
-  return (
-    <View style={{ marginBottom: 14 }}>
-      <Text style={s.inputLabel}>{label}</Text>
-      <BlurView intensity={20} tint="dark" style={s.inputBlur}>
-        <View style={[StyleSheet.absoluteFill, s.inputTint]} />
-        <Ionicons name={icon as never} size={16} color="rgba(255,255,255,0.45)" style={{ marginLeft: 14 }} />
-        <TextInput
-          style={s.textInput}
-          placeholder={placeholder}
-          placeholderTextColor="rgba(255,255,255,0.28)"
-          value={value}
-          onChangeText={onChangeText}
-          secureTextEntry={secureTextEntry}
-          keyboardType={keyboardType}
-          autoCapitalize={autoCapitalize}
-          autoCorrect={autoCorrect}
-          returnKeyType={returnKeyType}
-          onSubmitEditing={onSubmitEditing}
-        />
-        {rightElement}
-      </BlurView>
-    </View>
-  );
-}
-
-// ─── Main screen ──────────────────────────────────────────────────────────────────
+// ─── Main screen ────────────────────────────────────────────────────────────────────────────────────────
 export default function AuthScreen() {
   const insets  = useSafeAreaInsets();
-  const C       = useColors();
   const { login } = useUser();
 
-  const [tab, setTab]              = useState<Tab>("signup");
-  const [name, setName]            = useState("");
-  const [email, setEmail]          = useState("");
-  const [password, setPassword]    = useState("");
-  const [showPassword, setShow]    = useState(false);
   const [loading, setLoading]      = useState(false);
   const [appleAvailable, setApple] = useState(false);
 
@@ -200,25 +157,6 @@ export default function AuthScreen() {
     }
     if (Platform.OS === "ios") AppleAuthentication.isAvailableAsync().then(setApple);
   }, []);
-
-  function validateEmail(e: string) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim()); }
-
-  async function handleSubmit() {
-    if (!validateEmail(email))             { Alert.alert("Invalid email",  "Please enter a valid email address."); return; }
-    if (password.length < 6)              { Alert.alert("Weak password",  "Password must be at least 6 characters."); return; }
-    if (tab === "signup" && !name.trim()) { Alert.alert("Name required",  "Please enter your name."); return; }
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
-    await login({
-      id: email.trim().toLowerCase(),
-      name: tab === "signup" ? name : email.split("@")[0],
-      email: email.trim(),
-      provider: "email",
-    });
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setLoading(false);
-    router.back();
-  }
 
   async function handleTestLogin() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -260,7 +198,7 @@ export default function AuthScreen() {
 
   async function handleGoogleSignIn() {
     if (isExpoGo()) {
-      Alert.alert("Not available in Expo Go", "Use email sign-in or the Test Account for now.");
+      Alert.alert("Not available in Expo Go", "Use the Test Account for now.");
       return;
     }
     if (!GOOGLE_WEB_CLIENT_ID) {
@@ -292,7 +230,6 @@ export default function AuthScreen() {
   }
 
   function handleGuest() { Haptics.selectionAsync(); router.back(); }
-  function switchTab(t: Tab) { Haptics.selectionAsync(); setTab(t); }
 
   return (
     <View style={{ flex: 1 }}>
@@ -317,13 +254,9 @@ export default function AuthScreen() {
           {/* ── HERO ── */}
           <Animated.View entering={FadeInDown.delay(0).springify()} style={s.hero}>
             <Image source={require("@/assets/images/icon.png")} style={s.logo} resizeMode="cover" />
-            <Text style={s.heroTitle}>
-              {tab === "signup" ? "Start your journey" : "Welcome back"}
-            </Text>
+            <Text style={s.heroTitle}>Start your journey</Text>
             <Text style={s.heroSub}>
-              {tab === "signup"
-                ? "Back up your flights and access them everywhere."
-                : "Sign in to continue tracking your journeys."}
+              Back up your flights and access them everywhere.
             </Text>
           </Animated.View>
 
@@ -341,14 +274,16 @@ export default function AuthScreen() {
                       <Text style={s.testTitle}>Use Test Account</Text>
                       <Text style={s.testEmail}>{TEST_USER.email}</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={15} color="#F59E0B" />
+                    {loading
+                      ? <ActivityIndicator size="small" color="#F59E0B" />
+                      : <Ionicons name="chevron-forward" size={15} color="#F59E0B" />}
                   </View>
                 </BlurView>
               </Pressable>
             </Animated.View>
           )}
 
-          {/* ── SOCIAL BUTTONS ── */}
+          {/* ── SIGN-IN BUTTONS ── */}
           <Animated.View entering={FadeInDown.delay(70).springify()} style={{ gap: 10, marginBottom: 16 }}>
             {Platform.OS === "ios" && appleAvailable ? (
               <AppleAuthentication.AppleAuthenticationButton
@@ -377,64 +312,8 @@ export default function AuthScreen() {
             </Pressable>
           </Animated.View>
 
-          {/* ── DIVIDER ── */}
-          <Animated.View entering={FadeInDown.delay(100).springify()} style={s.divider}>
-            <View style={s.dividerLine} />
-            <Text style={s.dividerText}>or continue with email</Text>
-            <View style={s.dividerLine} />
-          </Animated.View>
-
-          {/* ── FORM GLASS CARD ── */}
-          <Animated.View entering={FadeInUp.delay(120).springify()}>
-            <GlassCard style={{ marginBottom: 16 }}>
-              <View style={{ padding: 18, gap: 0 }}>
-                <View style={s.tabRow}>
-                  <Pressable onPress={() => switchTab("signup")} style={[s.tabBtn, tab === "signup" && s.tabBtnActive]}>
-                    <Text style={[s.tabLabel, tab === "signup" && s.tabLabelActive]}>Sign Up</Text>
-                  </Pressable>
-                  <Pressable onPress={() => switchTab("login")} style={[s.tabBtn, tab === "login" && s.tabBtnActive]}>
-                    <Text style={[s.tabLabel, tab === "login" && s.tabLabelActive]}>Log In</Text>
-                  </Pressable>
-                </View>
-
-                {tab === "signup" && (
-                  <GlassInput label="FULL NAME" icon="person-outline" value={name} onChangeText={setName}
-                    placeholder="e.g. Diogo Marques" autoCapitalize="words" returnKeyType="next" />
-                )}
-
-                <GlassInput label="EMAIL" icon="mail-outline" value={email} onChangeText={setEmail}
-                  placeholder="your@email.com" keyboardType="email-address" autoCapitalize="none"
-                  autoCorrect={false} returnKeyType="next" />
-
-                <GlassInput label="PASSWORD" icon="lock-closed-outline" value={password} onChangeText={setPassword}
-                  placeholder="At least 6 characters" secureTextEntry={!showPassword} autoCapitalize="none"
-                  returnKeyType="done" onSubmitEditing={handleSubmit}
-                  rightElement={
-                    <Pressable onPress={() => setShow((v) => !v)} hitSlop={8}>
-                      <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={18}
-                        color="rgba(255,255,255,0.45)" style={{ marginRight: 14 }} />
-                    </Pressable>
-                  }
-                />
-
-                <Pressable
-                  onPress={handleSubmit}
-                  disabled={loading}
-                  style={({ pressed }) => [
-                    s.submitBtn,
-                    { opacity: pressed || loading ? 0.85 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
-                  ]}
-                >
-                  {loading
-                    ? <ActivityIndicator color="#fff" />
-                    : <Text style={s.submitLabel}>{tab === "signup" ? "Create Account" : "Log In"}</Text>}
-                </Pressable>
-              </View>
-            </GlassCard>
-          </Animated.View>
-
           {/* ── GUEST LINK ── */}
-          <Animated.View entering={FadeIn.delay(300)} style={{ alignItems: "center", marginTop: 4 }}>
+          <Animated.View entering={FadeIn.delay(200)} style={{ alignItems: "center", marginTop: 4 }}>
             <Pressable onPress={handleGuest} hitSlop={10}>
               <Text style={s.guestLink}>Continue as guest  →</Text>
             </Pressable>
@@ -453,7 +332,7 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: "rgba(255,255,255,0.15)",
     alignItems: "center", justifyContent: "center",
   },
-  hero: { alignItems: "center", paddingTop: 12, paddingBottom: 28, gap: 0 },
+  hero: { alignItems: "center", paddingTop: 12, paddingBottom: 36, gap: 0 },
   logo: {
     width: 76, height: 76, borderRadius: 20, marginBottom: 16,
     shadowColor: "#4F8EF7", shadowOffset: { width: 0, height: 8 },
@@ -481,19 +360,5 @@ const s = StyleSheet.create({
   socialLabel: { fontSize: 15, color: "#FFFFFF", fontFamily: "DMSans_700Bold" },
   googleG:     { width: 24, height: 24, borderRadius: 12, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
   googleGText: { fontSize: 14, fontFamily: "DMSans_700Bold", color: "#4285F4" },
-  divider:     { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.12)" },
-  dividerText: { fontSize: 12, color: "rgba(255,255,255,0.38)", fontFamily: "DMSans_400Regular" },
-  tabRow:      { flexDirection: "row", backgroundColor: "rgba(255,255,255,0.06)", borderRadius: 10, padding: 3, marginBottom: 18 },
-  tabBtn:      { flex: 1, paddingVertical: 8, alignItems: "center", borderRadius: 8 },
-  tabBtnActive:{ backgroundColor: "rgba(255,255,255,0.12)" },
-  tabLabel:    { fontSize: 13, color: "rgba(255,255,255,0.45)", fontFamily: "DMSans_600SemiBold" },
-  tabLabelActive: { color: "#FFFFFF" },
-  inputLabel:  { fontSize: 10, color: "rgba(255,255,255,0.40)", fontFamily: "DMSans_700Bold", letterSpacing: 0.8, marginBottom: 6 },
-  inputBlur:   { flexDirection: "row", alignItems: "center", borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: "rgba(255,255,255,0.10)", minHeight: 48 },
-  inputTint:   { backgroundColor: "rgba(255,255,255,0.04)", borderRadius: 12 },
-  textInput:   { flex: 1, color: "#FFFFFF", fontFamily: "DMSans_400Regular", fontSize: 15, paddingHorizontal: 12, paddingVertical: 12 },
-  submitBtn:   { backgroundColor: "#3B6FE8", borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 4 },
-  submitLabel: { fontSize: 15, color: "#FFFFFF", fontFamily: "DMSans_700Bold" },
   guestLink:   { fontSize: 13, color: "rgba(255,255,255,0.38)", fontFamily: "DMSans_400Regular" },
 });
