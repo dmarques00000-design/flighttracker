@@ -82,11 +82,17 @@ export default {
       NSLocationWhenInUseUsageDescription:
         "Logbook uses your location to suggest your nearest airport when adding a flight.",
 
-      // Calendar — adding flights as calendar events
+      // Calendar — iOS 16 and earlier (legacy key, kept for backwards compatibility)
       NSCalendarsUsageDescription:
-        "Logbook needs calendar access to add your flights as events.",
+        "Logbook needs calendar access to scan for flights and add flight events to Apple Calendar.",
+
+      // Calendar — iOS 17+ read/write split permissions
+      // Full access is required: the app both reads events (calendar scan feature)
+      // and writes events (Add to Calendar feature).
       NSCalendarsFullAccessUsageDescription:
-        "Logbook needs full calendar access to create flight events in Apple Calendar.",
+        "Logbook needs full calendar access to scan your existing events for flight codes and to add new flight events to Apple Calendar.",
+      NSCalendarsWriteOnlyAccessUsageDescription:
+        "Logbook needs calendar write access to add your flights as events in Apple Calendar.",
 
       CFBundleDocumentTypes: [
         {
