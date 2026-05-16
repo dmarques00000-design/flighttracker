@@ -2,11 +2,27 @@
  * StoryCard — Yearly Recap
  * 9:16 portrait card for Instagram / WhatsApp story sharing.
  * Supports dark and light themes via the `theme` prop.
+ *
+ * Verified / Unverified distinction
+ * ───────────────────────────────────
+ * Flights imported via Apple Wallet carry verified=true.
+ * Flights added manually carry verified=false.
+ *
+ * Visual treatment:
+ *  • When ALL flights are verified    → shield-checkmark badge on the hero
+ *    number + "All verified" pill at the top.
+ *  • When MIXED                       → split pill shows "✓ N  ·  ~ N" counts
+ *    below the branding and the hero badge is absent.
+ *  • When NONE verified               → subtle single-line disclaimer in the
+ *    footer area only (no badge, no pill).
+ *
+ * The distinction is intentionally calm — credibility signal for verified
+ * users, no guilt-trip for manual users.
  */
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import Svg, { Path, Rect, Defs, LinearGradient as SvgLG, Stop } from "react-native-svg";
+import Svg, { Path, Rect, Defs, LinearGradient as SvgLG, Stop, Circle, G } from "react-native-svg";
 import { Flight } from "@/context/flights";
 import { getCO2FunFact } from "@/utils/co2FunFact";
 import { getTimeFunFact } from "@/utils/timeFunFact";
@@ -47,17 +63,114 @@ const STARS: { t:number;l:number;r:number;o:number }[] = [
   {t:490,l:28,r:1.5,o:.4},{t:545,l:350,r:2,o:.5},{t:600,l:185,r:1,o:.3},{t:640,l:88,r:2,o:.45},
 ];
 
+// ── Verified badge SVG (shield with check) ─────────────────────────────────
+function VerifiedBadge({ size = 32, color = "#4F8EF0" }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      {/* Shield */}
+      <Path
+        d="M12 2L4 5v6c0 5.25 3.5 10.15 8 11.35C16.5 21.15 20 16.25 20 11V5L12 2z"
+        fill={color}
+        opacity={0.18}
+      />
+      <Path
+        d="M12 2L4 5v6c0 5.25 3.5 10.15 8 11.35C16.5 21.15 20 16.25 20 11V5L12 2z"
+        fill="none"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+      />
+      {/* Check */}
+      <Path
+        d="M9 12l2 2 4-4"
+        fill="none"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+// ── Unverified icon SVG (pencil) ────────────────────────────────────────────
+function UnverifiedIcon({ size = 11, color = "#94A3B8" }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Path
+        d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+// ── Verified trust pill (top of card) ──────────────────────────────────────
+type TrustState = "all" | "mixed" | "none";
+
+function TrustPill({
+  verifiedCount, totalCount, tk, trustState,
+}: {
+  verifiedCount: number;
+  totalCount: number;
+  tk: ReturnType<typeof Object.values<(typeof THEMES)[keyof typeof THEMES]>>;
+  trustState: TrustState;
+}) {
+  const unverified = totalCount - verifiedCount;
+
+  if (trustState === "none") return null; // No pill when nothing is verified
+
+  if (trustState === "all") {
+    return (
+      <View style={[pill.wrap, { backgroundColor: "rgba(79,142,240,0.12)", borderColor: "rgba(79,142,240,0.30)" }]}>
+        <VerifiedBadge size={13} color="#4F8EF0" />
+        <Text style={[pill.label, { color: "#4F8EF0" }]}>All {totalCount} flights verified via Wallet</Text>
+      </View>
+    );
+  }
+
+  // Mixed: split pill
+  return (
+    <View style={[pill.wrap, { backgroundColor: "rgba(255,255,255,0.07)", borderColor: "rgba(255,255,255,0.14)" }]}>
+      {/* verified side */}
+      <VerifiedBadge size={12} color="#4F8EF0" />
+      <Text style={[pill.label, { color: "#4F8EF0" }]}>{verifiedCount}</Text>
+      {/* divider */}
+      <View style={pill.sep} />
+      {/* unverified side */}
+      <UnverifiedIcon size={10} color="#94A3B8" />
+      <Text style={[pill.label, { color: "#94A3B8" }]}>{unverified}</Text>
+    </View>
+  );
+}
+
+const pill = StyleSheet.create({
+  wrap:  { flexDirection: "row", alignItems: "center", gap: 5, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, alignSelf: "flex-start" },
+  label: { fontSize: 10, fontFamily: "DMSans_500Medium", letterSpacing: 0.4 },
+  sep:   { width: 1, height: 10, backgroundColor: "rgba(148,163,184,0.35)", marginHorizontal: 2 },
+});
+
 export default function StoryCard({ flights, periodLabel, theme = "dark" }: StoryCardProps) {
-  const tk       = THEMES[theme];
-  const count    = flights.length;
-  const miles    = flights.reduce((s,f)=>s+f.distanceMiles, 0);
-  const co2      = flights.reduce((s,f)=>s+f.co2Kg, 0);
+  const tk        = THEMES[theme];
+  const count     = flights.length;
+  const miles     = flights.reduce((s,f)=>s+f.distanceMiles, 0);
+  const co2       = flights.reduce((s,f)=>s+f.co2Kg, 0);
   const flightMin = flights.reduce((s,f)=>s+f.durationMinutes, 0);
   const delayMin  = flights.reduce((s,f)=>s+f.delayMinutes, 0);
-  const rank     = computeRank(count);
-  const topPct   = 100 - rank;
-  const co2Fact  = co2 > 0 ? getCO2FunFact(co2) : null;
-  const timeFact = flightMin > 0 ? getTimeFunFact(flightMin) : null;
+  const rank      = computeRank(count);
+  const topPct    = 100 - rank;
+  const co2Fact   = co2 > 0 ? getCO2FunFact(co2) : null;
+  const timeFact  = flightMin > 0 ? getTimeFunFact(flightMin) : null;
+
+  // ── Verified stats ──────────────────────────────────────────────────────
+  const verifiedCount   = flights.filter(f => f.verified).length;
+  const unverifiedCount = count - verifiedCount;
+  const trustState: TrustState =
+    count === 0          ? "none" :
+    verifiedCount === count ? "all"  :
+    verifiedCount > 0    ? "mixed" : "none";
+  const showHeroBadge   = trustState === "all";
+  const showFooterNote  = trustState === "none" && count > 0;
 
   const isAllTime = periodLabel.toLowerCase() === "all time";
   const headline  = isAllTime
@@ -84,6 +197,15 @@ export default function StoryCard({ flights, periodLabel, theme = "dark" }: Stor
             <Text style={[c.brandName, { color: tk.textPrimary }]}>Logbook</Text>
             <Text style={[c.brandSub, { color: tk.textAccent }]}>Flight Journal</Text>
           </View>
+          {/* Trust pill aligned to the right of the brand block */}
+          {count > 0 && (
+            <TrustPill
+              verifiedCount={verifiedCount}
+              totalCount={count}
+              tk={tk as never}
+              trustState={trustState}
+            />
+          )}
         </View>
 
         {/* RANK PILL */}
@@ -104,11 +226,16 @@ export default function StoryCard({ flights, periodLabel, theme = "dark" }: Stor
           <Text style={[c.headline, { color: tk.textPrimary }]}>{headline}</Text>
         </View>
 
-        {/* HERO NUMBER */}
+        {/* HERO NUMBER — with optional verified badge overlay */}
         <View style={c.heroWrap}>
           <View style={[c.heroGlow, { backgroundColor: tk.glow1Color }]} />
           <Text style={[c.heroNum, { color: tk.textHero, textShadowColor: tk.heroShadow }]}>{count}</Text>
           <Text style={[c.heroLabel, { color: tk.textAccent }]}>FLIGHTS</Text>
+          {showHeroBadge && (
+            <View style={c.heroBadge}>
+              <VerifiedBadge size={28} color="#4F8EF0" />
+            </View>
+          )}
         </View>
 
         {/* STATS GRID */}
@@ -151,6 +278,12 @@ export default function StoryCard({ flights, periodLabel, theme = "dark" }: Stor
           <View style={c.footerLeft}>
             <Text style={[c.ctaLine, { color: tk.textMuted }]}>Track yours at</Text>
             <Text style={[c.ctaUrl, { color: tk.textAccentStrong }]}>logbook.app</Text>
+            {showFooterNote && (
+              <View style={c.footerNoteRow}>
+                <UnverifiedIcon size={9} color="rgba(148,163,184,0.7)" />
+                <Text style={[c.footerNote, { color: "rgba(148,163,184,0.7)" }]}>Self-reported flights</Text>
+              </View>
+            )}
           </View>
           <AppStoreBadgeInline width={148} t={tk} />
         </View>
@@ -224,8 +357,8 @@ const c = StyleSheet.create({
 
   inner: {flex:1,paddingHorizontal:32,paddingTop:38,paddingBottom:30,justifyContent:"space-between"},
 
-  topRow:   {flexDirection:"row",alignItems:"center",gap:12},
-  topBrand: {flex:1,gap:2},
+  topRow:   {flexDirection:"row",alignItems:"flex-start",justifyContent:"space-between"},
+  topBrand: {gap:2},
   brandName:{fontSize:26,fontFamily:"DMSans_700Bold",letterSpacing:-0.5,lineHeight:28},
   brandSub: {fontSize:12,fontFamily:"DMSans_400Regular",letterSpacing:0.6},
 
@@ -238,10 +371,11 @@ const c = StyleSheet.create({
   headlinePeriod:{fontSize:9,fontFamily:"DMSans_500Medium",letterSpacing:2.5,textTransform:"uppercase"},
   headline:      {fontSize:16,fontFamily:"DMSans_700Bold",letterSpacing:-0.2,lineHeight:21},
 
-  heroWrap:  {alignItems:"center",position:"relative"},
-  heroGlow:  {position:"absolute",width:200,height:200,borderRadius:100,top:-24},
-  heroNum:   {fontSize:108,fontFamily:"DMSans_700Bold",lineHeight:116,letterSpacing:-6,textShadowOffset:{width:0,height:0},textShadowRadius:24},
-  heroLabel: {fontSize:12,fontFamily:"DMSans_700Bold",letterSpacing:5,marginTop:-8},
+  heroWrap:   {alignItems:"center",position:"relative"},
+  heroGlow:   {position:"absolute",width:200,height:200,borderRadius:100,top:-24},
+  heroNum:    {fontSize:108,fontFamily:"DMSans_700Bold",lineHeight:116,letterSpacing:-6,textShadowOffset:{width:0,height:0},textShadowRadius:24},
+  heroLabel:  {fontSize:12,fontFamily:"DMSans_700Bold",letterSpacing:5,marginTop:-8},
+  heroBadge:  {position:"absolute",right:32,top:10},
 
   statsGrid:   {flexDirection:"row",borderRadius:18,borderWidth:1,paddingVertical:14,paddingHorizontal:6,alignItems:"center"},
   statItem:    {flex:1,alignItems:"center",gap:3},
@@ -256,8 +390,10 @@ const c = StyleSheet.create({
   factText:   {flex:1,fontSize:12,fontFamily:"DMSans_400Regular",lineHeight:18},
   factHighlight:{fontFamily:"DMSans_700Bold"},
 
-  footer:     {flexDirection:"row",alignItems:"center",justifyContent:"space-between"},
-  footerLeft: {gap:2},
-  ctaLine:    {fontSize:10,fontFamily:"DMSans_400Regular",letterSpacing:0.3},
-  ctaUrl:     {fontSize:14,fontFamily:"DMSans_700Bold",letterSpacing:0.2},
+  footer:        {flexDirection:"row",alignItems:"center",justifyContent:"space-between"},
+  footerLeft:    {gap:2},
+  ctaLine:       {fontSize:10,fontFamily:"DMSans_400Regular",letterSpacing:0.3},
+  ctaUrl:        {fontSize:14,fontFamily:"DMSans_700Bold",letterSpacing:0.2},
+  footerNoteRow: {flexDirection:"row",alignItems:"center",gap:4,marginTop:3},
+  footerNote:    {fontSize:9,fontFamily:"DMSans_400Regular",letterSpacing:0.3},
 });
