@@ -172,6 +172,7 @@ export default function CalendarSyncScreen() {
 
   // ── Scan calendar ──────────────────────────────────────────────────────────
   async function handleScan() {
+    if (state === "scanning") return; // guard: ignore tap if already scanning
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setState("scanning");
     try {
@@ -412,15 +413,16 @@ export default function CalendarSyncScreen() {
         {state === "idle" && hasCandidates && (
           <Animated.View entering={FadeIn.duration(250)}>
 
-            {/* Rescan button */}
+            {/* Rescan button — disabled while a scan is already in progress */}
             <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: 12 }}>
               <Pressable
                 onPress={handleScan}
+                disabled={state === "scanning"}
                 style={({ pressed }) => [{
                   flexDirection: "row", alignItems: "center", gap: 6,
                   backgroundColor: C.card, paddingHorizontal: 14, paddingVertical: 9,
                   borderRadius: 12, borderWidth: 1, borderColor: C.border,
-                }, { opacity: pressed ? 0.8 : 1 }]}
+                }, { opacity: state === "scanning" ? 0.4 : pressed ? 0.8 : 1 }]}
               >
                 <Ionicons name="refresh-outline" size={14} color={C.accent} />
                 <Text style={{ fontSize: 12, color: C.accent, fontFamily: "DMSans_700Bold" }}>Re-scan</Text>
