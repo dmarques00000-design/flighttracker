@@ -8,25 +8,26 @@
  * touch sequence that begins inside the globe's bounding box is
  * claimed by this component at the capture phase — before the parent
  * pager's PanResponder ever has a chance to evaluate it.
- * This means swiping anywhere on the globe (including near the edges)
- * rotates the globe and never triggers a tab switch.
+ *
+ * Full-screen mode
+ * ────────────────
+ * When sizeProp is set (full-screen), the gesture-capture wrapper is
+ * given StyleSheet.absoluteFill so PanResponder has a full-screen
+ * hit area. Without explicit dimensions the native hit-test rect
+ * collapses and only the SVG canvas itself (which has overflow:visible)
+ * registers touches.
+ *
+ * Momentum / inertia
+ * ──────────────────
+ * On release we snapshot the last velocity (px/ms) and run a rAF
+ * decay loop: v *= FRICTION each frame until |v| < threshold.
+ * This gives the globe a natural coast-to-stop feel.
  *
  * Performance architecture
  * ─────────────────────────
  * PanResponder (JS) → mutable refs → requestAnimationFrame gate → setState
  * One rAF per gesture move; stale frames are cancelled so we never queue
  * more than one re-render per display frame (~16 ms).
- *
- * Additional savings
- * ──────────────────
- * • Arc 3D unit-sphere points pre-cached at flight-list change time.
- * • Arc steps reduced 64 → 32.
- *
- * Overflow / clipping
- * ───────────────────
- * compact (no sizeProp) — overflow:hidden + borderRadius clips to circle.
- * full-screen (sizeProp set) — overflow:visible; caller controls canvas
- *   size and passes rBase so the sphere fits the viewport exactly.
  */
 import React, { useRef, useMemo, useCallback } from "react";
 import {
@@ -34,6 +35,7 @@ import {
   Text,
   Dimensions,
   PanResponder,
+  StyleSheet,
 } from "react-native";
 import Svg, {
   Circle,
@@ -87,11 +89,11 @@ function extractCountryRings(topo: TopoJSON): [number, number][][][] {
 }
 const COUNTRY_POLYGONS = extractCountryRings(worldTopo);
 
-// ─── Default (compact card) size ─────────────────────────────────────────────────────────
+// ─── Default (compact card) size ─────────────────────────────────────────────
 const { width: SCREEN_W } = Dimensions.get("window");
 const DEFAULT_SIZE = Math.min(SCREEN_W - 40, 360);
 
-// ─── Airport registry [lon, lat] ──────────────────────────────────────────────
+// ─── Airport registry [lon, lat] ─────────────────────────────────────────────
 const AIRPORTS: Record<string, [number, number]> = {
   LIS:[-9.14,38.78],GVA:[6.11,46.24],ZRH:[8.55,47.46],
   ATL:[-84.43,33.64],MIA:[-80.29,25.80],JFK:[-73.78,40.64],
@@ -123,7 +125,7 @@ const AIRPORTS: Record<string, [number, number]> = {
   LPA:[-15.39,27.93],RAK:[-8.04,31.61],
 };
 
-// ─── Math ──────────────────────────────────────────────────────────────────────
+// ─── Math ─────────────────────────────────────────────────────────────────────
 const D2R = Math.PI / 180;
 
 function geoToXyz(lon: number, lat: number, rotLon: number, rotLat: number): [number, number, number] {
@@ -210,6 +212,15 @@ function pinchDist(t: { pageX: number; pageY: number }[]): number {
   return Math.sqrt(dx*dx + dy*dy);
 }
 
+// ─── Momentum / inertia constants ────────────────────────────────────────────
+/** Per-frame multiplier: 0.88 ≈ ~400 ms coast at 60 fps */
+const FRICTION    = 0.88;
+/** Stop spinning once velocity drops below this (degrees/frame) */
+const V_THRESHOLD = 0.05;
+/** Sensitivity: screen-pixels → rotation degrees */
+const LON_SENS = 0.5;
+const LAT_SENS = 0.4;
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface Props {
   flights: Flight[];
@@ -240,6 +251,19 @@ export function GlobeView({ flights, size: sizeProp, rBase: rBaseProp, onDragSta
   const radiusRef = useRef(R_BASE);
   const rafRef    = useRef<number | null>(null);
 
+  // ── Momentum refs ──────────────────────────────────────────────────────────
+  const velLonRef    = useRef(0);       // degrees/frame
+  const velLatRef    = useRef(0);
+  const lastTimeRef  = useRef<number | null>(null);
+  const momentumRef  = useRef<number | null>(null);
+
+  const stopMomentum = useCallback(() => {
+    if (momentumRef.current !== null) {
+      cancelAnimationFrame(momentumRef.current);
+      momentumRef.current = null;
+    }
+  }, []);
+
   const scheduleRender = useCallback(() => {
     if (rafRef.current !== null) return;
     rafRef.current = requestAnimationFrame(() => {
@@ -248,7 +272,23 @@ export function GlobeView({ flights, size: sizeProp, rBase: rBaseProp, onDragSta
     });
   }, []);
 
-  const lastPage      = useRef<{ x: number; y: number } | null>(null);
+  /** Kick off the coast-to-stop loop after the finger lifts. */
+  const startMomentum = useCallback(() => {
+    stopMomentum();
+    function tick() {
+      velLonRef.current *= FRICTION;
+      velLatRef.current *= FRICTION;
+      const stillMoving = Math.abs(velLonRef.current) > V_THRESHOLD || Math.abs(velLatRef.current) > V_THRESHOLD;
+      if (!stillMoving) { velLonRef.current = 0; velLatRef.current = 0; return; }
+      lonRef.current = lonRef.current + velLonRef.current;
+      latRef.current = Math.max(-60, Math.min(60, latRef.current + velLatRef.current));
+      setRenderState({ lon: lonRef.current, lat: latRef.current, radius: radiusRef.current });
+      momentumRef.current = requestAnimationFrame(tick);
+    }
+    momentumRef.current = requestAnimationFrame(tick);
+  }, [stopMomentum]);
+
+  const lastPage      = useRef<{ x: number; y: number; t: number } | null>(null);
   const pinchStartRef = useRef<{ dist: number; r: number } | null>(null);
 
   const panResponder = useRef(
@@ -259,20 +299,25 @@ export function GlobeView({ flights, size: sizeProp, rBase: rBaseProp, onDragSta
       onMoveShouldSetPanResponderCapture:  () => true,
 
       onPanResponderGrant: (evt) => {
+        stopMomentum();
+        velLonRef.current = 0;
+        velLatRef.current = 0;
         if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
         const touches = evt.nativeEvent.touches;
         if (touches.length >= 2) {
           pinchStartRef.current = { dist: pinchDist(touches as unknown as { pageX: number; pageY: number }[]), r: radiusRef.current };
           lastPage.current = null;
         } else {
-          lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
+          lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY, t: Date.now() };
           pinchStartRef.current = null;
         }
+        lastTimeRef.current = Date.now();
         onDragStart?.();
       },
 
       onPanResponderMove: (evt) => {
         const touches = evt.nativeEvent.touches;
+        const now = Date.now();
         if (touches.length >= 2) {
           if (!pinchStartRef.current) {
             pinchStartRef.current = { dist: pinchDist(touches as unknown as { pageX: number; pageY: number }[]), r: radiusRef.current };
@@ -282,12 +327,23 @@ export function GlobeView({ flights, size: sizeProp, rBase: rBaseProp, onDragSta
           lastPage.current  = null;
         } else {
           pinchStartRef.current = null;
-          if (!lastPage.current) { lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY }; return; }
-          const dx = evt.nativeEvent.pageX - lastPage.current.x;
-          const dy = evt.nativeEvent.pageY - lastPage.current.y;
-          lonRef.current = lonRef.current + dx * 0.5;
-          latRef.current = Math.max(-60, Math.min(60, latRef.current - dy * 0.4));
-          lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
+          if (!lastPage.current) {
+            lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY, t: now };
+            return;
+          }
+          const dt   = Math.max(1, now - lastPage.current.t);
+          const dx   = evt.nativeEvent.pageX - lastPage.current.x;
+          const dy   = evt.nativeEvent.pageY - lastPage.current.y;
+          const dLon = dx * LON_SENS;
+          const dLat = -dy * LAT_SENS;
+
+          // Rolling velocity estimate (px/ms → degrees/frame @ 60fps ≈ 16ms)
+          velLonRef.current = (dLon / dt) * 16;
+          velLatRef.current = (dLat / dt) * 16;
+
+          lonRef.current = lonRef.current + dLon;
+          latRef.current = Math.max(-60, Math.min(60, latRef.current + dLat));
+          lastPage.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY, t: now };
         }
         scheduleRender();
       },
@@ -295,9 +351,15 @@ export function GlobeView({ flights, size: sizeProp, rBase: rBaseProp, onDragSta
       onPanResponderRelease: () => {
         lastPage.current = null; pinchStartRef.current = null;
         onDragEnd?.();
+        // Only coast if there is meaningful velocity
+        if (Math.abs(velLonRef.current) > V_THRESHOLD || Math.abs(velLatRef.current) > V_THRESHOLD) {
+          startMomentum();
+        }
       },
       onPanResponderTerminate: () => {
         lastPage.current = null; pinchStartRef.current = null;
+        velLonRef.current = 0; velLatRef.current = 0;
+        stopMomentum();
         onDragEnd?.();
       },
     })
@@ -337,7 +399,7 @@ export function GlobeView({ flights, size: sizeProp, rBase: rBaseProp, onDragSta
 
   const graticuleLines = useMemo(() =>
     graticulePaths(renderLon, renderLat, CX, CY, radius),
-    [renderLon, renderLat, radius, CX, CY] // eslint-disable-line react-hooks/exhaustive-deps
+    [renderLon, renderLat, radius, CX, CY] // eslint-disable-line react-deps-hooks-exhaustive-deps
   );
 
   const dotPositions = useMemo(() =>
@@ -362,29 +424,31 @@ export function GlobeView({ flights, size: sizeProp, rBase: rBaseProp, onDragSta
   const landFill   = isDark ? "#1C3566" : "#B8D0F0";
   const landStroke = isDark ? "#2A4A80" : "#8AB0D8";
 
+  // In full-screen mode the gesture wrapper must fill its parent so that
+  // PanResponder has a large enough hit-area. In compact mode we let
+  // the natural layout size drive things (overflow:hidden + borderRadius).
+  const gestureWrapStyle = isFullScreen
+    ? StyleSheet.absoluteFill
+    : undefined;
+
   return (
-    // ── Gesture isolation wrapper ──────────────────────────────────────────
-    // onStartShouldSetResponderCapture + onMoveShouldSetResponderCapture
-    // both return true so this View wins the responder at the capture phase
-    // (top-down, before any ancestor PanResponder runs its checks).
-    // The result: any touch that begins inside the globe's bounding box is
-    // owned by the globe. The parent tab pager never sees it.
     <View
+      style={gestureWrapStyle}
       onStartShouldSetResponderCapture={() => true}
       onMoveShouldSetResponderCapture={() => true}
-      // Also set the non-capture versions so nested children can still
-      // bubble up to us if needed.
       onStartShouldSetResponder={() => true}
       onMoveShouldSetResponder={() => true}
     >
-      <View style={{ alignItems: "center", paddingVertical: sizeProp ? 0 : 4 }}>
+      <View style={isFullScreen ? styles.fullScreenInner : { alignItems: "center", paddingVertical: 4 }}>
         <View
-          style={{
-            width: SIZE,
-            height: SIZE,
-            alignItems: "center",
-            justifyContent: "center",
-            ...(isFullScreen
+          style={[
+            {
+              width: SIZE,
+              height: SIZE,
+              alignItems: "center",
+              justifyContent: "center",
+            },
+            isFullScreen
               ? { overflow: "visible" }
               : {
                   overflow: "hidden",
@@ -394,9 +458,8 @@ export function GlobeView({ flights, size: sizeProp, rBase: rBaseProp, onDragSta
                   shadowOpacity: 0.22,
                   shadowRadius: 24,
                   elevation: 10,
-                }
-            ),
-          }}
+                },
+          ]}
           {...panResponder.panHandlers}
         >
           <Svg width={SIZE} height={SIZE} style={{ overflow: "visible" }}>
@@ -461,5 +524,13 @@ export function GlobeView({ flights, size: sizeProp, rBase: rBaseProp, onDragSta
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  fullScreenInner: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
 
 export default GlobeView;
