@@ -624,11 +624,9 @@ export default function FlightsScreen() {
   const swipeHandlers = useSwipeNavigation(1, !searchFocused);
 
   // ── Smart default: set once, as soon as the flights array is non-empty ──────
-  // We only set the default once (tracked by defaultApplied ref) so that user
-  // selections made after load are never overridden by subsequent re-renders.
   useEffect(() => {
     if (defaultApplied.current || isLoading) return;
-    if (flights.length === 0) return; // wait until we have data
+    if (flights.length === 0) return;
     defaultApplied.current = true;
     setTimeFilter(smartDefaultFilter(flights));
   }, [flights, isLoading]);
@@ -755,8 +753,9 @@ export default function FlightsScreen() {
         </Animated.View>
       )}
     </View>
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [isSearching, totalShown, query, timeFilter, dropdownOptions, groupBy]);
+  // C is intentionally included so the bar re-renders immediately when the
+  // colour scheme changes (light ↔ dark), without needing a user interaction.
+  ), [C, isSearching, totalShown, query, timeFilter, dropdownOptions, groupBy]);
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: topPadding }} {...swipeHandlers}>
