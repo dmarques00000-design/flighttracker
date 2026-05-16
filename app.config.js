@@ -62,6 +62,41 @@ export default {
           NSPrivacyAccessedAPITypeReasons: ["E174.1"],
         },
       ],
+
+      // Declare every category of data the app collects so App Store Review
+      // can validate the privacy nutrition label without rejecting the build.
+      // All three categories are collected solely for app functionality
+      // (authentication + airport suggestion) — never for tracking.
+      NSPrivacyCollectedDataTypes: [
+        {
+          // Email address — used for account creation / sign-in
+          NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypeEmailAddress",
+          NSPrivacyCollectedDataTypeLinked: true,
+          NSPrivacyCollectedDataTypeTracking: false,
+          NSPrivacyCollectedDataTypePurposes: [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+          ],
+        },
+        {
+          // Name — used for the user’s profile display
+          NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypeName",
+          NSPrivacyCollectedDataTypeLinked: true,
+          NSPrivacyCollectedDataTypeTracking: false,
+          NSPrivacyCollectedDataTypePurposes: [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+          ],
+        },
+        {
+          // Coarse location — used only to suggest the nearest airport;
+          // never stored or transmitted beyond the single in-session request.
+          NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypeCoarseLocation",
+          NSPrivacyCollectedDataTypeLinked: false,
+          NSPrivacyCollectedDataTypeTracking: false,
+          NSPrivacyCollectedDataTypePurposes: [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+          ],
+        },
+      ],
     },
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
