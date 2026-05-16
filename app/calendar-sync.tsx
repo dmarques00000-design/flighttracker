@@ -23,6 +23,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Linking,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -201,7 +202,7 @@ export default function CalendarSyncScreen() {
           [
             { text: "Cancel", style: "cancel" },
             Platform.OS === "ios"
-              ? { text: "Open Settings", onPress: () => { /* Linking.openSettings() if available */ } }
+              ? { text: "Open Settings", onPress: () => Linking.openSettings() }
               : { text: "OK" },
           ]
         );
