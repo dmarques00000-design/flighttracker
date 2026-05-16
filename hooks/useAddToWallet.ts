@@ -69,5 +69,8 @@ export function useAddToWallet() {
     }
   }
 
-  return { addToWallet, walletState: state, isLoading: state !== "idle" };
+  // Derived after state is settled so consumers never see a stale `true`
+  // after the share sheet is cancelled and setState("idle") has fired.
+  const isLoading = state !== "idle";
+  return { addToWallet, walletState: state, isLoading };
 }
