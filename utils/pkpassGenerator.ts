@@ -6,14 +6,56 @@
  *   pass.json        — the pass definition
  *   manifest.json    — SHA1 hashes of every file in the bundle
  *   signature        — a stub (unsigned passes are accepted by iOS via the
- *                      Share sheet "Add to Wallet" flow; a real PassKit
+ *                      Share sheet “Add to Wallet” flow; a real PassKit
  *                      signing cert is only needed for server-pushed passes)
  *
- * We use a minimal pure-JS zip implementation so we don't need a native
+ * We use a minimal pure-JS zip implementation so we don’t need a native
  * module or an extra npm package.
+ *
+ * ──────────────────────────────────────────────────────────────────────────────
+ * REQUIRED SETUP — before submitting to the App Store
+ * ──────────────────────────────────────────────────────────────────────────────
+ * 1. Go to developer.apple.com → Certificates, Identifiers & Profiles
+ *    → Identifiers → “+” → Pass Type IDs.
+ *    Register: pass.com.logbookapp.boardingpass
+ *
+ * 2. Note your 10-character Team ID (top-right of the Developer portal
+ *    under your account name, e.g. "AB12CD34EF").
+ *
+ * 3. Add to .env.local (never commit):
+ *      EXPO_PUBLIC_PASSKIT_TEAM_ID=AB12CD34EF
+ *      EXPO_PUBLIC_PASSKIT_PASS_TYPE_ID=pass.com.logbookapp.boardingpass
+ *
+ * 4. For EAS builds, set both vars via:
+ *      eas env:create --scope project --name EXPO_PUBLIC_PASSKIT_TEAM_ID ...
+ *      eas env:create --scope project --name EXPO_PUBLIC_PASSKIT_PASS_TYPE_ID ...
+ * ──────────────────────────────────────────────────────────────────────────────
  */
 
 import * as FileSystem from "expo-file-system";
+
+// ---------------------------------------------------------------------------
+// PassKit identity — MUST be set via environment variables before release
+// ---------------------------------------------------------------------------
+
+/**
+ * TODO: set EXPO_PUBLIC_PASSKIT_TEAM_ID in .env.local and EAS env vars.
+ * This must be your exact 10-character Apple Team ID from
+ * developer.apple.com (top-right corner, e.g. "AB12CD34EF").
+ * PassKit will silently reject any pass where this does not match the
+ * certificate used to sign the Pass Type ID.
+ */
+const PASSKIT_TEAM_ID: string =
+  process.env.EXPO_PUBLIC_PASSKIT_TEAM_ID ?? "TODO_SET_TEAM_ID";
+
+/**
+ * TODO: set EXPO_PUBLIC_PASSKIT_PASS_TYPE_ID in .env.local and EAS env vars.
+ * This must exactly match the Pass Type ID you registered at
+ * developer.apple.com → Identifiers → Pass Type IDs.
+ * Recommended value: pass.com.logbookapp.boardingpass
+ */
+const PASSKIT_PASS_TYPE_ID: string =
+  process.env.EXPO_PUBLIC_PASSKIT_PASS_TYPE_ID ?? "TODO_SET_PASS_TYPE_ID";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -244,9 +286,9 @@ function buildPassJson(f: PassFlightData): string {
 
   const pass = {
     formatVersion: 1,
-    passTypeIdentifier: "pass.com.logbook.boardingpass",
+    passTypeIdentifier: PASSKIT_PASS_TYPE_ID,
     serialNumber: `${f.flightCode}-${f.date}-${Date.now()}`,
-    teamIdentifier: "LOGBOOK",
+    teamIdentifier: PASSKIT_TEAM_ID,
     organizationName: "Logbook",
     description: `${f.flightCode} ${f.departureAirport}–${f.arrivalAirport}`,
     logoText: f.airline,
@@ -282,7 +324,7 @@ export async function generatePkpass(
     const passJsonStr   = buildPassJson(flight);
     const passJsonBytes = str(passJsonStr);
 
-    // Stub signature (1 byte) — sufficient for Share-sheet "Add to Wallet"
+    // Stub signature (1 byte) — sufficient for Share-sheet “Add to Wallet”
     const signatureBytes = new Uint8Array([0x00]);
 
     const manifest = JSON.stringify({
