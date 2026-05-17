@@ -95,12 +95,12 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
   const [flights, setFlights] = useState<Flight[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ── Write widget data whenever flights change ────────────────────────────
+  // ── Write widget data whenever flights change ────────────────────────────────────────
   useEffect(() => {
     if (!isLoading) writeWidgetData(flights);
   }, [flights, isLoading]);
 
-  // ── Load flights: API when logged in, AsyncStorage as fallback/guest ────────────
+  // ── Load flights: API when logged in, AsyncStorage as fallback/guest ──────────────────
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -110,8 +110,14 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
           const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(profile.id)}/flights`);
           if (res.ok) {
             const data: Flight[] = await res.json();
-            if (!cancelled) setFlights(data);
-            setIsLoading(false);
+            // Both state updates must be co-located inside the cancelled guard.
+            // Previously setIsLoading(false) was called unconditionally here,
+            // causing a state update on an unmounted component if the effect
+            // cleanup fired between the two lines.
+            if (!cancelled) {
+              setFlights(data);
+              setIsLoading(false);
+            }
             return;
           }
         } catch (err) {
@@ -137,7 +143,7 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
   }, []);
 
-  // ── Add flight ───────────────────────────────────────────────────────────────────────
+  // ── Add flight ──────────────────────────────────────────────────────────────────────────────────────
   const addFlight = useCallback(async (data: Omit<Flight, "id" | "addedAt">) => {
     const isDuplicate = flights.some(
       (f) => f.flightCode === data.flightCode && f.date === data.date,
@@ -179,7 +185,7 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
     await persistLocal(next);
   }, [flights, isLoggedIn, profile.id, persistLocal]);
 
-  // ── Remove flight ────────────────────────────────────────────────────────────────────
+  // ── Remove flight ────────────────────────────────────────────────────────────────────────────────────
   const removeFlight = useCallback(async (id: string) => {
     const snapshot = flights;
     const next = flights.filter((f) => f.id !== id);
