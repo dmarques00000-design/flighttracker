@@ -82,7 +82,7 @@ function useIsOnline(): boolean {
   return online;
 }
 
-// ── Types ────────────────────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────────────
 interface FlightLookupResult {
   flightCode: string; date: string; airline: string; airlineCode: string;
   departureAirport: string; arrivalAirport: string; departureCity: string; arrivalCity: string;
@@ -130,7 +130,7 @@ function airlineLogoUrl(airlineCode: string): string {
   return `https://logo.clearbit.com/${domain}?size=64`;
 }
 
-// ── Error banner ────────────────────────────────────────────────────────────────────────
+// ── Error banner ──────────────────────────────────────────────────────────────────────────
 function ErrorBanner({ err, onRetry, C }: { err: LookupError; onRetry: () => void; C: ReturnType<typeof useColors> }) {
   const iconMap: Record<LookupErrorKind, string> = {
     offline: "wifi-outline", server: "cloud-offline-outline", timeout: "time-outline",
@@ -165,7 +165,7 @@ function ErrorBanner({ err, onRetry, C }: { err: LookupError; onRetry: () => voi
   );
 }
 
-// ── Flight result card ─────────────────────────────────────────────────────────────────────
+// ── Flight result card ───────────────────────────────────────────────────────────────────────────
 function FlightCard({
   flight, C, action, actionLabel, actionLoading,
 }: {
@@ -285,7 +285,7 @@ function FlightCard({
   );
 }
 
-// ── Screen ─────────────────────────────────────────────────────────────────────────────────
+// ── Screen ────────────────────────────────────────────────────────────────────────────────────────
 export default function AddFlightScreen() {
   const insets   = useSafeAreaInsets();
   const C        = useColors();
@@ -293,6 +293,11 @@ export default function AddFlightScreen() {
   const isOnline = useIsOnline();
 
   const scrollRef = useRef<ScrollView>(null);
+
+  // Synchronous re-entrancy guard — useRef so the check is immediate,
+  // before any state update (setState is batched; too late to block a
+  // concurrent second tap landing in the same JS frame).
+  const submittingRef = useRef(false);
 
   const [searchMode, setSearchMode]   = useState<SearchMode>("code");
   const [date, setDate]               = useState(todayStr());
@@ -331,7 +336,7 @@ export default function AddFlightScreen() {
       return;
     }
 
-    // ─ Validate using shared Zod schemas ─────────────────────────────────
+    // ─ Validate using shared Zod schemas ────────────────────────────────────────────────
     const codeResult = validateField(flightCodeSchema, code);
     if (codeResult.error) {
       setLookupErr({ kind: "invalid_input", message: codeResult.error, retryable: false });
@@ -342,7 +347,7 @@ export default function AddFlightScreen() {
       setLookupErr({ kind: "invalid_input", message: dateResult.error, retryable: false });
       return;
     }
-    // ────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────────
 
     const limit = await lookupLimiter.check();
     setRemainingCalls(limit.remainingCalls - 1);
@@ -381,13 +386,13 @@ export default function AddFlightScreen() {
       return;
     }
 
-    // ─ Validate date using shared Zod schema ──────────────────────────────
+    // ─ Validate date using shared Zod schema ────────────────────────────────────────────────
     const dateResult = validateField(dateSchema, date);
     if (dateResult.error) {
       setLookupErr({ kind: "invalid_input", message: dateResult.error, retryable: false });
       return;
     }
-    // ────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────────
 
     const limit = await lookupLimiter.check();
     setRemainingCalls(limit.remainingCalls - 1);
@@ -416,14 +421,18 @@ export default function AddFlightScreen() {
     } finally { setLoading(false); }
   }, [depIATA, arrIATA, date, isOnline]);
 
-  async function handleSave(flight: FlightLookupResult) {
+  const handleSave = useCallback(async (flight: FlightLookupResult) => {
+    // Synchronous guard: set BEFORE any await so a concurrent second tap
+    // hitting this function in the same microtask queue is rejected immediately.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+
     setSavingId(flight.flightCode);
     setLookupErr(null);
     try {
       const isDuplicate = flights.some((f) => f.flightCode === flight.flightCode && f.date === flight.date);
       if (isDuplicate) {
         setLookupErr({ kind: "unknown", message: "This flight has already been added to your logbook.", retryable: false });
-        setSavingId(null);
         return;
       }
       await addFlight({
@@ -444,9 +453,10 @@ export default function AddFlightScreen() {
       setLookupErr(classifySaveError(err, isOnline));
       setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: true }), 100);
     } finally {
+      submittingRef.current = false;
       setSavingId(null);
     }
-  }
+  }, [flights, addFlight, isOnline]);
 
   const activeSearch = searchMode === "code" ? handleCodeLookup : handleAirportSearch;
 
