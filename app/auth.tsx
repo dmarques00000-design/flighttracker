@@ -7,7 +7,7 @@ import {
   View, Text,
   Pressable,
   KeyboardAvoidingView, Platform, ScrollView,
-  ActivityIndicator, Alert, Image, StyleSheet, Dimensions,
+  ActivityIndicator, Alert, Image, StyleSheet, Dimensions, Linking,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,13 +21,18 @@ import Constants from "expo-constants";
 import { useUser } from "@/context/user";
 import * as AppleAuthentication from "expo-apple-authentication";
 
-// ─── Test account gate ───────────────────────────────────────────────────────────────────────────────
+// ─── Legal URLs ───────────────────────────────────────────────────────────────
+// Both must be publicly accessible before account creation (App Store Review §5.1.1).
+const PRIVACY_POLICY_URL = "https://dmarques00000-design.github.io/flighttracker/privacy.html";
+const TERMS_URL          = "https://dmarques00000-design.github.io/flighttracker/terms.html";
+
+// ─── Test account gate ───────────────────────────────────────────────────────
 // Only visible in development and preview EAS builds.
 // Set SHOW_TEST_ACCOUNT=true in eas.json dev/preview env; absent in production.
 const SHOW_TEST_ACCOUNT: boolean =
   Constants.expoConfig?.extra?.showTestAccount === true;
 
-// ─── Google Sign-In lazy loader ───────────────────────────────────────────────────────────────────────────────────
+// ─── Google Sign-In lazy loader ──────────────────────────────────────────────
 type GoogleSigninType = typeof import("@react-native-google-signin/google-signin");
 let _googleModule: GoogleSigninType | null = null;
 function getGoogleSignin(): GoogleSigninType | null {
@@ -45,7 +50,7 @@ const TEST_USER = { id: "test-user-001", name: "Diogo Marques", email: "diogo.te
 
 const { width: SW, height: SH } = Dimensions.get("window");
 
-// ─── Background scene ──────────────────────────────────────────────────────────────────────────────────────
+// ─── Background scene ─────────────────────────────────────────────────────────
 const STARS = [
   [8,  6,  1.8, 0.9], [18, 11, 1.2, 0.7], [32,  4, 2.2, 0.8], [47,  9, 1.5, 0.6],
   [61,  3, 1.8, 0.9], [75,  8, 1.2, 0.7], [88,  5, 2.0, 0.8], [94, 14, 1.5, 0.6],
@@ -133,7 +138,7 @@ function GlassCard({ children, style }: { children: React.ReactNode; style?: obj
   );
 }
 
-// ─── Main screen ────────────────────────────────────────────────────────────────────────────────────────
+// ─── Main screen ──────────────────────────────────────────────────────────────
 export default function AuthScreen() {
   const insets  = useSafeAreaInsets();
   const { login, profile } = useUser();
@@ -344,6 +349,33 @@ export default function AuthScreen() {
             </Pressable>
           </Animated.View>
 
+          {/* ── LEGAL FOOTER ── */}
+          {/* Required by App Store Review §5.1.1: PP and ToS must be visible   */}
+          {/* before account creation, not buried in settings.                  */}
+          <Animated.View entering={FadeIn.delay(280)} style={s.legalFooter}>
+            <Text style={s.legalText}>
+              {"By continuing you agree to our "}
+              <Text
+                style={s.legalLink}
+                onPress={() => Linking.openURL(TERMS_URL)}
+                accessibilityRole="link"
+                accessibilityLabel="Terms of Service"
+              >
+                Terms of Service
+              </Text>
+              {" and "}
+              <Text
+                style={s.legalLink}
+                onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+                accessibilityRole="link"
+                accessibilityLabel="Privacy Policy"
+              >
+                Privacy Policy
+              </Text>
+              .
+            </Text>
+          </Animated.View>
+
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -386,4 +418,23 @@ const s = StyleSheet.create({
   googleG:     { width: 24, height: 24, borderRadius: 12, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
   googleGText: { fontSize: 14, fontFamily: "DMSans_700Bold", color: "#4285F4" },
   guestLink:   { fontSize: 13, color: "rgba(255,255,255,0.38)", fontFamily: "DMSans_400Regular" },
+
+  // Legal footer — App Store compliance §5.1.1
+  legalFooter: {
+    alignItems: "center",
+    marginTop: 20,
+    paddingHorizontal: 16,
+  },
+  legalText: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.28)",
+    fontFamily: "DMSans_400Regular",
+    textAlign: "center",
+    lineHeight: 17,
+  },
+  legalLink: {
+    color: "rgba(255,255,255,0.50)",
+    fontFamily: "DMSans_500Medium",
+    textDecorationLine: "underline",
+  },
 });
