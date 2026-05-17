@@ -6,17 +6,17 @@
  *   pass.json        — the pass definition
  *   manifest.json    — SHA1 hashes of every file in the bundle
  *   signature        — a stub (unsigned passes are accepted by iOS via the
- *                      Share sheet “Add to Wallet” flow; a real PassKit
+ *                      Share sheet "Add to Wallet" flow; a real PassKit
  *                      signing cert is only needed for server-pushed passes)
  *
- * We use a minimal pure-JS zip implementation so we don’t need a native
+ * We use a minimal pure-JS zip implementation so we don't need a native
  * module or an extra npm package.
  *
  * ──────────────────────────────────────────────────────────────────────────────
  * REQUIRED SETUP — before submitting to the App Store
  * ──────────────────────────────────────────────────────────────────────────────
  * 1. Go to developer.apple.com → Certificates, Identifiers & Profiles
- *    → Identifiers → “+” → Pass Type IDs.
+ *    → Identifiers → "+" → Pass Type IDs.
  *    Register: pass.com.logbookapp.boardingpass
  *
  * 2. Note your 10-character Team ID (top-right of the Developer portal
@@ -314,6 +314,23 @@ function buildPassJson(f: PassFlightData): string {
 }
 
 // ---------------------------------------------------------------------------
+// Uint8Array → base64
+// Chunked to avoid hitting V8's max call-stack limit when the ZIP grows
+// beyond ~125 KB. String.fromCharCode(...bigArray) spreads every byte as a
+// separate function argument; 0x8000 (32 768) bytes per chunk stays well
+// within the argument-count limit on all JS engines.
+// ---------------------------------------------------------------------------
+
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const len = bytes.length;
+  for (let i = 0; i < len; i += 0x8000) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000) as unknown as number[]);
+  }
+  return btoa(binary);
+}
+
+// ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
 
@@ -324,7 +341,7 @@ export async function generatePkpass(
     const passJsonStr   = buildPassJson(flight);
     const passJsonBytes = str(passJsonStr);
 
-    // Stub signature (1 byte) — sufficient for Share-sheet “Add to Wallet”
+    // Stub signature (1 byte) — sufficient for Share-sheet "Add to Wallet"
     const signatureBytes = new Uint8Array([0x00]);
 
     const manifest = JSON.stringify({
@@ -340,11 +357,7 @@ export async function generatePkpass(
     ];
 
     const zipBytes = buildZip(entries);
-
-    // Uint8Array → base64 for expo-file-system
-    let binary = "";
-    for (let i = 0; i < zipBytes.length; i++) binary += String.fromCharCode(zipBytes[i]);
-    const base64 = btoa(binary);
+    const base64   = uint8ToBase64(zipBytes);
 
     const fileName = `${flight.flightCode}-${flight.date}.pkpass`;
     const uri      = `${FileSystem.cacheDirectory}${fileName}`;
