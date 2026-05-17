@@ -100,14 +100,13 @@ async function silentUpsert(profile: UserProfile): Promise<void> {
  * Returns true  → credential is still AUTHORIZED, session may proceed.
  * Returns false → credential was revoked/not found, caller must log out.
  *
- * Deliberately fire-and-forgets network issues: if the device is offline
+ * Deliberately fail-open on network issues: if the device is offline
  * or the module is unavailable we treat the session as still valid to
  * avoid a disruptive logout caused by a transient network blip.
  */
 async function checkAppleCredentialState(userId: string): Promise<boolean> {
   if (Platform.OS !== "ios") return true;
   try {
-    // Lazy-require so the module is only loaded on iOS builds that include it.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const AppleAuth = require("expo-apple-authentication");
     const state = await AppleAuth.getCredentialStateForUserAsync(userId);
@@ -116,6 +115,34 @@ async function checkAppleCredentialState(userId: string): Promise<boolean> {
   } catch {
     // Module not installed, API error, or device offline — allow session.
     return true;
+  }
+}
+
+/**
+ * App Store Review Guideline 5.1.1(v) — Revoke Apple token on account deletion.
+ *
+ * When a user deletes their account we must call revokeAsync() so Apple's
+ * authorization servers are notified that the app-user association is
+ * terminated. This is required for all apps that use Sign In with Apple.
+ *
+ * Errors are intentionally swallowed:
+ *   - If the device is offline the token will expire naturally.
+ *   - If the token was already revoked (e.g. user revoked manually first)
+ *     the call throws ERR_APPLE_AUTHENTICATION_CREDENTIAL, which is fine.
+ *   - We must never block account deletion because revocation failed —
+ *     that would leave the user unable to delete their account.
+ *
+ * Must be called BEFORE the server DELETE so we still hold the user
+ * identity at revocation time.
+ */
+async function revokeAppleToken(): Promise<void> {
+  if (Platform.OS !== "ios") return;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const AppleAuth = require("expo-apple-authentication");
+    await AppleAuth.revokeAsync();
+  } catch {
+    // Revocation failed (offline / already revoked / module absent) — proceed.
   }
 }
 
@@ -183,9 +210,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
   /**
    * Permanently delete the account from the server (cascades to flights + trips),
    * then wipe all local state and AsyncStorage.
+   *
+   * Order of operations is deliberate:
+   *   1. Revoke Apple token FIRST (while we still hold the user identity).
+   *   2. DELETE the server row (throws on failure — UI shows an error).
+   *   3. Wipe local state (only reached if server DELETE succeeded).
+   *
    * Throws if the server call fails so the UI can show an error to the user.
    */
   async function deleteAccount(userId: string): Promise<void> {
+    // ── Guideline 5.1.1(v): revoke Apple authorization before deleting ──
+    if (profile.provider === "apple") {
+      await revokeAppleToken();
+    }
+
     const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}`, {
       method: "DELETE",
     });
@@ -193,6 +231,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       const body = await res.text().catch(() => "(no body)");
       throw new Error(`[UserContext] DELETE /api/users/${userId} failed ${res.status}: ${body}`);
     }
+
     // Server deletion succeeded — wipe everything locally.
     setProfile(DEFAULT_PROFILE);
     setIsLoggedIn(false);
