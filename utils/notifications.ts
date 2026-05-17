@@ -12,6 +12,7 @@
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Flight } from "@/context/flights";
+import { AIRPORT_TIMEZONES } from "@/utils/airportTimezones";
 
 // ---------------------------------------------------------------------------
 // Lazy loader — returns the Notifications namespace or null if not installed.
@@ -28,6 +29,68 @@ function getNotif(): NotificationsModule | null {
     _notif = null;
   }
   return _notif;
+}
+
+// ---------------------------------------------------------------------------
+// Timezone-aware departure epoch
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert an airport-local departure date + HH:MM to an exact UTC epoch (ms).
+ *
+ * Uses the same Intl-offset technique as computeActualBlockMinutes so that
+ * DST transitions on the departure date are handled correctly.
+ *
+ * Falls back to device-local wall-clock interpretation when the IATA code is
+ * not present in AIRPORT_TIMEZONES (unknown/private airports).
+ *
+ * @param date   "YYYY-MM-DD"
+ * @param time   "HH:MM" in departure airport local time
+ * @param iata   Departure airport IATA code
+ * @returns      UTC milliseconds for the exact departure instant
+ */
+function departureUtcMs(date: string, time: string, iata: string): number {
+  const [year, month, day] = date.split("-").map(Number);
+  const [depH, depM] = time.split(":").map(Number);
+
+  const tz = AIRPORT_TIMEZONES[iata];
+  if (!tz) {
+    // Unknown airport — fall back to device local time (original behaviour).
+    return new Date(year, month - 1, day, depH, depM, 0).getTime();
+  }
+
+  // Step 1: treat the local time naively as UTC to get a probe Date.
+  const isoLocal = `${date}T${String(depH).padStart(2, "0")}:${String(depM).padStart(2, "0")}:00`;
+  const probe = new Date(`${isoLocal}Z`);
+
+  // Step 2: ask Intl what the wall-clock time looks like in the airport's
+  // timezone when the UTC clock shows `probe`. The difference between the
+  // naive UTC value and the Intl-rendered local value is the UTC offset.
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(probe);
+  const p: Record<string, number> = {};
+  for (const { type, value } of parts) {
+    if (["year", "month", "day", "hour", "minute"].includes(type))
+      p[type] = parseInt(value, 10);
+  }
+
+  // Minutes since midnight in each representation
+  const localTotal = p["hour"] * 60 + p["minute"];
+  const naiveTotal = depH * 60 + depM;
+  // offset (min) = naiveTotal - localTotal  →  local + offset = utc naive
+  const offsetMin = naiveTotal - localTotal;
+
+  // Step 3: the true UTC epoch is the naive UTC epoch minus the offset error.
+  // Equivalently: localMs + offsetMin * 60_000 = utcMs
+  return probe.getTime() - offsetMin * 60_000;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +181,12 @@ export async function requestNotificationPermission(): Promise<boolean> {
 
 /**
  * Schedule a reminder for a single flight at a given offset (hours before departure).
+ *
+ * The trigger time is computed from the departure airport's local timezone, not the
+ * device timezone. A user in Zurich scheduling a reminder for a 10:00 JFK departure
+ * will correctly receive the "24h before" notification at 16:00 Zurich time the day
+ * before (i.e. 24h before 10:00 New York time), not at 10:00 Zurich time.
+ *
  * Returns the scheduled notification identifier, or null if scheduling fails / is in the past.
  */
 export async function scheduleFlightReminder(
@@ -128,12 +197,15 @@ export async function scheduleFlightReminder(
   const N = getNotif();
   if (!N) return null;
 
-  const [year, month, day] = flight.date.split("-").map(Number);
-  const [depH, depM] = flight.departureTime.split(":").map(Number);
-  const departure = new Date(year, month - 1, day, depH, depM, 0);
-  const triggerDate = new Date(departure.getTime() - offsetHours * 60 * 60 * 1000);
+  // Convert departure airport local time → UTC epoch, then subtract the offset.
+  const departureUtc = departureUtcMs(
+    flight.date,
+    flight.departureTime,
+    flight.departureAirport,
+  );
+  const triggerMs = departureUtc - offsetHours * 60 * 60 * 1000;
 
-  if (triggerDate.getTime() <= Date.now()) return null;
+  if (triggerMs <= Date.now()) return null;
 
   const id = notifId(flight.id, offsetHours);
   await N.cancelScheduledNotificationAsync(id).catch(() => {});
@@ -151,7 +223,7 @@ export async function scheduleFlightReminder(
       sound: true,
       data: { flightId: flight.id },
     },
-    trigger: { type: N.SchedulableTriggerInputTypes.DATE, date: triggerDate },
+    trigger: { type: N.SchedulableTriggerInputTypes.DATE, date: new Date(triggerMs) },
   });
 
   return id;
