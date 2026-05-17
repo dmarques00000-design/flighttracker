@@ -9,7 +9,8 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "SHOW_TEST_ACCOUNT": "true"
+        "SHOW_TEST_ACCOUNT": "true",
+        "EXPO_PUBLIC_IS_BETA": "true"
       },
       "ios": {
         "image": "latest",
@@ -24,7 +25,8 @@
       "channel": "preview",
       "distribution": "internal",
       "env": {
-        "SHOW_TEST_ACCOUNT": "true"
+        "SHOW_TEST_ACCOUNT": "true",
+        "EXPO_PUBLIC_IS_BETA": "true"
       },
       "ios": {
         "image": "latest"

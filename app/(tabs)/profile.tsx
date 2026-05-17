@@ -32,6 +32,21 @@ import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 
 const PRIVACY_POLICY_URL = "https://dmarques00000-design.github.io/flighttracker/privacy.html";
 
+/**
+ * True in local dev (expo start) and in development/preview EAS builds.
+ * Always false in production builds — the Beta section is hidden from
+ * App Store users who cannot act on TestFlight-era feedback UI.
+ *
+ * To control per-profile: set EXPO_PUBLIC_IS_BETA=true in eas.json for
+ * the profiles where the section should be visible (development, preview).
+ * Leave it unset in the production profile.
+ *
+ * __DEV__ is the fallback so `expo start` sessions always show the section
+ * without needing a local .env entry.
+ */
+const IS_BETA: boolean =
+  process.env.EXPO_PUBLIC_IS_BETA === "true" || __DEV__;
+
 const SEAT_OPTIONS: { value: UserProfile["seatPreference"]; label: string; icon: string }[] = [
   { value: "window", label: "Window", icon: "partly-sunny-outline" },
   { value: "middle", label: "Middle",  icon: "remove-outline" },
@@ -477,8 +492,8 @@ export default function ProfileScreen() {
               </SectionCard>
             </Animated.View>
 
-            {/* Beta Feedback */}
-            {!editing && (
+            {/* Beta Feedback — hidden in production builds (IS_BETA = false) */}
+            {IS_BETA && !editing && (
               <Animated.View entering={FadeInDown.delay(140).springify()}>
                 <SectionCard title="Beta" icon="flask-outline" C={C}>
                   <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
@@ -546,12 +561,14 @@ export default function ProfileScreen() {
         )}
       </ScrollView>
 
-      <FeedbackModal
-        visible={feedbackVisible}
-        onClose={() => setFeedbackVisible(false)}
-        userName={profile.name}
-        userEmail={profile.email}
-      />
+      {IS_BETA && (
+        <FeedbackModal
+          visible={feedbackVisible}
+          onClose={() => setFeedbackVisible(false)}
+          userName={profile.name}
+          userEmail={profile.email}
+        />
+      )}
     </View>
   );
 }
