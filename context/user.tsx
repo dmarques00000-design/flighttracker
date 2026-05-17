@@ -64,19 +64,31 @@ export interface LoginParams {
 const UserContext = createContext<UserContextType | null>(null);
 
 /**
+ * Returns true if the email is an Apple private relay address.
+ * These look like: abc123def456@privaterelay.appleid.com
+ *
+ * Private relay addresses must never be shown to the user as their
+ * profile email, and must never be used as a unique identity signal
+ * in the database (the Apple user ID in `id` is the stable key).
+ */
+function isPrivateRelayEmail(email: string): boolean {
+  return email.toLowerCase().endsWith("@privaterelay.appleid.com");
+}
+
+/**
  * Silently upsert a user row in the DB.
  * Fire-and-forget — errors are swallowed so a transient network blip at
  * launch never breaks an already-logged-in session.
  */
 async function silentUpsert(profile: UserProfile): Promise<void> {
-  if (!profile.id || !profile.email) return;
+  if (!profile.id) return;
   try {
     await fetch(`${API_BASE}/api/auth/upsert`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id:        profile.id,
-        email:     profile.email,
+        email:     profile.email || null,
         name:      profile.name,
         avatarUrl: profile.avatarUrl,
         provider:  profile.provider,
@@ -248,11 +260,26 @@ export function UserProvider({ children }: { children: ReactNode }) {
       ? profile.name
       : name.trim();
 
+    // Apple Hide My Email: the relay address is not a usable display email.
+    // Store an empty string so the profile email field stays blank rather than
+    // showing "abc123@privaterelay.appleid.com" to the user.
+    // The server receives null for relay addresses (see upsertUser) so the
+    // unique index on real emails is never violated.
+    const resolvedEmail = (provider === "apple" && isPrivateRelayEmail(email))
+      ? ""
+      : email.trim();
+
     // Persist user to DB — must succeed before we mark the user as logged in.
     const res = await fetch(`${API_BASE}/api/auth/upsert`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, email, name: resolvedName, avatarUrl, provider }),
+      body: JSON.stringify({
+        id,
+        email:     resolvedEmail || null,  // send null for relay/empty so server skips uniqueness check
+        name:      resolvedName,
+        avatarUrl,
+        provider,
+      }),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "(no body)");
@@ -261,13 +288,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
     const initials = resolvedName
       ? resolvedName.split(" ").filter(Boolean).map((p) => p[0].toUpperCase()).slice(0, 2).join("")
-      : email[0]?.toUpperCase() ?? "?";
+      : resolvedEmail[0]?.toUpperCase() ?? "?";
 
     const updated: UserProfile = {
       ...profile,
       id,
       name: resolvedName,
-      email: email.trim(),
+      email: resolvedEmail,
       provider,
       avatarUrl: avatarUrl ?? "",
       avatarInitials: initials,

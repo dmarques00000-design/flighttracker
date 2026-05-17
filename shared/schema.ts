@@ -7,22 +7,54 @@ import {
   real,
   timestamp,
   boolean,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 // Populated on first Google / Apple sign-in via POST /api/auth/upsert
+//
+// EMAIL UNIQUENESS NOTE
+// ---------------------
+// We deliberately do NOT put a blanket UNIQUE constraint on the email column.
+// Apple's Hide My Email feature generates a per-app per-device private relay
+// address (xyz@privaterelay.appleid.com). Two different Apple users both using
+// Hide My Email will each have a unique relay address, but a single user
+// signing in from a second device may receive a DIFFERENT relay address for
+// the same Apple ID. A blanket UNIQUE on email would cause a collision.
+//
+// The stable identity key is `id` (Google sub / Apple user ID), which is
+// already the PRIMARY KEY. Email is stored as metadata only.
+//
+// A partial unique index (see bottom of this file) still enforces uniqueness
+// for real (non-relay) email addresses so Google/email-provider sign-in
+// cannot produce duplicate rows.
 
 export const users = pgTable("users", {
   id:         varchar("id", { length: 128 }).primaryKey(), // Google sub / Apple user id
-  email:      text("email").notNull().unique(),
+  email:      text("email"),   // nullable: Apple Hide My Email may give no usable address
   name:       text("name"),
   avatarUrl:  text("avatar_url"),
   provider:   varchar("provider", { length: 16 }).notNull().default("google"), // 'google' | 'apple'
   createdAt:  timestamp("created_at").notNull().default(sql`now()`),
   updatedAt:  timestamp("updated_at").notNull().default(sql`now()`),
 });
+
+// Partial unique index: enforce email uniqueness ONLY for real addresses.
+// Private relay addresses (ending in @privaterelay.appleid.com) are excluded
+// so multiple Apple Hide My Email users can coexist without constraint errors.
+//
+// Run this migration once against your Neon/Postgres database:
+//
+//   CREATE UNIQUE INDEX users_real_email_unique
+//     ON users (email)
+//     WHERE email IS NOT NULL
+//       AND email NOT LIKE '%@privaterelay.appleid.com';
+//
+// Drizzle does not yet support partial indexes via the schema builder, so
+// this is documented here and must be applied as a raw SQL migration.
+// See: scripts/migrations/add_partial_email_index.sql
 
 export const insertUserSchema = createInsertSchema(users).omit({ createdAt: true, updatedAt: true });
 export const selectUserSchema = createSelectSchema(users);
