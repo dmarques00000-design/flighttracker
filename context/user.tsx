@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 import {
   NotificationPrefs,
   DEFAULT_NOTIFICATION_PREFS,
@@ -86,6 +87,38 @@ async function silentUpsert(profile: UserProfile): Promise<void> {
   }
 }
 
+/**
+ * App Store Review Guideline 4.8 — Apple Sign In credential state check.
+ *
+ * On every cold launch we must verify that the stored Apple credential is
+ * still valid. If the user has revoked access in
+ * Settings → Apple ID → Password & Security → Apps Using Apple ID,
+ * the credential state will be REVOKED (or NOT_FOUND). In either case we
+ * must clear the local session immediately so the user is never left in an
+ * authenticated-but-revoked state.
+ *
+ * Returns true  → credential is still AUTHORIZED, session may proceed.
+ * Returns false → credential was revoked/not found, caller must log out.
+ *
+ * Deliberately fire-and-forgets network issues: if the device is offline
+ * or the module is unavailable we treat the session as still valid to
+ * avoid a disruptive logout caused by a transient network blip.
+ */
+async function checkAppleCredentialState(userId: string): Promise<boolean> {
+  if (Platform.OS !== "ios") return true;
+  try {
+    // Lazy-require so the module is only loaded on iOS builds that include it.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const AppleAuth = require("expo-apple-authentication");
+    const state = await AppleAuth.getCredentialStateForUserAsync(userId);
+    // CredentialState enum: AUTHORIZED = 1, REVOKED = 2, NOT_FOUND = 3, TRANSFERRED = 4
+    return state === AppleAuth.AppleAuthenticationCredentialState.AUTHORIZED;
+  } catch {
+    // Module not installed, API error, or device offline — allow session.
+    return true;
+  }
+}
+
 export function UserProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile]         = useState<UserProfile>(DEFAULT_PROFILE);
   const [isLoggedIn, setIsLoggedIn]   = useState(false);
@@ -93,7 +126,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [notifPrefs, setNotifPrefs]   = useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
 
   useEffect(() => {
-    AsyncStorage.multiGet([STORAGE_KEY, AUTH_KEY, NOTIF_PREFS_KEY]).then((pairs) => {
+    AsyncStorage.multiGet([STORAGE_KEY, AUTH_KEY, NOTIF_PREFS_KEY]).then(async (pairs) => {
       const profileRaw    = pairs[0][1];
       const authRaw       = pairs[1][1];
       const notifPrefsRaw = pairs[2][1];
@@ -109,11 +142,22 @@ export function UserProvider({ children }: { children: ReactNode }) {
         } catch {}
       }
 
-      if (authRaw === "true") {
+      if (authRaw === "true" && restoredProfile) {
+        // ── Guideline 4.8: verify Apple credential state on every cold start ──
+        if (restoredProfile.provider === "apple" && restoredProfile.id) {
+          const stillAuthorized = await checkAppleCredentialState(restoredProfile.id);
+          if (!stillAuthorized) {
+            // Apple credential was revoked — silently clear the session.
+            setIsLoggedIn(false);
+            await AsyncStorage.removeItem(AUTH_KEY);
+            return;
+          }
+        }
+
         setIsLoggedIn(true);
         // Re-upsert on every launch to guarantee the users row exists in Postgres
         // even if the server was unreachable during the very first sign-in.
-        if (restoredProfile) silentUpsert(restoredProfile);
+        silentUpsert(restoredProfile);
       }
 
       if (notifPrefsRaw) {
