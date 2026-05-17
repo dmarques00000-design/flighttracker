@@ -8,6 +8,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { StatusBar } from "expo-status-bar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { queryClient } from "@/lib/query-client";
 import { FlightsProvider } from "@/context/flights";
 import { TripsProvider } from "@/context/trips";
@@ -114,6 +115,8 @@ function RootLayoutNav() {
             options={{ presentation: "modal", headerShown: false, contentStyle: { backgroundColor: "transparent" } }}
           />
         </Stack>
+        {/* Global offline banner — floats above all screens, never blocks touches */}
+        <OfflineBanner />
       </KeyboardProvider>
     </GestureHandlerRootView>
   );
