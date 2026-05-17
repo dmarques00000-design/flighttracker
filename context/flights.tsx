@@ -110,10 +110,6 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
           const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(profile.id)}/flights`);
           if (res.ok) {
             const data: Flight[] = await res.json();
-            // Both state updates must be co-located inside the cancelled guard.
-            // Previously setIsLoading(false) was called unconditionally here,
-            // causing a state update on an unmounted component if the effect
-            // cleanup fired between the two lines.
             if (!cancelled) {
               setFlights(data);
               setIsLoading(false);
@@ -202,6 +198,11 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         console.warn("[FlightsContext] Failed to delete flight from API, reverting:", err);
         setFlights(snapshot);
+        // Re-persist the snapshot so AsyncStorage stays in sync with the
+        // reverted in-memory state. Without this, storage holds the
+        // post-deletion array and the flight disappears on next app launch
+        // even though it was visually restored in the UI.
+        await persistLocal(snapshot);
         throw err;
       }
     } else {
