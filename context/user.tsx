@@ -8,7 +8,7 @@ import {
 import { API_BASE } from "@/constants/api";
 
 export interface UserProfile {
-  id: string;           // real provider ID (Google sub / Apple user ID)
+  id: string;
   name: string;
   email: string;
   provider: "google" | "apple" | "email" | "";
@@ -42,6 +42,16 @@ const NOTIF_PREFS_KEY   = "@flighttracker_notif_prefs";
 interface UserContextType {
   profile: UserProfile;
   isLoggedIn: boolean;
+  /**
+   * True once the initial AsyncStorage read has completed and `isLoggedIn`
+   * reflects the persisted session. Always false on the very first render.
+   *
+   * Consumers that need to act on auth state at cold start (e.g. deep-link
+   * routing in _layout.tsx) MUST wait for `isHydrated === true` before
+   * inspecting `isLoggedIn` or navigating, otherwise they may observe a
+   * stale `false` and incorrectly redirect to the auth screen.
+   */
+  isHydrated: boolean;
   notifPrefs: NotificationPrefs;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   updateNotifPrefs: (updates: Partial<NotificationPrefs>) => Promise<void>;
@@ -53,7 +63,6 @@ interface UserContextType {
 }
 
 export interface LoginParams {
-  /** Stable provider user ID (Google sub, Apple user ID). Falls back to email for test/email logins. */
   id: string;
   name: string;
   email: string;
@@ -63,23 +72,10 @@ export interface LoginParams {
 
 const UserContext = createContext<UserContextType | null>(null);
 
-/**
- * Returns true if the email is an Apple private relay address.
- * These look like: abc123def456@privaterelay.appleid.com
- *
- * Private relay addresses must never be shown to the user as their
- * profile email, and must never be used as a unique identity signal
- * in the database (the Apple user ID in `id` is the stable key).
- */
 function isPrivateRelayEmail(email: string): boolean {
   return email.toLowerCase().endsWith("@privaterelay.appleid.com");
 }
 
-/**
- * Silently upsert a user row in the DB.
- * Fire-and-forget — errors are swallowed so a transient network blip at
- * launch never breaks an already-logged-in session.
- */
 async function silentUpsert(profile: UserProfile): Promise<void> {
   if (!profile.id) return;
   try {
@@ -99,70 +95,33 @@ async function silentUpsert(profile: UserProfile): Promise<void> {
   }
 }
 
-/**
- * App Store Review Guideline 4.8 — Apple Sign In credential state check.
- *
- * On every cold launch we must verify that the stored Apple credential is
- * still valid. If the user has revoked access in
- * Settings → Apple ID → Password & Security → Apps Using Apple ID,
- * the credential state will be REVOKED (or NOT_FOUND). In either case we
- * must clear the local session immediately so the user is never left in an
- * authenticated-but-revoked state.
- *
- * Returns true  → credential is still AUTHORIZED, session may proceed.
- * Returns false → credential was revoked/not found, caller must log out.
- *
- * Deliberately fail-open on network issues: if the device is offline
- * or the module is unavailable we treat the session as still valid to
- * avoid a disruptive logout caused by a transient network blip.
- */
 async function checkAppleCredentialState(userId: string): Promise<boolean> {
   if (Platform.OS !== "ios") return true;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const AppleAuth = require("expo-apple-authentication");
     const state = await AppleAuth.getCredentialStateForUserAsync(userId);
-    // CredentialState enum: AUTHORIZED = 1, REVOKED = 2, NOT_FOUND = 3, TRANSFERRED = 4
     return state === AppleAuth.AppleAuthenticationCredentialState.AUTHORIZED;
   } catch {
-    // Module not installed, API error, or device offline — allow session.
     return true;
   }
 }
 
-/**
- * App Store Review Guideline 5.1.1(v) — Revoke Apple token on account deletion.
- *
- * When a user deletes their account we must call revokeAsync() so Apple's
- * authorization servers are notified that the app-user association is
- * terminated. This is required for all apps that use Sign In with Apple.
- *
- * Errors are intentionally swallowed:
- *   - If the device is offline the token will expire naturally.
- *   - If the token was already revoked (e.g. user revoked manually first)
- *     the call throws ERR_APPLE_AUTHENTICATION_CREDENTIAL, which is fine.
- *   - We must never block account deletion because revocation failed —
- *     that would leave the user unable to delete their account.
- *
- * Must be called BEFORE the server DELETE so we still hold the user
- * identity at revocation time.
- */
 async function revokeAppleToken(): Promise<void> {
   if (Platform.OS !== "ios") return;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const AppleAuth = require("expo-apple-authentication");
     await AppleAuth.revokeAsync();
-  } catch {
-    // Revocation failed (offline / already revoked / module absent) — proceed.
-  }
+  } catch {}
 }
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [profile, setProfile]         = useState<UserProfile>(DEFAULT_PROFILE);
-  const [isLoggedIn, setIsLoggedIn]   = useState(false);
+  const [profile, setProfile]               = useState<UserProfile>(DEFAULT_PROFILE);
+  const [isLoggedIn, setIsLoggedIn]         = useState(false);
+  const [isHydrated, setIsHydrated]         = useState(false);
   const [dismissedPrompt, setDismissedPrompt] = useState(false);
-  const [notifPrefs, setNotifPrefs]   = useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
+  const [notifPrefs, setNotifPrefs]         = useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS);
 
   useEffect(() => {
     AsyncStorage.multiGet([STORAGE_KEY, AUTH_KEY, NOTIF_PREFS_KEY]).then(async (pairs) => {
@@ -182,20 +141,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
       }
 
       if (authRaw === "true" && restoredProfile) {
-        // ── Guideline 4.8: verify Apple credential state on every cold start ──
         if (restoredProfile.provider === "apple" && restoredProfile.id) {
           const stillAuthorized = await checkAppleCredentialState(restoredProfile.id);
           if (!stillAuthorized) {
-            // Apple credential was revoked — silently clear the session.
             setIsLoggedIn(false);
+            // Mark hydrated even on revocation so the deep-link gate unblocks.
+            setIsHydrated(true);
             await AsyncStorage.removeItem(AUTH_KEY);
             return;
           }
         }
 
         setIsLoggedIn(true);
-        // Re-upsert on every launch to guarantee the users row exists in Postgres
-        // even if the server was unreachable during the very first sign-in.
         silentUpsert(restoredProfile);
       }
 
@@ -204,6 +161,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
           setNotifPrefs({ ...DEFAULT_NOTIFICATION_PREFS, ...JSON.parse(notifPrefsRaw) });
         } catch {}
       }
+
+      // Hydration complete — auth state is now reliable.
+      setIsHydrated(true);
     });
   }, []);
 
@@ -219,19 +179,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem(NOTIF_PREFS_KEY, JSON.stringify(updated));
   }
 
-  /**
-   * Permanently delete the account from the server (cascades to flights + trips),
-   * then wipe all local state and AsyncStorage.
-   *
-   * Order of operations is deliberate:
-   *   1. Revoke Apple token FIRST (while we still hold the user identity).
-   *   2. DELETE the server row (throws on failure — UI shows an error).
-   *   3. Wipe local state (only reached if server DELETE succeeded).
-   *
-   * Throws if the server call fails so the UI can show an error to the user.
-   */
   async function deleteAccount(userId: string): Promise<void> {
-    // ── Guideline 5.1.1(v): revoke Apple authorization before deleting ──
     if (profile.provider === "apple") {
       await revokeAppleToken();
     }
@@ -244,7 +192,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
       throw new Error(`[UserContext] DELETE /api/users/${userId} failed ${res.status}: ${body}`);
     }
 
-    // Server deletion succeeded — wipe everything locally.
     setProfile(DEFAULT_PROFILE);
     setIsLoggedIn(false);
     await AsyncStorage.multiRemove([STORAGE_KEY, AUTH_KEY, NOTIF_PREFS_KEY]);
@@ -253,29 +200,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
   async function login(params: LoginParams) {
     const { id, name, email, provider, avatarUrl } = params;
 
-    // Apple only returns the user's full name on the very first sign-in.
-    // On every subsequent login the name field comes back as an empty string.
-    // Fall back to the cached name so the profile is never silently wiped.
     const resolvedName = (provider === "apple" && !name.trim())
       ? profile.name
       : name.trim();
 
-    // Apple Hide My Email: the relay address is not a usable display email.
-    // Store an empty string so the profile email field stays blank rather than
-    // showing "abc123@privaterelay.appleid.com" to the user.
-    // The server receives null for relay addresses (see upsertUser) so the
-    // unique index on real emails is never violated.
     const resolvedEmail = (provider === "apple" && isPrivateRelayEmail(email))
       ? ""
       : email.trim();
 
-    // Persist user to DB — must succeed before we mark the user as logged in.
     const res = await fetch(`${API_BASE}/api/auth/upsert`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id,
-        email:     resolvedEmail || null,  // send null for relay/empty so server skips uniqueness check
+        email:     resolvedEmail || null,
         name:      resolvedName,
         avatarUrl,
         provider,
@@ -319,7 +257,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   return (
     <UserContext.Provider value={{
-      profile, isLoggedIn, notifPrefs,
+      profile, isLoggedIn, isHydrated, notifPrefs,
       updateProfile, updateNotifPrefs,
       deleteAccount, login, logout,
       dismissedPrompt, dismissPrompt,
