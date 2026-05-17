@@ -443,18 +443,25 @@ function FlightItem({
   const translateX = useSharedValue(0);
   const deleteOpacity = useSharedValue(0);
 
-  const accentColor = isUpcoming ? C.accent : flight.status === "delayed" ? C.red : C.green;
-  let pillBg: string, pillText: string, pillColor: string;
-  if (isUpcoming) {
-    const days = daysUntil(flight.date);
-    pillBg    = days === 0 ? C.accent : days <= 7 ? C.amber + "22" : C.accentDim;
-    pillColor = days === 0 ? C.white  : days <= 7 ? C.amber        : C.accent;
-    pillText  = days === 0 ? "Today!" : days === 1 ? "Tomorrow" : `In ${days} days`;
-  } else {
-    pillBg    = flight.status === "delayed" ? C.red + "18" : C.green + "18";
-    pillColor = flight.status === "delayed" ? C.red        : C.green;
-    pillText  = flight.status === "delayed" ? "Delayed" : flight.status === "cancelled" ? "Cancelled" : "Completed";
-  }
+  // ── Memoize derived colours so inline style objects are not reallocated
+  // on every render pass (critical: this component is rendered per SectionList row).
+  const derived = useMemo(() => {
+    const accentColor = isUpcoming ? C.accent : flight.status === "delayed" ? C.red : C.green;
+    let pillBg: string, pillText: string, pillColor: string;
+    if (isUpcoming) {
+      const days = daysUntil(flight.date);
+      pillBg    = days === 0 ? C.accent : days <= 7 ? C.amber + "22" : C.accentDim;
+      pillColor = days === 0 ? C.white  : days <= 7 ? C.amber        : C.accent;
+      pillText  = days === 0 ? "Today!" : days === 1 ? "Tomorrow" : `In ${days} days`;
+    } else {
+      pillBg    = flight.status === "delayed" ? C.red + "18" : C.green + "18";
+      pillColor = flight.status === "delayed" ? C.red        : C.green;
+      pillText  = flight.status === "delayed" ? "Delayed" : flight.status === "cancelled" ? "Cancelled" : "Completed";
+    }
+    return { accentColor, pillBg, pillText, pillColor };
+  }, [C, isUpcoming, flight.date, flight.status]);
+
+  const { accentColor, pillBg, pillText, pillColor } = derived;
 
   const panGesture = Gesture.Pan()
     .activeOffsetX([-16, 16])
