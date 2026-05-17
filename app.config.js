@@ -40,6 +40,18 @@ export default {
     bundleIdentifier: "com.logbookapp",
     buildNumber: "1",
     usesAppleSignIn: true,
+
+    // Minimum supported iOS version.
+    // 16.0 is required because:
+    //   - NSCalendarsFullAccessUsageDescription is an iOS 17+ key but the
+    //     Calendar framework changes that introduced the read/write split
+    //     shipped with iOS 16's public API surface.
+    //   - expo-apple-authentication and PassKit wallet entitlements target
+    //     iOS 16.0 as their effective floor.
+    //   - Keeps the widest possible audience while guaranteeing all runtime
+    //     APIs (EventKit, PassKit, AuthenticationServices) are available.
+    deploymentTarget: "16.0",
+
     entitlements: {
       "com.apple.security.application-groups": [APP_GROUP],
     },
@@ -78,7 +90,7 @@ export default {
           ],
         },
         {
-          // Name — used for the user’s profile display
+          // Name — used for the user's profile display
           NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypeName",
           NSPrivacyCollectedDataTypeLinked: true,
           NSPrivacyCollectedDataTypeTracking: false,
