@@ -96,7 +96,7 @@ function AviationBackground() {
           />
         ))}
         <Path
-          d={`M ${SW * 0.05},${SH * 0.82} Q ${SW * 0.42},${SH * 0.28} ${SW * 0.92},${SH * 0.08}`}
+          d={`M ${SW * 0.05},${SH * 0.82} Q ${SW * 0.42},${SH * 0.28} ${SW * 0.92},${SW * 0.08}`}
           fill="none"
           stroke="#4F8EF7"
           strokeWidth={1.2}
@@ -136,7 +136,7 @@ function GlassCard({ children, style }: { children: React.ReactNode; style?: obj
 // ─── Main screen ────────────────────────────────────────────────────────────────────────────────────────
 export default function AuthScreen() {
   const insets  = useSafeAreaInsets();
-  const { login } = useUser();
+  const { login, profile } = useUser();
 
   const [loading, setLoading]      = useState(false);
   const [appleAvailable, setApple] = useState(false);
@@ -181,8 +181,33 @@ export default function AuthScreen() {
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
       });
-      const fullName  = [cred.fullName?.givenName ?? "", cred.fullName?.familyName ?? ""].filter(Boolean).join(" ").trim();
-      const userEmail = cred.email ?? "apple-user@privaterelay.appleid.com";
+
+      const fullName = [
+        cred.fullName?.givenName ?? "",
+        cred.fullName?.familyName ?? "",
+      ].filter(Boolean).join(" ").trim();
+
+      /**
+       * Apple only provides cred.email on the very first sign-in.
+       * On every subsequent login it is null.
+       *
+       * Resolution order:
+       *   1. cred.email          — real address or private relay, present on first sign-in only.
+       *   2. profile.email       — cached from the previous session if this is a returning Apple user.
+       *   3. synthetic fallback  — "<cred.user>@privaterelay.appleid.com"
+       *                           cred.user is Apple's stable opaque sub — always present and
+       *                           unique per user per app, so this is both deterministic and
+       *                           collision-free across all users.
+       *
+       * We must NEVER fall back to a single shared hardcoded address —
+       * that causes a UNIQUE constraint collision on the second Apple user
+       * who hides their email.
+       */
+      const userEmail =
+        cred.email ??
+        (profile.provider === "apple" && profile.email ? profile.email : null) ??
+        `${cred.user}@privaterelay.appleid.com`;
+
       await login({
         id: cred.user,
         name: fullName || userEmail.split("@")[0],
