@@ -1,20 +1,21 @@
 import { useState, useEffect } from "react";
-import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
+import * as Network from "expo-network";
 
 export interface NetworkState {
-  /** false while NetInfo hasn't resolved yet, or genuinely disconnected */
+  /** false while Network hasn't resolved yet, or genuinely disconnected */
   isConnected: boolean;
   /** false if connected to a network but no internet (captive portal, etc.) */
   isInternetReachable: boolean;
 }
 
 /**
- * Subscribes to @react-native-community/netinfo and returns the live
- * connectivity state. Both fields default to `true` so we don't flash
- * a false-positive banner on app start before NetInfo resolves.
+ * Subscribes to expo-network and returns the live connectivity state.
+ * Both fields default to `true` so we don't flash a false-positive banner
+ * on app start before the first fetch resolves.
  *
- * null is treated as true (optimistic) because NetInfo returns null
- * briefly on first mount before it has read the OS state.
+ * expo-network does not have a push listener, so we poll every 4 s while
+ * mounted. This is sufficient for the offline banner use-case and avoids
+ * the native linking requirement of @react-native-community/netinfo.
  */
 export function useNetworkState(): NetworkState {
   const [state, setState] = useState<NetworkState>({
@@ -23,18 +24,28 @@ export function useNetworkState(): NetworkState {
   });
 
   useEffect(() => {
-    function update(s: NetInfoState) {
-      setState({
-        isConnected:        s.isConnected        ?? true,
-        isInternetReachable: s.isInternetReachable ?? true,
-      });
+    let cancelled = false;
+
+    async function update() {
+      try {
+        const net = await Network.getNetworkStateAsync();
+        if (cancelled) return;
+        setState({
+          isConnected:         net.isConnected        ?? true,
+          isInternetReachable: net.isInternetReachable ?? true,
+        });
+      } catch {
+        // If the call fails, stay optimistic — don't flash a false offline banner.
+      }
     }
 
-    // Fetch current state immediately (avoids waiting for the first change event)
-    NetInfo.fetch().then(update);
+    update();
+    const interval = setInterval(update, 4_000);
 
-    const unsubscribe = NetInfo.addEventListener(update);
-    return unsubscribe;
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, []);
 
   return state;
