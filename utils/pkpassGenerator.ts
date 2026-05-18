@@ -70,8 +70,22 @@ export interface PassFlightData {
   departureCity: string;
   arrivalCity: string;
   date: string;              // "YYYY-MM-DD"
-  departureTime: string;     // "HH:MM"
-  arrivalTime: string;
+  departureTime: string;     // "HH:MM" — local time at departure airport
+  arrivalTime: string;       // "HH:MM" — local time at arrival airport
+  /**
+   * UTC offset for the departure airport at the time of departure.
+   * Format: "±HH:MM" — e.g. "+02:00", "-05:00", "+00:00".
+   * When provided, Apple Wallet can surface the pass at the correct
+   * local time on the lock screen (per the PassKit Developer Guide).
+   * Omit if the offset is unknown — the date will be written without
+   * a timezone component and Wallet will fall back to device local time.
+   */
+  departureTzOffset?: string;
+  /**
+   * UTC offset for the arrival airport at the time of arrival.
+   * Same format as departureTzOffset.
+   */
+  arrivalTzOffset?: string;
   seat?: string;
   boardingGroup?: string;
   passengerName?: string;
@@ -98,9 +112,23 @@ export interface GenerateError {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Format "YYYY-MM-DD" + "HH:MM" → ISO 8601 string PassKit expects. */
-function toPassDate(date: string, time: string): string {
-  return `${date}T${time}`;
+/**
+ * Combine a local date string ("YYYY-MM-DD"), a local time string ("HH:MM"),
+ * and an optional UTC offset ("±HH:MM") into the ISO 8601 format that
+ * Apple Wallet expects for relevantDate and date fields:
+ *
+ *   With offset:    "2024-06-15T14:30+02:00"
+ *   Without offset: "2024-06-15T14:30"  (falls back to device local time)
+ *
+ * Per the Apple Wallet Developer Guide, relevantDate MUST include the
+ * timezone offset for Wallet to show the pass at the correct local time.
+ */
+function toPassDate(date: string, time: string, tzOffset?: string): string {
+  const base = `${date}T${time}`;
+  if (!tzOffset) return base;
+  // Normalise: ensure the offset starts with + or - and is "±HH:MM"
+  const clean = tzOffset.trim();
+  return `${base}${clean}`;
 }
 
 /** CRC-32 table for the ZIP implementation. */
@@ -252,8 +280,8 @@ function sha1(data: Uint8Array): string {
 // ---------------------------------------------------------------------------
 
 function buildPassJson(f: PassFlightData): string {
-  const departureISO = toPassDate(f.date, f.departureTime);
-  const arrivalISO   = toPassDate(f.date, f.arrivalTime);
+  const departureISO = toPassDate(f.date, f.departureTime, f.departureTzOffset);
+  const arrivalISO   = toPassDate(f.date, f.arrivalTime,   f.arrivalTzOffset);
 
   const primaryFields = [
     { key: "departure", label: "FROM", value: f.departureAirport },
@@ -275,9 +303,9 @@ function buildPassJson(f: PassFlightData): string {
   if (f.departureTerminal) auxiliaryFields.push({ key: "terminal",  label: "TERMINAL",       value: f.departureTerminal });
 
   const backFields: { key: string; label: string; value: string }[] = [
-    { key: "airline",   label: "Airline",  value: f.airline },
-    { key: "from_city", label: "From",     value: `${f.departureCity} (${f.departureAirport})` },
-    { key: "to_city",   label: "To",       value: `${f.arrivalCity} (${f.arrivalAirport})` },
+    { key: "airline",   label: "Airline",   value: f.airline },
+    { key: "from_city", label: "From",      value: `${f.departureCity} (${f.departureAirport})` },
+    { key: "to_city",   label: "To",        value: `${f.arrivalCity} (${f.arrivalAirport})` },
     { key: "dep_iso",   label: "Departure", value: departureISO },
     { key: "arr_iso",   label: "Arrival",   value: arrivalISO },
   ];
@@ -290,11 +318,14 @@ function buildPassJson(f: PassFlightData): string {
     serialNumber: `${f.flightCode}-${f.date}-${Date.now()}`,
     teamIdentifier: PASSKIT_TEAM_ID,
     organizationName: "Logbook",
-    description: `${f.flightCode} ${f.departureAirport}–${f.arrivalAirport}`,
+    description: `${f.flightCode} ${f.departureAirport}\u2013${f.arrivalAirport}`,
     logoText: f.airline,
     foregroundColor: "rgb(255, 255, 255)",
     backgroundColor: "rgb(10, 10, 30)",
     labelColor: "rgb(180, 200, 220)",
+    // relevantDate uses the departure airport's local time + UTC offset so
+    // Wallet surfaces the pass on the lock screen at the right moment,
+    // regardless of the user's current timezone.
     relevantDate: departureISO,
     boardingPass: {
       transitType: "PKTransitTypeAir",
