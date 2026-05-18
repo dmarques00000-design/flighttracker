@@ -58,6 +58,28 @@ const PASSKIT_PASS_TYPE_ID: string =
   process.env.EXPO_PUBLIC_PASSKIT_PASS_TYPE_ID ?? "TODO_SET_PASS_TYPE_ID";
 
 // ---------------------------------------------------------------------------
+// Fail-fast guard
+// Checked at call-time (not module load) so the app still launches in dev
+// without the vars set — the error is only thrown when a user actually tries
+// to generate a pass, making the misconfiguration immediately obvious.
+// ---------------------------------------------------------------------------
+
+function assertPassKitIdentity(): void {
+  const missing: string[] = [];
+  if (PASSKIT_TEAM_ID === "TODO_SET_TEAM_ID")
+    missing.push("EXPO_PUBLIC_PASSKIT_TEAM_ID");
+  if (PASSKIT_PASS_TYPE_ID === "TODO_SET_PASS_TYPE_ID")
+    missing.push("EXPO_PUBLIC_PASSKIT_PASS_TYPE_ID");
+  if (missing.length > 0) {
+    throw new Error(
+      `PassKit identity not configured. Set the following env vars and rebuild:\n` +
+        missing.map((v) => `  • ${v}`).join("\n") +
+        `\n\nSee the setup instructions at the top of utils/pkpassGenerator.ts.`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -369,6 +391,11 @@ export async function generatePkpass(
   flight: PassFlightData
 ): Promise<GenerateResult | GenerateError> {
   try {
+    // Throw immediately if the PassKit identity env vars were never set.
+    // This surfaces a clear, actionable error instead of silently producing
+    // a pass that iOS will reject without explanation.
+    assertPassKitIdentity();
+
     const passJsonStr   = buildPassJson(flight);
     const passJsonBytes = str(passJsonStr);
 
