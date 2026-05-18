@@ -112,7 +112,7 @@ function AirlineLogoSmall({ airlineCode }: { airlineCode: string }) {
   const SIZE = 28;
   if (errored) return (
     <View style={{ width: SIZE, height: SIZE, borderRadius: SIZE / 4, backgroundColor: color + "18", borderColor: color + "40", borderWidth: 1, alignItems: "center", justifyContent: "center" }}>
-      <Ionicons name="airplane" size={14} color={color} />
+      <Ionicons name="airplane" size={14} color={color} accessible={false} />
     </View>
   );
   return (
@@ -128,11 +128,14 @@ function PeriodDropdown({ value, options, onChange }: { value: TimeFilter; optio
   const label = options.find((o) => o.key === value)?.label ?? "Filter";
   return (
     <>
-      <Pressable onPress={() => { Haptics.selectionAsync(); setOpen(true); }}
+      <Pressable
+        onPress={() => { Haptics.selectionAsync(); setOpen(true); }}
+        accessibilityRole="button"
+        accessibilityLabel={`Filter by period, currently ${label}`}
         style={({ pressed }) => [{ flexDirection: "row" as const, alignItems: "center" as const, gap: 6, alignSelf: "flex-start" as const, backgroundColor: C.card, borderRadius: 20, borderWidth: 1, borderColor: C.accent + "55", paddingHorizontal: 14, paddingVertical: 9, opacity: pressed ? 0.8 : 1 }]}>
-        <Ionicons name="calendar-outline" size={14} color={C.accent} />
+        <Ionicons name="calendar-outline" size={14} color={C.accent} accessible={false} />
         <Text style={{ fontSize: 13, color: C.accent, fontFamily: "DMSans_700Bold" }}>{label}</Text>
-        <Ionicons name="chevron-down" size={14} color={C.accent} />
+        <Ionicons name="chevron-down" size={14} color={C.accent} accessible={false} />
       </Pressable>
       <Modal transparent animationType="fade" visible={open} onRequestClose={() => setOpen(false)}>
         <TouchableWithoutFeedback onPress={() => setOpen(false)}>
@@ -143,12 +146,17 @@ function PeriodDropdown({ value, options, onChange }: { value: TimeFilter; optio
                 {options.map((opt, i) => {
                   const isActive = opt.key === value;
                   return (
-                    <Pressable key={String(opt.key)} onPress={() => { Haptics.selectionAsync(); onChange(opt.key); setOpen(false); }}
+                    <Pressable
+                      key={String(opt.key)}
+                      onPress={() => { Haptics.selectionAsync(); onChange(opt.key); setOpen(false); }}
+                      accessibilityRole="radio"
+                      accessibilityLabel={opt.label}
+                      accessibilityState={{ checked: isActive }}
                       style={({ pressed }) => [{ flexDirection: "row" as const, alignItems: "center" as const, justifyContent: "space-between" as const, paddingHorizontal: 24, paddingVertical: 16, opacity: pressed ? 0.8 : 1 },
                         i < options.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.border },
                         isActive && { backgroundColor: C.accentDim }]}>
                       <Text style={{ fontSize: 16, fontFamily: isActive ? "DMSans_700Bold" : "DMSans_400Regular", color: isActive ? C.accent : C.text }}>{opt.label}</Text>
-                      {isActive && <Ionicons name="checkmark" size={16} color={C.accent} />}
+                      {isActive && <Ionicons name="checkmark" size={16} color={C.accent} accessible={false} />}
                     </Pressable>
                   );
                 })}
@@ -214,7 +222,7 @@ function UndoToast({
 
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 12, gap: 10 }}>
         <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: C.red + "18", alignItems: "center", justifyContent: "center" }}>
-          <Ionicons name="trash-outline" size={16} color={C.red} />
+          <Ionicons name="trash-outline" size={16} color={C.red} accessible={false} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 13, color: C.text, fontFamily: "DMSans_700Bold" }} numberOfLines={1}>
@@ -226,6 +234,8 @@ function UndoToast({
         </View>
         <Pressable
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onUndo(); }}
+          accessibilityRole="button"
+          accessibilityLabel={`Undo delete of ${flight.departureAirport} to ${flight.arrivalAirport}`}
           style={({ pressed }) => [{ backgroundColor: C.accent, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, opacity: pressed ? 0.8 : 1 }]}
         >
           <Text style={{ fontSize: 13, color: C.white, fontFamily: "DMSans_700Bold" }}>Undo</Text>
@@ -334,7 +344,7 @@ function FlightReminderModal({
               <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                   <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.accent + "18", alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="alarm-outline" size={18} color={C.accent} />
+                    <Ionicons name="alarm-outline" size={18} color={C.accent} accessible={false} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 16, color: C.text, fontFamily: "DMSans_700Bold" }}>Flight Reminder</Text>
@@ -342,8 +352,13 @@ function FlightReminderModal({
                       {flight.flightCode}  ·  {flight.departureAirport} → {flight.arrivalAirport}
                     </Text>
                   </View>
-                  <Pressable onPress={onClose} hitSlop={10} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-                    <Ionicons name="close" size={22} color={C.textMuted} />
+                  <Pressable
+                    onPress={onClose}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close reminder modal"
+                    style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
+                    <Ionicons name="close" size={22} color={C.textMuted} accessible={false} />
                   </Pressable>
                 </View>
               </View>
@@ -368,7 +383,7 @@ function FlightReminderModal({
                     >
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                         <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: isOn ? C.accent + "22" : C.card, alignItems: "center", justifyContent: "center" }}>
-                          <Ionicons name="alarm-outline" size={16} color={isOn ? C.accent : C.textMuted} />
+                          <Ionicons name="alarm-outline" size={16} color={isOn ? C.accent : C.textMuted} accessible={false} />
                         </View>
                         <Text style={{ fontSize: 14, fontFamily: isOn ? "DMSans_600SemiBold" : "DMSans_400Regular", color: isOn ? C.text : C.textSec }}>
                           {OFFSET_LABELS[offset]}
@@ -379,6 +394,7 @@ function FlightReminderModal({
                         onValueChange={(v) => handleToggle(offset, v)}
                         trackColor={{ false: C.border, true: C.accent }}
                         thumbColor={C.white}
+                        accessibilityLabel={`Reminder ${OFFSET_LABELS[offset]}`}
                       />
                     </View>
                   );
@@ -397,6 +413,8 @@ function FlightReminderModal({
                   <Pressable
                     onPress={handleSave}
                     disabled={saving}
+                    accessibilityRole="button"
+                    accessibilityLabel={saving ? "Saving reminders" : hasAny ? "Save reminders" : "Clear reminders"}
                     style={({ pressed }) => ({
                       flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
                       backgroundColor: hasAny ? C.accent : C.surface,
@@ -409,6 +427,7 @@ function FlightReminderModal({
                       name={hasAny ? "checkmark-circle-outline" : "notifications-off-outline"}
                       size={17}
                       color={hasAny ? C.white : C.textSec}
+                      accessible={false}
                     />
                     <Text style={{ fontSize: 15, fontFamily: "DMSans_700Bold", color: hasAny ? C.white : C.textSec }}>
                       {saving ? "Saving…" : hasAny ? "Save Reminders" : "Clear Reminders"}
@@ -462,6 +481,12 @@ function FlightItem({
   }, [C, isUpcoming, flight.date, flight.status]);
 
   const { accentColor, pillBg, pillText, pillColor } = derived;
+
+  // Build a concise VoiceOver label for the card
+  const cardA11yLabel = useMemo(() => {
+    const base = `${flight.departureAirport} to ${flight.arrivalAirport}, ${flight.flightCode}, ${formatDate(flight.date)}`;
+    return `${base}, ${pillText}`;
+  }, [flight.departureAirport, flight.arrivalAirport, flight.flightCode, flight.date, pillText]);
 
   const panGesture = Gesture.Pan()
     .activeOffsetX([-16, 16])
@@ -524,9 +549,11 @@ function FlightItem({
             collapse();
             onDeleteIntent();
           }}
+          accessibilityRole="button"
+          accessibilityLabel={`Delete flight ${flight.departureAirport} to ${flight.arrivalAirport}`}
           style={{ alignItems: "center", justifyContent: "center", gap: 4, width: "100%", height: "100%" }}
         >
-          <Ionicons name="trash" size={20} color={C.white} />
+          <Ionicons name="trash" size={20} color={C.white} accessible={false} />
           <Text style={{ fontSize: 11, color: C.white, fontFamily: "DMSans_700Bold" }}>Delete</Text>
         </Pressable>
       </Animated.View>
@@ -542,6 +569,9 @@ function FlightItem({
               onLongPress();
             }}
             delayLongPress={400}
+            accessibilityRole="button"
+            accessibilityLabel={cardA11yLabel}
+            accessibilityHint="Opens flight details"
           >
             <View style={{
               backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border,
@@ -558,11 +588,11 @@ function FlightItem({
                     <Highlight text={flight.departureAirport} style={{ fontSize: 20, color: C.text, fontFamily: "DMSans_700Bold" }} />
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 4 }}>
                       <View style={{ width: 16, height: 1, backgroundColor: C.border }} />
-                      <Ionicons name="airplane" size={12} color={accentColor} />
+                      <Ionicons name="airplane" size={12} color={accentColor} accessible={false} />
                       <View style={{ width: 16, height: 1, backgroundColor: C.border }} />
                     </View>
                     <Highlight text={flight.arrivalAirport} style={{ fontSize: 20, color: C.text, fontFamily: "DMSans_700Bold" }} />
-                    {flight.verified && <Ionicons name="checkmark-circle" size={14} color={C.accent} />}
+                    {flight.verified && <Ionicons name="checkmark-circle" size={14} color={C.accent} accessible={false} />}
                   </View>
                   <View style={{ paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8, backgroundColor: pillBg }}>
                     <Text style={{ fontSize: 11, fontFamily: "DMSans_700Bold", color: pillColor }}>{pillText}</Text>
@@ -578,13 +608,13 @@ function FlightItem({
                   />
                   {flight.isMock && (
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: C.amberDim, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-                      <Ionicons name="sparkles-outline" size={9} color={C.amber} />
+                      <Ionicons name="sparkles-outline" size={9} color={C.amber} accessible={false} />
                       <Text style={{ fontSize: 10, color: C.amber, fontFamily: "DMSans_700Bold" }}>Estimated</Text>
                     </View>
                   )}
                   {isUpcoming && hasIndividualReminder && (
                     <View style={{ marginLeft: "auto" }}>
-                      <Ionicons name="alarm-outline" size={13} color={C.accent} />
+                      <Ionicons name="alarm-outline" size={13} color={C.accent} accessible={false} />
                     </View>
                   )}
                 </View>
@@ -751,7 +781,12 @@ export default function FlightsScreen() {
           </View>
           <View style={{ flexDirection: "row", backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 3, marginBottom: 14 }}>
             {GROUP_OPTIONS.map((opt) => (
-              <Pressable key={opt.key} onPress={() => { Haptics.selectionAsync(); handleSetGroupBy(opt.key); }}
+              <Pressable
+                key={opt.key}
+                onPress={() => { Haptics.selectionAsync(); handleSetGroupBy(opt.key); }}
+                accessibilityRole="radio"
+                accessibilityLabel={`Group ${opt.label}`}
+                accessibilityState={{ checked: groupBy === opt.key }}
                 style={{ flex: 1, paddingVertical: 8, alignItems: "center", borderRadius: 10, backgroundColor: groupBy === opt.key ? C.accent : "transparent" }}>
                 <Text style={{ fontSize: 13, fontFamily: groupBy === opt.key ? "DMSans_700Bold" : "DMSans_500Medium", color: groupBy === opt.key ? C.white : C.textSec }}>{opt.label}</Text>
               </Pressable>
@@ -772,7 +807,7 @@ export default function FlightsScreen() {
           layout={Layout.springify()}
           style={{ flexDirection: "row", alignItems: "center", backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: searchFocused ? C.accent : C.border, paddingHorizontal: 12, gap: 8 }}
         >
-          <Ionicons name="search-outline" size={18} color={searchFocused ? C.accent : C.textMuted} />
+          <Ionicons name="search-outline" size={18} color={searchFocused ? C.accent : C.textMuted} accessible={false} />
           <TextInput
             ref={searchRef}
             value={query}
@@ -785,13 +820,18 @@ export default function FlightsScreen() {
             clearButtonMode="while-editing"
             autoCorrect={false}
             autoCapitalize="characters"
+            accessibilityLabel="Search flights"
             style={{ flex: 1, height: 46, fontSize: 15, color: C.text, fontFamily: "DMSans_400Regular" }}
           />
           {isSearching && (
             <Animated.View entering={FadeIn.duration(120)} exiting={FadeOut.duration(100)}>
-              <Pressable hitSlop={10} onPress={handleClearSearch}>
+              <Pressable
+                hitSlop={10}
+                onPress={handleClearSearch}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search">
                 <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: C.textMuted, alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="close" size={12} color={C.white} />
+                  <Ionicons name="close" size={12} color={C.white} accessible={false} />
                 </View>
               </Pressable>
             </Animated.View>
@@ -817,7 +857,7 @@ export default function FlightsScreen() {
         ListEmptyComponent={() => (
           <Animated.View entering={FadeInDown.springify()} style={{ paddingTop: 60, alignItems: "center", paddingHorizontal: 20 }}>
             <View style={{ width: 72, height: 72, borderRadius: 20, backgroundColor: C.card, alignItems: "center", justifyContent: "center", marginBottom: 16, borderWidth: 1, borderColor: C.border }}>
-              <Ionicons name={isSearching ? "search-outline" : "airplane-outline"} size={36} color={C.textSec} />
+              <Ionicons name={isSearching ? "search-outline" : "airplane-outline"} size={36} color={C.textSec} accessible={false} />
             </View>
             <Text style={{ fontSize: 20, color: C.text, fontFamily: "DMSans_700Bold", marginBottom: 8 }}>
               {isSearching
@@ -836,13 +876,19 @@ export default function FlightsScreen() {
               }
             </Text>
             {isSearching && (
-              <Pressable onPress={() => { setQuery(""); searchRef.current?.focus(); Haptics.selectionAsync(); }}
+              <Pressable
+                onPress={() => { setQuery(""); searchRef.current?.focus(); Haptics.selectionAsync(); }}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search and try again"
                 style={({ pressed }) => [{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, opacity: pressed ? 0.8 : 1 }]}>
                 <Text style={{ fontSize: 15, color: C.accent, fontFamily: "DMSans_700Bold" }}>Clear Search</Text>
               </Pressable>
             )}
             {!isSearching && timeFilter !== "upcoming" && timeFilter !== "past" && (
-              <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-flight"); }}
+              <Pressable
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-flight"); }}
+                accessibilityRole="button"
+                accessibilityLabel="Add your first flight"
                 style={({ pressed }) => [{ backgroundColor: C.accent, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, opacity: pressed ? 0.8 : 1 }]}>
                 <Text style={{ fontSize: 15, color: C.white, fontFamily: "DMSans_700Bold" }}>Add Flight</Text>
               </Pressable>
@@ -865,6 +911,9 @@ export default function FlightsScreen() {
       {!searchFocused && (
         <Pressable
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/add-flight"); }}
+          accessibilityRole="button"
+          accessibilityLabel="Add flight"
+          accessibilityHint="Opens the add flight form"
           style={({ pressed }) => [{
             position: "absolute", right: 20,
             bottom: (Platform.OS === "web" ? 34 : insets.bottom) + 80,
@@ -875,7 +924,7 @@ export default function FlightsScreen() {
             opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.95 : 1 }],
           }]}
         >
-          <Ionicons name="add" size={26} color={C.white} />
+          <Ionicons name="add" size={26} color={C.white} accessible={false} />
         </Pressable>
       )}
 
