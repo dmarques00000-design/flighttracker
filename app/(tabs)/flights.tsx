@@ -685,6 +685,9 @@ export default function FlightsScreen() {
 
   const handleCommitDelete = useCallback(() => {
     if (pendingDeleteRef.current) {
+      // Warning haptic fires at the moment of irrevocable deletion —
+      // after the undo window has closed and removeFlight is called.
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       removeFlight(pendingDeleteRef.current.id);
       pendingDeleteRef.current = null;
       setPendingDelete(null);
