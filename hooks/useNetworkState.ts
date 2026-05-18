@@ -1,52 +1,72 @@
-import { useState, useEffect } from "react";
-import * as Network from "expo-network";
+import { useState, useEffect, useCallback } from "react";
+import { AppState, AppStateStatus } from "react-native";
 
 export interface NetworkState {
-  /** false while Network hasn't resolved yet, or genuinely disconnected */
+  /** false while the check hasn't resolved yet, or genuinely disconnected */
   isConnected: boolean;
-  /** false if connected to a network but no internet (captive portal, etc.) */
+  /** Same value — fetch-based check doesn't distinguish reachability separately */
   isInternetReachable: boolean;
 }
 
 /**
- * Subscribes to expo-network and returns the live connectivity state.
- * Both fields default to `true` so we don't flash a false-positive banner
- * on app start before the first fetch resolves.
+ * Lightweight connectivity check that requires NO native modules.
  *
- * expo-network does not have a push listener, so we poll every 4 s while
- * mounted. This is sufficient for the offline banner use-case and avoids
- * the native linking requirement of @react-native-community/netinfo.
+ * Strategy: fire a HEAD request to a reliable, small endpoint. If it
+ * succeeds we're online; if it fails (network error, timeout) we're offline.
+ * Re-checks every 5 s while the app is foregrounded, and immediately on
+ * app foreground events.
+ *
+ * Trade-off vs @react-native-community/netinfo:
+ *  - No push listener (max 5 s lag)
+ *  - Requires internet for the probe — detects *internet* reachability,
+ *    not just local network attachment. This is actually more correct for
+ *    the offline-banner use-case.
  */
+
+const PROBE_URL = "https://www.gstatic.com/generate_204";
+const PROBE_TIMEOUT_MS = 4_000;
+const POLL_INTERVAL_MS = 5_000;
+
+async function checkConnectivity(): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+  try {
+    const res = await fetch(PROBE_URL, {
+      method: "HEAD",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    return res.ok || res.status === 204;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function useNetworkState(): NetworkState {
-  const [state, setState] = useState<NetworkState>({
-    isConnected: true,
-    isInternetReachable: true,
-  });
+  const [isConnected, setIsConnected] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function update() {
-      try {
-        const net = await Network.getNetworkStateAsync();
-        if (cancelled) return;
-        setState({
-          isConnected:         net.isConnected        ?? true,
-          isInternetReachable: net.isInternetReachable ?? true,
-        });
-      } catch {
-        // If the call fails, stay optimistic — don't flash a false offline banner.
-      }
-    }
-
-    update();
-    const interval = setInterval(update, 4_000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
+  const update = useCallback(async () => {
+    const online = await checkConnectivity();
+    setIsConnected(online);
   }, []);
 
-  return state;
+  useEffect(() => {
+    update();
+
+    const interval = setInterval(update, POLL_INTERVAL_MS);
+
+    // Re-check immediately when the app comes back to the foreground.
+    const sub = AppState.addEventListener("change", (state: AppStateStatus) => {
+      if (state === "active") update();
+    });
+
+    return () => {
+      clearInterval(interval);
+      sub.remove();
+    };
+  }, [update]);
+
+  return { isConnected, isInternetReachable: isConnected };
 }
