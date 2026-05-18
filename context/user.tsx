@@ -224,9 +224,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
       throw new Error(`[UserContext] /api/auth/upsert failed ${res.status}: ${body}`);
     }
 
-    const initials = resolvedName
+    // Derive initials only when we have a real name to work from.
+    // Apple only provides the user's name on the FIRST authorization — every
+    // subsequent login sends an empty string. If resolvedName is blank and
+    // a cached value already exists, keep the cached value so the avatar
+    // never regresses to "?" after re-login.
+    const derivedInitials = resolvedName
       ? resolvedName.split(" ").filter(Boolean).map((p) => p[0].toUpperCase()).slice(0, 2).join("")
-      : resolvedEmail[0]?.toUpperCase() ?? "?";
+      : resolvedEmail[0]?.toUpperCase() ?? "";
+
+    const avatarInitials = derivedInitials || profile.avatarInitials || "?";
 
     const updated: UserProfile = {
       ...profile,
@@ -235,7 +242,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       email: resolvedEmail,
       provider,
       avatarUrl: avatarUrl ?? "",
-      avatarInitials: initials,
+      avatarInitials,
     };
 
     setProfile(updated);
