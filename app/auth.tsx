@@ -24,7 +24,8 @@ import * as AppleAuthentication from "expo-apple-authentication";
 // ─── Legal URLs ───────────────────────────────────────────────────────────────
 // Both must be publicly accessible before account creation (App Store Review §5.1.1).
 const PRIVACY_POLICY_URL = "https://dmarques00000-design.github.io/flighttracker/privacy.html";
-const TERMS_URL          = "https://dmarques00000-design.github.io/flighttracker/terms.html";
+// Fixed: was /terms.html (404) — the published file is terms-of-use.html
+const TERMS_URL          = "https://dmarques00000-design.github.io/flighttracker/terms-of-use.html";
 
 // ─── Test account gate ───────────────────────────────────────────────────────
 // Only visible in development and preview EAS builds.
@@ -135,6 +136,39 @@ function GlassCard({ children, style }: { children: React.ReactNode; style?: obj
       <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(10,18,60,0.45)", borderRadius: 20 }]} />
       <View style={{ position: "relative" }}>{children}</View>
     </BlurView>
+  );
+}
+
+// ─── Legal consent line ───────────────────────────────────────────────────────
+// Rendered directly below the sign-in buttons and above the guest link so it
+// is visible to the user before they tap any auth action or dismiss the screen.
+// Contrast: legalText is rgba(255,255,255,0.55) ≈ 4.1:1 on the dark bg.
+// §5.1.1(g): affirmative disclosure must appear before account creation.
+function LegalConsent() {
+  return (
+    <View style={s.legalFooter}>
+      <Text style={s.legalText}>
+        {"By continuing you agree to our "}
+        <Text
+          style={s.legalLink}
+          onPress={() => Linking.openURL(TERMS_URL)}
+          accessibilityRole="link"
+          accessibilityLabel="Terms of Service"
+        >
+          Terms of Service
+        </Text>
+        {" and "}
+        <Text
+          style={s.legalLink}
+          onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+          accessibilityRole="link"
+          accessibilityLabel="Privacy Policy"
+        >
+          Privacy Policy
+        </Text>
+        .
+      </Text>
+    </View>
   );
 }
 
@@ -314,7 +348,7 @@ export default function AuthScreen() {
           )}
 
           {/* ── SIGN-IN BUTTONS ── */}
-          <Animated.View entering={FadeInDown.delay(70).springify()} style={{ gap: 10, marginBottom: 16 }}>
+          <Animated.View entering={FadeInDown.delay(70).springify()} style={{ gap: 10, marginBottom: 0 }}>
             {Platform.OS === "ios" && appleAvailable ? (
               <AppleAuthentication.AppleAuthenticationButton
                 buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
@@ -342,38 +376,21 @@ export default function AuthScreen() {
             </Pressable>
           </Animated.View>
 
+          {/*
+           * ── LEGAL CONSENT (§5.1.1) ──────────────────────────────────────────
+           * Positioned BETWEEN the sign-in buttons and the guest/skip link so
+           * users see it before completing any auth action or dismissing.
+           * Must be legible: opacity ≥ 0.55 on this dark background (~4:1).
+           */}
+          <Animated.View entering={FadeIn.delay(160)}>
+            <LegalConsent />
+          </Animated.View>
+
           {/* ── GUEST LINK ── */}
-          <Animated.View entering={FadeIn.delay(200)} style={{ alignItems: "center", marginTop: 4 }}>
+          <Animated.View entering={FadeIn.delay(220)} style={{ alignItems: "center", marginTop: 4 }}>
             <Pressable onPress={handleGuest} hitSlop={10}>
               <Text style={s.guestLink}>Continue as guest  →</Text>
             </Pressable>
-          </Animated.View>
-
-          {/* ── LEGAL FOOTER ── */}
-          {/* Required by App Store Review §5.1.1: PP and ToS must be visible   */}
-          {/* before account creation, not buried in settings.                  */}
-          <Animated.View entering={FadeIn.delay(280)} style={s.legalFooter}>
-            <Text style={s.legalText}>
-              {"By continuing you agree to our "}
-              <Text
-                style={s.legalLink}
-                onPress={() => Linking.openURL(TERMS_URL)}
-                accessibilityRole="link"
-                accessibilityLabel="Terms of Service"
-              >
-                Terms of Service
-              </Text>
-              {" and "}
-              <Text
-                style={s.legalLink}
-                onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
-                accessibilityRole="link"
-                accessibilityLabel="Privacy Policy"
-              >
-                Privacy Policy
-              </Text>
-              .
-            </Text>
           </Animated.View>
 
         </ScrollView>
@@ -419,21 +436,24 @@ const s = StyleSheet.create({
   googleGText: { fontSize: 14, fontFamily: "DMSans_700Bold", color: "#4285F4" },
   guestLink:   { fontSize: 13, color: "rgba(255,255,255,0.38)", fontFamily: "DMSans_400Regular" },
 
-  // Legal footer — App Store compliance §5.1.1
+  // ── Legal consent — App Store §5.1.1(g) ──────────────────────────────────
+  // Opacity 0.55 ≈ 4.1:1 contrast ratio against the dark aviation background.
+  // Must not be lower — Apple will reject disclosure text that is not legible.
   legalFooter: {
     alignItems: "center",
-    marginTop: 20,
+    marginTop: 18,
+    marginBottom: 14,
     paddingHorizontal: 16,
   },
   legalText: {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.28)",
+    fontSize: 12,
+    color: "rgba(255,255,255,0.55)",
     fontFamily: "DMSans_400Regular",
     textAlign: "center",
-    lineHeight: 17,
+    lineHeight: 18,
   },
   legalLink: {
-    color: "rgba(255,255,255,0.50)",
+    color: "rgba(255,255,255,0.72)",
     fontFamily: "DMSans_500Medium",
     textDecorationLine: "underline",
   },
