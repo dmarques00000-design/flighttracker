@@ -171,10 +171,10 @@ export default {
           //     duration, distance) stored server-side when signed in.
           //   • Trip names and groupings.
           //   • Free-text feedback messages submitted via FeedbackModal.
-          // Not linked to a persistent identifier beyond session auth;
-          // feedback is stored without a user ID on the server.
+          // Linked = true because flight data is stored server-side keyed
+          // by the user's account ID (see DELETE /api/users/:id).
           NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypeOtherUserContent",
-          NSPrivacyCollectedDataTypeLinked: false,
+          NSPrivacyCollectedDataTypeLinked: true,
           NSPrivacyCollectedDataTypeTracking: false,
           NSPrivacyCollectedDataTypePurposes: [
             "NSPrivacyCollectedDataTypePurposeAppFunctionality",
@@ -211,8 +211,11 @@ export default {
       ITSAppUsesNonExemptEncryption: false,
 
       // §2.3.3 — iPhone-only declaration.
+      // "telephony" removed: the app does not use the phone chip and
+      // declaring it would incorrectly exclude devices without telephony
+      // hardware and trigger a §2.3.3 rejection.
       UIDeviceFamily: [1],
-      UIRequiredDeviceCapabilities: ["arm64", "telephony"],
+      UIRequiredDeviceCapabilities: ["arm64"],
 
       // Camera — boarding pass / QR code scanning
       NSCameraUsageDescription:
@@ -240,13 +243,10 @@ export default {
       NSCalendarsWriteOnlyAccessUsageDescription:
         "Logbook needs calendar write access to add your flights as events in Apple Calendar.",
 
-      // Contacts — §5.1.2 defensive declaration.
-      NSContactsUsageDescription:
-        "Logbook may access your contacts only if you choose to share them when sending feedback.",
-
-      // Survey — §5.1.2 defensive declaration.
-      NSSurveyUsageDescription:
-        "Logbook uses in-app feedback to help improve the app. No survey data is shared with third parties.",
+      // ATT — defensive declaration in case any dependency triggers the
+      // tracking transparency prompt. The app itself does not track users.
+      NSUserTrackingUsageDescription:
+        "This app does not track you. This prompt may appear due to a system requirement.",
 
       CFBundleDocumentTypes: [
         {
