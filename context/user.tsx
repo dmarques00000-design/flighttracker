@@ -107,13 +107,46 @@ async function checkAppleCredentialState(userId: string): Promise<boolean> {
   }
 }
 
+/**
+ * Sentinel error class so callers can distinguish an Apple revocation failure
+ * from a generic network or backend error.
+ *
+ * App Store §4.8: if Sign in with Apple token revocation fails the app must
+ * NOT silently proceed with account deletion and must surface the failure.
+ */
+export class AppleRevocationError extends Error {
+  constructor(cause: unknown) {
+    super(
+      cause instanceof Error
+        ? cause.message
+        : "Apple token revocation failed.",
+    );
+    this.name = "AppleRevocationError";
+  }
+}
+
+/**
+ * Ask Apple to revoke the current user's Sign in with Apple token.
+ *
+ * §4.8 compliance: this function now THROWS on failure so that deleteAccount
+ * can abort before touching the backend record. An empty catch {} here would
+ * mean a silent success even when the token was never revoked on Apple's
+ * servers — that is the pattern Apple rejects.
+ *
+ * The error is re-wrapped as AppleRevocationError so the UI can render a
+ * targeted message ("Could not revoke Apple ID access") rather than the
+ * generic "check your connection" fallback.
+ */
 async function revokeAppleToken(): Promise<void> {
   if (Platform.OS !== "ios") return;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const AppleAuth = require("expo-apple-authentication");
     await AppleAuth.revokeAsync();
-  } catch {}
+  } catch (err) {
+    // Re-throw as a typed error — do NOT swallow.
+    throw new AppleRevocationError(err);
+  }
 }
 
 export function UserProvider({ children }: { children: ReactNode }) {
@@ -179,11 +212,25 @@ export function UserProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem(NOTIF_PREFS_KEY, JSON.stringify(updated));
   }
 
+  /**
+   * Permanently deletes the user's account.
+   *
+   * §4.8 (Sign in with Apple) — token must be revoked BEFORE the backend
+   * record is deleted, and revocation failure must abort the whole flow.
+   *
+   * Throws AppleRevocationError if the Apple revocation step fails so the
+   * UI can show a specific, actionable message to the user.
+   * Throws a generic Error if the backend DELETE call fails.
+   */
   async function deleteAccount(userId: string): Promise<void> {
+    // Step 1: revoke Apple token (throws AppleRevocationError on failure).
+    // If this throws we deliberately do NOT touch the backend — the account
+    // remains intact so the user can try again.
     if (profile.provider === "apple") {
       await revokeAppleToken();
     }
 
+    // Step 2: delete the backend record only after successful revocation.
     const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}`, {
       method: "DELETE",
     });
@@ -192,6 +239,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       throw new Error(`[UserContext] DELETE /api/users/${userId} failed ${res.status}: ${body}`);
     }
 
+    // Step 3: clear local state only after both steps have succeeded.
     setProfile(DEFAULT_PROFILE);
     setIsLoggedIn(false);
     await AsyncStorage.multiRemove([STORAGE_KEY, AUTH_KEY, NOTIF_PREFS_KEY]);

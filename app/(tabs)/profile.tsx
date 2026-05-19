@@ -17,7 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { useColors } from "@/constants/colors";
-import { useUser, UserProfile } from "@/context/user";
+import { useUser, UserProfile, AppleRevocationError } from "@/context/user";
 import { useFlights } from "@/context/flights";
 import { useTheme, ThemeMode } from "@/context/theme";
 import { FeedbackModal } from "@/components/FeedbackModal";
@@ -31,6 +31,7 @@ import {
 import { useSwipeNavigation } from "@/hooks/useSwipeNavigation";
 
 const PRIVACY_POLICY_URL = "https://dmarques00000-design.github.io/flighttracker/privacy.html";
+const TERMS_URL          = "https://dmarques00000-design.github.io/flighttracker/terms-of-use.html";
 
 /**
  * True in local dev (expo start) and in development/preview EAS builds.
@@ -280,10 +281,21 @@ export default function ProfileScreen() {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
               await deleteAccount(profile.id);
             } catch (err) {
-              Alert.alert(
-                "Deletion Failed",
-                "We couldn't delete your account right now. Please check your connection and try again.",
-              );
+              if (err instanceof AppleRevocationError) {
+                // §4.8: Apple token revocation failed — surface a specific,
+                // actionable message. The account has NOT been deleted.
+                Alert.alert(
+                  "Could Not Revoke Apple ID Access",
+                  "We were unable to revoke your Sign in with Apple access. Your account has not been deleted.\n\nTo remove access manually, go to Settings → Apple ID → Password & Security → Apps Using Apple ID and remove this app, then try again.",
+                  [{ text: "OK" }],
+                );
+              } else {
+                // Generic network / backend failure.
+                Alert.alert(
+                  "Deletion Failed",
+                  "We couldn't delete your account right now. Please check your connection and try again.",
+                );
+              }
             }
           },
         },
@@ -537,6 +549,28 @@ export default function ProfileScreen() {
                         <Ionicons name="document-text-outline" size={16} color={C.accent} />
                       </View>
                       <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_500Medium" }}>Privacy Policy</Text>
+                    </View>
+                    <Ionicons name="open-outline" size={16} color={C.textMuted} />
+                  </Pressable>
+                  <View style={{ height: 1, backgroundColor: C.border, marginVertical: 2 }} />
+                  {/* Terms of Service — also required to be accessible in-app (§5.1.1) */}
+                  <Pressable
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      Linking.openURL(TERMS_URL);
+                    }}
+                    style={({ pressed }) => ({
+                      flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+                      paddingVertical: 12, opacity: pressed ? 0.6 : 1,
+                    })}
+                    accessibilityRole="link"
+                    accessibilityLabel="Open Terms of Service"
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                      <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center" }}>
+                        <Ionicons name="reader-outline" size={16} color={C.accent} />
+                      </View>
+                      <Text style={{ fontSize: 15, color: C.text, fontFamily: "DMSans_500Medium" }}>Terms of Service</Text>
                     </View>
                     <Ionicons name="open-outline" size={16} color={C.textMuted} />
                   </Pressable>
