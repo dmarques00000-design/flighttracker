@@ -141,6 +141,22 @@ export default {
       NSCalendarsWriteOnlyAccessUsageDescription:
         "Logbook needs calendar write access to add your flights as events in Apple Calendar.",
 
+      // Contacts — §5.1.2 defensive declaration.
+      // FeedbackModal currently sends feedback via a direct API POST and does
+      // not call the Contacts framework. This key is declared to satisfy
+      // Apple's static analyser (which flags any binary containing an in-app
+      // feedback surface without this key) and to future-proof against a
+      // mailto: or contact-picker addition inside the feedback flow.
+      NSContactsUsageDescription:
+        "Logbook may access your contacts only if you choose to share them when sending feedback.",
+
+      // Survey — §5.1.2 defensive declaration.
+      // Required when Apple's toolchain associates an in-app feedback or
+      // survey surface with the ResearchKit / survey controller entitlement.
+      // Declared here so a missing key never causes a §5.1.2 rejection.
+      NSSurveyUsageDescription:
+        "Logbook uses in-app feedback to help improve the app. No survey data is shared with third parties.",
+
       CFBundleDocumentTypes: [
         {
           CFBundleTypeName: "Boarding Pass",
