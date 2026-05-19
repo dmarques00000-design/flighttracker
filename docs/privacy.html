@@ -140,6 +140,50 @@
       color: var(--text-sec);
       margin-top: 12px;
     }
+    /* Nutrition label summary table */
+    .nutrition-label {
+      margin-top: 20px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .nutrition-label-header {
+      background: color-mix(in oklab, var(--accent) 10%, var(--card));
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+      letter-spacing: 0.3px;
+    }
+    .nutrition-label table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .nutrition-label th,
+    .nutrition-label td {
+      padding: 9px 16px;
+      font-size: 13px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-sec);
+    }
+    .nutrition-label th {
+      font-weight: 600;
+      color: var(--text);
+      background: color-mix(in oklab, var(--accent) 4%, var(--card));
+    }
+    .nutrition-label tr:last-child td { border-bottom: none; }
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      background: color-mix(in oklab, var(--accent) 12%, var(--card));
+      color: var(--accent);
+      margin-right: 4px;
+    }
     footer {
       max-width: 720px;
       margin: 40px auto 0;
@@ -160,7 +204,7 @@
       <span class="logo-name">Logbook</span>
     </div>
     <h1>Privacy Policy</h1>
-    <p>Last updated: May 16, 2026 &nbsp;·&nbsp; Applies to: Logbook iOS &amp; Android app</p>
+    <p>Last updated: May 19, 2026 &nbsp;&middot;&nbsp; Applies to: Logbook iOS &amp; Android app</p>
   </header>
 
   <main>
@@ -172,25 +216,92 @@
     <section>
       <h2><span class="num">2</span> What Data We Collect</h2>
       <p>We only collect data you explicitly provide. No background tracking, advertising identifiers, or analytics SDKs are used.</p>
+
       <p><strong>Account data (required if you sign in):</strong></p>
       <ul>
         <li>Email address (via Apple Sign-In, Google Sign-In, or manual entry)</li>
         <li>Display name</li>
       </ul>
+
       <p><strong>Flight log data (required for core functionality):</strong></p>
       <ul>
         <li>Flight details you add: flight code, route, date, airline, seat class, duration, distance</li>
         <li>Trip groupings and names you create</li>
-        <li>Optional cover photos you choose from your photo library</li>
+        <li>Optional cover photos you choose from your photo library for trip cards</li>
       </ul>
+
       <p><strong>Optional profile data (only if you choose to enter it):</strong></p>
       <ul>
         <li>Nationality</li>
-        <li>Home airport</li>
+        <li>Home airport code</li>
         <li>Frequent flyer number</li>
         <li>Preferred airline and seat preference</li>
       </ul>
-      <div class="highlight">None of the optional profile fields are required. You can use Logbook fully without providing them.</div>
+
+      <p><strong>Location (one-time, on request only):</strong></p>
+      <ul>
+        <li>Coarse device location &mdash; used solely to suggest your nearest airport when you tap &ldquo;use my location&rdquo; on the add-flight screen. It is never stored, never transmitted to our servers, and discarded immediately after the suggestion is shown.</li>
+      </ul>
+
+      <p><strong>Beta feedback (only if you submit it):</strong></p>
+      <ul>
+        <li>Free-text message, category tag, app version, and platform (iOS/Android). Your name and email are included only if you are signed in at the time of submission.</li>
+      </ul>
+
+      <div class="highlight">None of the optional profile fields are required. You can use Logbook fully without providing them. Location is never accessed without an explicit tap action from you.</div>
+
+      <!-- App Store Nutrition Label cross-reference -->
+      <div class="nutrition-label">
+        <div class="nutrition-label-header">App Store Privacy Nutrition Label &mdash; data types declared in the iOS binary</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Data type</th>
+              <th>Linked to identity</th>
+              <th>Used for tracking</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Email Address</td>
+              <td>Yes</td>
+              <td>No</td>
+              <td><span class="tag">App Functionality</span></td>
+            </tr>
+            <tr>
+              <td>Name</td>
+              <td>Yes</td>
+              <td>No</td>
+              <td><span class="tag">App Functionality</span></td>
+            </tr>
+            <tr>
+              <td>Coarse Location</td>
+              <td>No</td>
+              <td>No</td>
+              <td><span class="tag">App Functionality</span></td>
+            </tr>
+            <tr>
+              <td>Other User Content <em>(flight logs, trip names, feedback)</em></td>
+              <td>No</td>
+              <td>No</td>
+              <td><span class="tag">App Functionality</span></td>
+            </tr>
+            <tr>
+              <td>Photos or Videos <em>(trip cover images)</em></td>
+              <td>No</td>
+              <td>No</td>
+              <td><span class="tag">App Functionality</span></td>
+            </tr>
+            <tr>
+              <td>Other Data <em>(profile preferences)</em></td>
+              <td>No</td>
+              <td>No</td>
+              <td><span class="tag">App Functionality</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section>
@@ -198,8 +309,9 @@
       <ul>
         <li>To store and sync your flight log across your devices when you are signed in</li>
         <li>To compute statistics shown in your profile (total miles, airports visited, etc.)</li>
-        <li>To send local flight reminder notifications — only if you enable them</li>
+        <li>To send local flight reminder notifications &mdash; only if you enable them</li>
         <li>To restore your data if you reinstall the app</li>
+        <li>To improve the app during beta testing (feedback submissions only)</li>
       </ul>
       <p>We do not use your data for advertising, profiling, or sale to third parties.</p>
     </section>
@@ -208,9 +320,9 @@
       <h2><span class="num">4</span> Third-Party Services</h2>
       <p>Logbook uses the following third-party services, each subject to their own privacy policies:</p>
       <ul>
-        <li><strong>Apple Sign-In</strong> — <a href="https://www.apple.com/legal/privacy/" target="_blank" rel="noopener">Apple Privacy Policy</a>. Apple may share a name and email address with us when you sign in. You can choose to hide your email using Apple's relay service.</li>
-        <li><strong>Google Sign-In</strong> — <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a>. Google shares your name and email address with us when you sign in.</li>
-        <li><strong>Expo / EAS (Expo Application Services)</strong> — Used to build and deliver the app. Expo does not receive your personal flight data. See <a href="https://expo.dev/privacy" target="_blank" rel="noopener">Expo Privacy Policy</a>.</li>
+        <li><strong>Apple Sign-In</strong> &mdash; <a href="https://www.apple.com/legal/privacy/" target="_blank" rel="noopener">Apple Privacy Policy</a>. Apple may share a name and email address with us when you sign in. You can choose to hide your email using Apple&rsquo;s relay service.</li>
+        <li><strong>Google Sign-In</strong> &mdash; <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a>. Google shares your name and email address with us when you sign in.</li>
+        <li><strong>Expo / EAS (Expo Application Services)</strong> &mdash; Used to build and deliver the app. Expo does not receive your personal flight data. See <a href="https://expo.dev/privacy" target="_blank" rel="noopener">Expo Privacy Policy</a>.</li>
       </ul>
     </section>
 
@@ -222,7 +334,7 @@
 
     <section>
       <h2><span class="num">6</span> Data Retention &amp; Deletion</h2>
-      <p>Your data is retained for as long as your account is active. You can permanently delete your account and all associated data at any time from the <strong>Profile → Delete Account &amp; Data</strong> option in the app. Deletion is immediate and irreversible.</p>
+      <p>Your data is retained for as long as your account is active. You can permanently delete your account and all associated data at any time from the <strong>Profile &rarr; Delete Account &amp; Data</strong> option in the app. Deletion is immediate and irreversible.</p>
     </section>
 
     <section>
@@ -231,13 +343,13 @@
     </section>
 
     <section>
-      <h2><span class="num">8</span> Children's Privacy</h2>
+      <h2><span class="num">8</span> Children&rsquo;s Privacy</h2>
       <p>Logbook is not directed at children under 13. We do not knowingly collect data from children under 13. If you believe a child has provided us with personal data, please contact us and we will delete it promptly.</p>
     </section>
 
     <section>
       <h2><span class="num">9</span> Changes to This Policy</h2>
-      <p>We may update this policy from time to time. The "Last updated" date at the top of this page will reflect any changes. Continued use of the app after changes constitutes acceptance of the updated policy.</p>
+      <p>We may update this policy from time to time. The &ldquo;Last updated&rdquo; date at the top of this page will reflect any changes. Continued use of the app after changes constitutes acceptance of the updated policy.</p>
     </section>
 
     <section>

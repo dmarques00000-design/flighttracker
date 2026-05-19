@@ -75,13 +75,22 @@ export default {
         },
       ],
 
-      // Declare every category of data the app collects so App Store Review
-      // can validate the privacy nutrition label without rejecting the build.
-      // All three categories are collected solely for app functionality
-      // (authentication + airport suggestion) — never for tracking.
+      // ---------------------------------------------------------------------------
+      // NSPrivacyCollectedDataTypes — App Store Nutrition Label (§5.1.2)
+      //
+      // MUST match exactly what the app collects AND what privacy.html §2 states.
+      // A mismatch between this manifest, the human-readable policy, and the
+      // App Store Connect nutrition label form is a direct §5.1.2 rejection reason.
+      //
+      // Rule of thumb for each entry:
+      //   Linked   = true  when the data is stored server-side tied to the user ID.
+      //   Tracking = false for all entries — no ad/analytics SDK is used.
+      //   Purposes = AppFunctionality for everything here.
+      // ---------------------------------------------------------------------------
       NSPrivacyCollectedDataTypes: [
         {
-          // Email address — used for account creation / sign-in
+          // Email address — account creation / sign-in (Apple, Google, email).
+          // Stored server-side linked to the user record.
           NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypeEmailAddress",
           NSPrivacyCollectedDataTypeLinked: true,
           NSPrivacyCollectedDataTypeTracking: false,
@@ -90,7 +99,8 @@ export default {
           ],
         },
         {
-          // Name — used for the user's profile display
+          // Display name — shown in profile, sent with feedback submissions.
+          // Stored server-side linked to the user record.
           NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypeName",
           NSPrivacyCollectedDataTypeLinked: true,
           NSPrivacyCollectedDataTypeTracking: false,
@@ -99,9 +109,50 @@ export default {
           ],
         },
         {
-          // Coarse location — used only to suggest the nearest airport;
-          // never stored or transmitted beyond the single in-session request.
+          // Coarse location — one-shot request to suggest the nearest airport
+          // when adding a flight. Never stored or transmitted beyond the
+          // single in-session lookup; result is discarded after suggestion.
           NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypeCoarseLocation",
+          NSPrivacyCollectedDataTypeLinked: false,
+          NSPrivacyCollectedDataTypeTracking: false,
+          NSPrivacyCollectedDataTypePurposes: [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+          ],
+        },
+        {
+          // Other user content — covers:
+          //   • Flight log entries (code, route, date, airline, seat class,
+          //     duration, distance) stored server-side when signed in.
+          //   • Trip names and groupings.
+          //   • Free-text feedback messages submitted via FeedbackModal.
+          // Not linked to a persistent identifier beyond session auth;
+          // feedback is stored without a user ID on the server.
+          NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypeOtherUserContent",
+          NSPrivacyCollectedDataTypeLinked: false,
+          NSPrivacyCollectedDataTypeTracking: false,
+          NSPrivacyCollectedDataTypePurposes: [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+          ],
+        },
+        {
+          // Photos or videos — cover images the user selects from their
+          // photo library for trip cards. The chosen image is stored locally
+          // and optionally uploaded when sharing a trip card. Never accessed
+          // without explicit user action (photo picker).
+          NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypePhotosOrVideos",
+          NSPrivacyCollectedDataTypeLinked: false,
+          NSPrivacyCollectedDataTypeTracking: false,
+          NSPrivacyCollectedDataTypePurposes: [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+          ],
+        },
+        {
+          // Other data types — optional profile preference fields the user
+          // may choose to enter: nationality, home airport code, frequent
+          // flyer number, preferred airline, seat preference.
+          // All stored locally in AsyncStorage; synced server-side only
+          // when the user is signed in. None are required.
+          NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypeOtherDataTypes",
           NSPrivacyCollectedDataTypeLinked: false,
           NSPrivacyCollectedDataTypeTracking: false,
           NSPrivacyCollectedDataTypePurposes: [
