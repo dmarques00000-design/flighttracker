@@ -1,10 +1,56 @@
 // app.config.js — dynamic Expo config
 // Replaces app.json so we can read environment variables at build time.
-// • Local dev:  set GOOGLE_IOS_URL_SCHEME in .env.local (never commit this file)
-// • EAS builds: eas env:create --scope project --name GOOGLE_IOS_URL_SCHEME --value <value> --environment production
+//
+// Local dev:
+//   Copy .env.local.example → .env.local and fill in real values.
+//   Never commit .env.local — it is git-ignored.
+//
+// EAS builds:
+//   Store secrets with:
+//     eas secret:create --scope project --name APPLE_TEAM_ID --value <id> --environment production
+//     eas secret:create --scope project --name GOOGLE_IOS_URL_SCHEME --value <scheme> --environment production
+//   Both variables must exist in every EAS environment that produces
+//   an iOS build. A missing value throws at config-evaluation time so
+//   the build fails fast with an actionable message instead of
+//   silently embedding a placeholder and failing at codesign/archive.
 
-const googleIosUrlScheme =
-  process.env.GOOGLE_IOS_URL_SCHEME || "com.googleusercontent.apps.placeholder";
+const IS_PRODUCTION = process.env.EAS_BUILD_PROFILE === "production";
+
+// GOOGLE_IOS_URL_SCHEME
+// Required for production; a placeholder is acceptable in dev/preview
+// because the Google Sign-In redirect only needs to work in real builds.
+const googleIosUrlScheme = IS_PRODUCTION
+  ? (() => {
+      const v = process.env.GOOGLE_IOS_URL_SCHEME;
+      if (!v)
+        throw new Error(
+          "[app.config.js] GOOGLE_IOS_URL_SCHEME is not set.\n" +
+          "Run: eas secret:create --scope project --name GOOGLE_IOS_URL_SCHEME --value <your-value> --environment production"
+        );
+      return v;
+    })()
+  : process.env.GOOGLE_IOS_URL_SCHEME || "com.googleusercontent.apps.placeholder";
+
+// APPLE_TEAM_ID
+// Required in every environment that builds an iOS binary.
+// A placeholder team ID produces a binary that passes local Expo
+// validation but fails at EAS codesigning or Xcode archive with a
+// cryptic "team not found" error — always fail fast here instead.
+const appleTeamId = (() => {
+  const v = process.env.APPLE_TEAM_ID;
+  if (!v)
+    throw new Error(
+      "[app.config.js] APPLE_TEAM_ID is not set.\n" +
+      "For local builds:   add APPLE_TEAM_ID=<10-char-id> to .env.local\n" +
+      "For EAS builds:     eas secret:create --scope project --name APPLE_TEAM_ID --value <10-char-id> --environment production"
+    );
+  if (!/^[A-Z0-9]{10}$/.test(v))
+    throw new Error(
+      `[app.config.js] APPLE_TEAM_ID looks wrong: "${v}"\n` +
+      "Apple Team IDs are exactly 10 uppercase alphanumeric characters (e.g. AB12CD34EF)."
+    );
+  return v;
+})();
 
 // App Group shared between the main app and the widget extension.
 const APP_GROUP = "group.com.logbookapp.shared";
@@ -165,21 +211,6 @@ export default {
       ITSAppUsesNonExemptEncryption: false,
 
       // §2.3.3 — iPhone-only declaration.
-      //
-      // Expo does NOT automatically write UIRequiredDeviceCapabilities or
-      // UIDeviceFamily when supportsTablet: false. Without these keys the
-      // App Store binary checker may apply iPad §2.3.3 size-class rules
-      // even though the app is intentionally iPhone-only.
-      //
-      // UIDeviceFamily: [1] — 1 = iPhone, 2 = iPad. Omitting 2 is the
-      //   primary signal that this is an iPhone-only binary.
-      //
-      // UIRequiredDeviceCapabilities: ['arm64', 'telephony']
-      //   - 'arm64'     — required on all modern iOS apps.
-      //   - 'telephony' — the canonical capability that iPads do NOT
-      //     expose, so the App Store correctly excludes this binary
-      //     from the iPad catalogue without needing size-class
-      //     declarations or a separate iPad build.
       UIDeviceFamily: [1],
       UIRequiredDeviceCapabilities: ["arm64", "telephony"],
 
@@ -204,26 +235,16 @@ export default {
         "Logbook needs calendar access to scan for flights and add flight events to Apple Calendar.",
 
       // Calendar — iOS 17+ read/write split permissions
-      // Full access is required: the app both reads events (calendar scan feature)
-      // and writes events (Add to Calendar feature).
       NSCalendarsFullAccessUsageDescription:
         "Logbook needs full calendar access to scan your existing events for flight codes and to add new flight events to Apple Calendar.",
       NSCalendarsWriteOnlyAccessUsageDescription:
         "Logbook needs calendar write access to add your flights as events in Apple Calendar.",
 
       // Contacts — §5.1.2 defensive declaration.
-      // FeedbackModal currently sends feedback via a direct API POST and does
-      // not call the Contacts framework. This key is declared to satisfy
-      // Apple's static analyser (which flags any binary containing an in-app
-      // feedback surface without this key) and to future-proof against a
-      // mailto: or contact-picker addition inside the feedback flow.
       NSContactsUsageDescription:
         "Logbook may access your contacts only if you choose to share them when sending feedback.",
 
       // Survey — §5.1.2 defensive declaration.
-      // Required when Apple's toolchain associates an in-app feedback or
-      // survey surface with the ResearchKit / survey controller entitlement.
-      // Declared here so a missing key never causes a §5.1.2 rejection.
       NSSurveyUsageDescription:
         "Logbook uses in-app feedback to help improve the app. No survey data is shared with third parties.",
 
@@ -280,7 +301,7 @@ export default {
     [
       "@bacons/apple-targets",
       {
-        appleTeamId: process.env.APPLE_TEAM_ID || "XXXXXXXXXX",
+        appleTeamId,
       },
     ],
   ],
