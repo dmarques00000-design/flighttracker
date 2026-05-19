@@ -113,6 +113,25 @@ export default {
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
 
+      // §2.3.3 — iPhone-only declaration.
+      //
+      // Expo does NOT automatically write UIRequiredDeviceCapabilities or
+      // UIDeviceFamily when supportsTablet: false. Without these keys the
+      // App Store binary checker may apply iPad §2.3.3 size-class rules
+      // even though the app is intentionally iPhone-only.
+      //
+      // UIDeviceFamily: [1] — 1 = iPhone, 2 = iPad. Omitting 2 is the
+      //   primary signal that this is an iPhone-only binary.
+      //
+      // UIRequiredDeviceCapabilities: ['arm64', 'telephony']
+      //   - 'arm64'     — required on all modern iOS apps.
+      //   - 'telephony' — the canonical capability that iPads do NOT
+      //     expose, so the App Store correctly excludes this binary
+      //     from the iPad catalogue without needing size-class
+      //     declarations or a separate iPad build.
+      UIDeviceFamily: [1],
+      UIRequiredDeviceCapabilities: ["arm64", "telephony"],
+
       // Camera — boarding pass / QR code scanning
       NSCameraUsageDescription:
         "Logbook uses the camera to scan boarding passes and QR codes to import your flights automatically.",
