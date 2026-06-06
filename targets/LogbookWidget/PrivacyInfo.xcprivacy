@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+
+  <!--
+    LogbookWidget — Privacy Manifest
+
+    Every app extension needs its own PrivacyInfo.xcprivacy.
+    Apple's automated pipeline inspects each target in the .xcarchive
+    independently; the host app's manifest does NOT cover extensions.
+
+    APIs used by this widget
+    ─────────────────────────────────────────────────────────────────────
+    1. UserDefaults  (UserDefaults.init(suiteName:))
+       The widget reads logbook_next_flight and logbook_month_recap
+       from the shared App Group (group.com.logbookapp.shared).
+       No defaults outside the app's own group are accessed.
+       Reason: CA92.1 — accessed to read/write information only
+               accessible to the app or its own app group.
+
+    2. System Boot Time  (WidgetKit timeline scheduling)
+       WidgetKit's Timeline.after(_:) policy uses mach_absolute_time
+       internally, classified as SystemBootTime.
+       Reason: 35F9.1 — accessed to calculate elapsed time since last
+               restart, for the purpose of scheduling timeline refresh.
+
+    Tracking & data collection
+    ─────────────────────────────────────────────────────────────────────
+    The widget does NOT track users, does NOT collect any personal data,
+    and does NOT make any network requests. It only reads data written
+    into the App Group by the host app.
+  -->
+
+  <key>NSPrivacyTracking</key>
+  <false/>
+
+  <key>NSPrivacyTrackingDomains</key>
+  <array/>
+
+  <key>NSPrivacyCollectedDataTypes</key>
+  <array/>
+
+  <key>NSPrivacyAccessedAPITypes</key>
+  <array>
+
+    <!-- UserDefaults — App Group container only -->
+    <dict>
+      <key>NSPrivacyAccessedAPIType</key>
+      <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+      <key>NSPrivacyAccessedAPITypeReasons</key>
+      <array>
+        <string>CA92.1</string>
+      </array>
+    </dict>
+
+    <!-- System Boot Time — WidgetKit timeline scheduling -->
+    <dict>
+      <key>NSPrivacyAccessedAPIType</key>
+      <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+      <key>NSPrivacyAccessedAPITypeReasons</key>
+      <array>
+        <string>35F9.1</string>
+      </array>
+    </dict>
+
+  </array>
+
+</dict>
+</plist>
