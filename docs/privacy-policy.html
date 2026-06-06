@@ -4,119 +4,29 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Privacy Policy – Logbook App</title>
+  <!-- Canonical: all link equity belongs to the authoritative document -->
+  <link rel="canonical" href="https://dmarques00000-design.github.io/flighttracker/privacy.html" />
+  <!-- Instant redirect for browsers -->
+  <meta http-equiv="refresh" content="0; url=privacy.html" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: #0a0a0f;
       color: #e0e0e8;
-      line-height: 1.7;
-      padding: 40px 20px 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
     }
-    .wrap { max-width: 720px; margin: 0 auto; }
-    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 6px; color: #fff; }
-    .meta { font-size: 0.85rem; color: #888; margin-bottom: 40px; }
-    h2 { font-size: 1.1rem; font-weight: 600; color: #fff; margin: 32px 0 10px; }
-    p  { margin-bottom: 12px; color: #b0b0c0; }
-    ul { margin: 8px 0 12px 20px; color: #b0b0c0; }
-    li { margin-bottom: 6px; }
-    a  { color: #4f8ef0; text-decoration: none; }
+    p { color: #888; font-size: 0.95rem; text-align: center; }
+    a { color: #4f8ef0; text-decoration: none; }
     a:hover { text-decoration: underline; }
-    .footer { margin-top: 60px; font-size: 0.8rem; color: #555; text-align: center; }
   </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Privacy Policy</h1>
-  <p class="meta">Logbook App &nbsp;·&nbsp; Last updated: March 25, 2026</p>
-
-  <h2>1. Introduction</h2>
-  <p>
-    Welcome to Logbook (&ldquo;the App&rdquo;). This Privacy Policy explains how Logbook App
-    (&ldquo;we&rdquo;, &ldquo;us&rdquo;, or &ldquo;our&rdquo;) collects, uses, and protects your information when
-    you use our iOS application. By using the App you agree to the practices described here.
-  </p>
-
-  <h2>2. Data Controller</h2>
-  <p>
-    The data controller responsible for your personal data is:<br />
-    <strong>Logbook App</strong><br />
-    Contact: <a href="mailto:diogo.marques@catapult-agency.com">diogo.marques@catapult-agency.com</a>
-  </p>
-
-  <h2>3. Information We Collect</h2>
-  <p>We collect only the minimum information necessary to provide the service:</p>
-  <ul>
-    <li><strong>Flight data you enter</strong> — flight codes, dates, routes, and related travel details you manually add or import via Apple Wallet passes.</li>
-    <li><strong>Account information</strong> — if you sign in with Apple or Google, we receive a unique user identifier and, optionally, your name and email address as provided by those services.</li>
-    <li><strong>Device permissions</strong> — the App may request access to your photo library (to save share cards) and location (to assist with airport detection). These are optional and only used for the stated purpose.</li>
-  </ul>
-  <p>We do <strong>not</strong> collect advertising identifiers, sell your data, or track you across other apps or websites.</p>
-
-  <h2>4. How We Use Your Information</h2>
-  <ul>
-    <li>To display and organise your personal flight logbook</li>
-    <li>To look up flight details via our server-side API</li>
-    <li>To authenticate your account securely</li>
-    <li>To generate and share flight summary cards at your request</li>
-  </ul>
-
-  <h2>5. Data Storage</h2>
-  <p>
-    Your flight data is stored locally on your device using secure on-device storage
-    (AsyncStorage). Account authentication tokens are managed by Apple and Google's
-    respective secure frameworks. We do not maintain a persistent server-side copy of
-    your personal flight logbook.
-  </p>
-
-  <h2>6. Third-Party Services</h2>
-  <p>The App uses the following third-party services, each governed by their own privacy policies:</p>
-  <ul>
-    <li><strong>Sign in with Apple</strong> — <a href="https://www.apple.com/legal/privacy/" target="_blank" rel="noopener">apple.com/legal/privacy</a></li>
-    <li><strong>Google Sign-In</strong> — <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">policies.google.com/privacy</a></li>
-    <li><strong>pics.avs.io</strong> — used to fetch airline logo images by IATA code. No personal data is transmitted.</li>
-  </ul>
-
-  <h2>7. Data Retention &amp; Deletion</h2>
-  <p>
-    Your flight data lives on your device and is deleted when you uninstall the App or
-    remove individual flights within the App. To request deletion of any account-linked
-    data, contact us at
-    <a href="mailto:diogo.marques@catapult-agency.com">diogo.marques@catapult-agency.com</a>
-    and we will process your request within 30 days.
-  </p>
-
-  <h2>8. Children&rsquo;s Privacy</h2>
-  <p>
-    The App is not directed at children under 13. We do not knowingly collect personal
-    information from children under 13. If you believe we have inadvertently collected
-    such information, please contact us immediately.
-  </p>
-
-  <h2>9. Your Rights (GDPR / Swiss nDSG)</h2>
-  <p>If you are located in the EU or Switzerland, you have the right to:</p>
-  <ul>
-    <li>Access the personal data we hold about you</li>
-    <li>Request correction or deletion of your data</li>
-    <li>Object to or restrict processing of your data</li>
-    <li>Lodge a complaint with your local supervisory authority</li>
-  </ul>
-  <p>To exercise any of these rights, contact <a href="mailto:diogo.marques@catapult-agency.com">diogo.marques@catapult-agency.com</a>.</p>
-
-  <h2>10. Changes to This Policy</h2>
-  <p>
-    We may update this Privacy Policy from time to time. The &ldquo;Last updated&rdquo; date at the
-    top of this page will reflect any changes. Continued use of the App after changes
-    constitutes acceptance of the revised policy.
-  </p>
-
-  <h2>11. Contact</h2>
-  <p>
-    Questions or concerns? Email us at
-    <a href="mailto:diogo.marques@catapult-agency.com">diogo.marques@catapult-agency.com</a>.
-  </p>
-
-  <div class="footer">&copy; 2026 Logbook App. All rights reserved.</div>
-</div>
+  <p>Redirecting to <a href="privacy.html">Privacy Policy</a>&hellip;</p>
+  <script>window.location.replace("privacy.html");</script>
 </body>
 </html>
