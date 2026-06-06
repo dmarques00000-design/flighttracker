@@ -44,6 +44,12 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleId": "dmarques00@hotmail.com",
+        "ascAppId": "6770341636",
+        "appleTeamId": "L5332426YR"
+      }
+    }
   }
 }
