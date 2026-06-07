@@ -261,6 +261,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       ? ""
       : email.trim();
 
+    // 10 s timeout — user is actively waiting on the sign-in screen.
     const res = await fetchWithTimeout(`${API_BASE}/api/auth/upsert`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -271,6 +272,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         avatarUrl,
         provider,
       }),
+      timeoutMs: 10_000,
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "(no body)");
