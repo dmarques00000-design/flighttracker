@@ -671,12 +671,15 @@ export default function FlightsScreen() {
   // ── Undo helpers ──────────────────────────────────────────────────────────
   const handleDeleteIntent = useCallback((flight: Flight) => {
     if (pendingDeleteRef.current) {
-      removeFlight(pendingDeleteRef.current.id);
+      // A previous deletion was pending — commit it immediately (fire-and-forget;
+      // errors are handled inside handleCommitDelete).
+      pendingDeleteRef.current = null;
+      setPendingDelete(null);
     }
     pendingDeleteRef.current = flight;
     setPendingDelete(flight);
     Keyboard.dismiss();
-  }, [removeFlight]);
+  }, []);
 
   const handleUndoDelete = useCallback(() => {
     pendingDeleteRef.current = null;
@@ -684,14 +687,24 @@ export default function FlightsScreen() {
   }, []);
 
   const handleCommitDelete = useCallback(() => {
-    if (pendingDeleteRef.current) {
-      // Warning haptic fires at the moment of irrevocable deletion —
-      // after the undo window has closed and removeFlight is called.
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      removeFlight(pendingDeleteRef.current.id);
-      pendingDeleteRef.current = null;
-      setPendingDelete(null);
-    }
+    const flight = pendingDeleteRef.current;
+    if (!flight) return;
+    pendingDeleteRef.current = null;
+    setPendingDelete(null);
+
+    // Warning haptic fires at the moment of irrevocable deletion —
+    // after the undo window has closed and removeFlight is called.
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+
+    removeFlight(flight.id).catch(() => {
+      // The context already reverted the optimistic removal; let the user know.
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(
+        "Couldn't Delete Flight",
+        `${flight.departureAirport} → ${flight.arrivalAirport} has been restored. Please check your connection and try again.`,
+        [{ text: "OK" }],
+      );
+    });
   }, [removeFlight]);
   // ─────────────────────────────────────────────────────────────────────────
 
