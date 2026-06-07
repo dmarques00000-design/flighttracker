@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE } from "@/constants/api";
 import { useUser } from "@/context/user";
 import { writeWidgetData } from "@/utils/widgetData";
+import { fetchWithTimeout } from "@/lib/fetch";
 
 export interface Flight {
   id: string;
@@ -107,7 +108,9 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       if (isLoggedIn && profile.id) {
         try {
-          const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(profile.id)}/flights`);
+          const res = await fetchWithTimeout(
+            `${API_BASE}/api/users/${encodeURIComponent(profile.id)}/flights`,
+          );
           if (res.ok) {
             const data: Flight[] = await res.json();
             if (!cancelled) {
@@ -120,7 +123,7 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
           console.warn("[FlightsContext] API fetch failed, falling back to local storage:", err);
         }
       }
-      // Guest / offline fallback
+      // Guest / offline / timeout fallback
       const raw = await AsyncStorage.getItem(LOCAL_STORAGE_KEY);
       if (!cancelled && raw) {
         try {
@@ -149,7 +152,7 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
     if (isLoggedIn && profile.id) {
       let res: Response;
       try {
-        res = await fetch(`${API_BASE}/api/flights`, {
+        res = await fetchWithTimeout(`${API_BASE}/api/flights`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...data, userId: profile.id }),
@@ -189,7 +192,7 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
 
     if (isLoggedIn && profile.id) {
       try {
-        const res = await fetch(
+        const res = await fetchWithTimeout(
           `${API_BASE}/api/flights/${encodeURIComponent(id)}?userId=${encodeURIComponent(profile.id)}`,
           { method: "DELETE" },
         );
@@ -198,10 +201,6 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         console.warn("[FlightsContext] Failed to delete flight from API, reverting:", err);
         setFlights(snapshot);
-        // Re-persist the snapshot so AsyncStorage stays in sync with the
-        // reverted in-memory state. Without this, storage holds the
-        // post-deletion array and the flight disappears on next app launch
-        // even though it was visually restored in the UI.
         await persistLocal(snapshot);
         throw err;
       }

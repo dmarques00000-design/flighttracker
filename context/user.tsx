@@ -6,6 +6,7 @@ import {
   DEFAULT_NOTIFICATION_PREFS,
 } from "@/utils/notifications";
 import { API_BASE } from "@/constants/api";
+import { fetchWithTimeout } from "@/lib/fetch";
 
 export interface UserProfile {
   id: string;
@@ -79,7 +80,8 @@ function isPrivateRelayEmail(email: string): boolean {
 async function silentUpsert(profile: UserProfile): Promise<void> {
   if (!profile.id) return;
   try {
-    await fetch(`${API_BASE}/api/auth/upsert`, {
+    // Short timeout — this is a background best-effort sync, not user-blocking.
+    await fetchWithTimeout(`${API_BASE}/api/auth/upsert`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -89,9 +91,10 @@ async function silentUpsert(profile: UserProfile): Promise<void> {
         avatarUrl: profile.avatarUrl,
         provider:  profile.provider,
       }),
+      timeoutMs: 5_000,
     });
   } catch {
-    // Network unavailable at launch — not fatal.
+    // Network unavailable or timed out at launch — not fatal.
   }
 }
 
@@ -231,9 +234,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
 
     // Step 2: delete the backend record only after successful revocation.
-    const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}`, {
-      method: "DELETE",
-    });
+    // Higher timeout (15 s) — user-initiated, account deletion is high stakes.
+    const res = await fetchWithTimeout(
+      `${API_BASE}/api/users/${encodeURIComponent(userId)}`,
+      { method: "DELETE", timeoutMs: 15_000 },
+    );
     if (!res.ok) {
       const body = await res.text().catch(() => "(no body)");
       throw new Error(`[UserContext] DELETE /api/users/${userId} failed ${res.status}: ${body}`);
@@ -256,7 +261,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       ? ""
       : email.trim();
 
-    const res = await fetch(`${API_BASE}/api/auth/upsert`, {
+    const res = await fetchWithTimeout(`${API_BASE}/api/auth/upsert`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

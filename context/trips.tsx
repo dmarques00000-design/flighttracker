@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useCall
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE } from "@/constants/api";
 import { useUser } from "@/context/user";
+import { fetchWithTimeout } from "@/lib/fetch";
 
 export type TripStatus = "planned" | "upcoming" | "completed";
 
@@ -40,7 +41,9 @@ export function TripsProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       if (isLoggedIn && profile.id) {
         try {
-          const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(profile.id)}/trips`);
+          const res = await fetchWithTimeout(
+            `${API_BASE}/api/users/${encodeURIComponent(profile.id)}/trips`,
+          );
           if (res.ok) {
             const data: Trip[] = await res.json();
             if (!cancelled) setTrips(data);
@@ -71,7 +74,7 @@ export function TripsProvider({ children }: { children: ReactNode }) {
       // Logged-in path: server is the source of truth. Any failure throws so
       // the call site can surface an error to the user — we must NOT silently
       // create a local-only trip that will vanish on the next cold start.
-      const res = await fetch(`${API_BASE}/api/trips`, {
+      const res = await fetchWithTimeout(`${API_BASE}/api/trips`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, flightIds, userId: profile.id, coverUri }),
@@ -107,7 +110,7 @@ export function TripsProvider({ children }: { children: ReactNode }) {
     setTrips((prev) => { snapshot = prev; return prev.filter((t) => t.id !== id); });
     if (isLoggedIn && profile.id) {
       try {
-        const res = await fetch(
+        const res = await fetchWithTimeout(
           `${API_BASE}/api/trips/${encodeURIComponent(id)}?userId=${encodeURIComponent(profile.id)}`,
           { method: "DELETE" },
         );
@@ -139,7 +142,7 @@ export function TripsProvider({ children }: { children: ReactNode }) {
     });
     if (isLoggedIn && profile.id) {
       try {
-        const res = await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId: profile.id, title, flightIds, coverUri, status: currentStatus }),
@@ -170,7 +173,7 @@ export function TripsProvider({ children }: { children: ReactNode }) {
     });
     if (isLoggedIn && profile.id) {
       try {
-        const res = await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId: profile.id, starred: newStarred }),
@@ -196,7 +199,7 @@ export function TripsProvider({ children }: { children: ReactNode }) {
     });
     if (isLoggedIn && profile.id) {
       try {
-        const res = await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
+        const res = await fetchWithTimeout(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId: profile.id, status }),
