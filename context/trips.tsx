@@ -68,27 +68,24 @@ export function TripsProvider({ children }: { children: ReactNode }) {
 
   const addTrip = useCallback(async (title: string, flightIds: string[], coverUri?: string) => {
     if (isLoggedIn && profile.id) {
-      try {
-        const res = await fetch(`${API_BASE}/api/trips`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title, flightIds, userId: profile.id, coverUri }),
-        });
-        if (res.ok) {
-          const saved: Trip = await res.json();
-          setTrips((prev) => {
-            const next = [saved, ...prev];
-            persistLocal(next);
-            return next;
-          });
-          return;
-        }
-        console.warn("[TripsContext] API POST /api/trips returned", res.status);
-      } catch (err) {
-        console.warn("[TripsContext] API save failed, saving locally:", err);
-      }
+      // Logged-in path: server is the source of truth. Any failure throws so
+      // the call site can surface an error to the user — we must NOT silently
+      // create a local-only trip that will vanish on the next cold start.
+      const res = await fetch(`${API_BASE}/api/trips`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, flightIds, userId: profile.id, coverUri }),
+      });
+      if (!res.ok) throw new Error(`POST /api/trips => ${res.status}`);
+      const saved: Trip = await res.json();
+      setTrips((prev) => {
+        const next = [saved, ...prev];
+        persistLocal(next);
+        return next;
+      });
+      return;
     }
-    // Fallback: create locally (guest mode or API failure)
+    // Guest mode: no account, create locally only.
     const trip: Trip = {
       id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
       title,
