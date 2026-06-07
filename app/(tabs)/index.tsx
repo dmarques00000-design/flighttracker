@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from "react";
+import React, { useMemo, useState, useEffect, useRef, lazy, Suspense } from "react";
 import {
   View, Text, ScrollView, Pressable,
   Platform, Modal, TouchableWithoutFeedback,
@@ -17,11 +17,15 @@ import { useFlights, Flight } from "@/context/flights";
 import { useUser } from "@/context/user";
 import { useGestureLock } from "@/context/gesture-lock";
 import { useTabNav } from "@/context/tab-nav";
-import GlobeView from "@/components/GlobeView";
 import { LogbookLogo } from "@/components/LogbookLogo";
 import { getCO2FunFact } from "@/utils/co2FunFact";
 import { getRateLimiter } from "@/lib/rate-limiter";
 import { getAirportInfo } from "@/utils/passport";
+
+// ── Lazy-load the globe so it doesn't block the home tab's initial render.
+// The world-atlas TopoJSON + geometry pre-computation are heavy; deferring them
+// lets the stats, next-flight card, and flight list paint immediately.
+const GlobeView = lazy(() => import("@/components/GlobeView"));
 
 const percentileLimiter = getRateLimiter("percentile", { maxCalls: 10, windowMs: 60_000 });
 
@@ -154,6 +158,39 @@ function SkeletonBox({ width, height, borderRadius = 8, style }: { width?: numbe
         { width: width ?? "100%", height, borderRadius, backgroundColor: C.surface },
         animStyle,
         style,
+      ]}
+    />
+  );
+}
+
+/**
+ * Placeholder rendered by Suspense while GlobeView's bundle is loading.
+ * Matches the compact card's dimensions so layout doesn't shift on resolve.
+ */
+function GlobePlaceholder() {
+  const C = useColors();
+  const opacity = useSharedValue(1);
+
+  useEffect(() => {
+    opacity.value = withRepeat(withTiming(0.4, { duration: 750 }), -1, true);
+    return () => cancelAnimation(opacity);
+  }, [opacity]);
+
+  const animStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  // Match the globe card: full-width, square-ish, same border-radius as the globe wrapper
+  return (
+    <Animated.View
+      style={[
+        {
+          width: "100%",
+          aspectRatio: 1,
+          borderRadius: 200,
+          backgroundColor: C.surface,
+          alignSelf: "center",
+          maxWidth: 360,
+        },
+        animStyle,
       ]}
     />
   );
@@ -681,11 +718,16 @@ export default function HomeScreen() {
                     <Ionicons name="expand-outline" size={14} color={C.accent} accessible={false} />
                   </Pressable>
                 </View>
-                <GlobeView
-                  flights={flights}
-                  onDragStart={handleGlobeDragStart}
-                  onDragEnd={handleGlobeDragEnd}
-                />
+                {/* Suspense boundary: GlobeView is lazy-loaded so the rest of the
+                    home tab renders immediately. GlobePlaceholder holds the layout
+                    space and shows a shimmer until the bundle resolves. */}
+                <Suspense fallback={<GlobePlaceholder />}>
+                  <GlobeView
+                    flights={flights}
+                    onDragStart={handleGlobeDragStart}
+                    onDragEnd={handleGlobeDragEnd}
+                  />
+                </Suspense>
               </Animated.View>
 
               <Animated.View entering={FadeInDown.delay(140).springify()} style={{ marginBottom: 24 }}>
