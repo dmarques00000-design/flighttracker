@@ -64,17 +64,40 @@ export class DuplicateFlightError extends Error {
 }
 
 function computeStats(flights: Flight[]): FlightStats {
-  const currentYear = new Date().getFullYear();
-  const yearFlights = flights.filter((f) => f.date.startsWith(String(currentYear)));
-  const totalFlights = flights.length;
-  const totalMiles = flights.reduce((s, f) => s + f.distanceMiles, 0);
-  const totalCo2Kg = flights.reduce((s, f) => s + f.co2Kg, 0);
-  const totalFlightMinutes = flights.reduce((s, f) => s + f.durationMinutes, 0);
-  const totalDelayMinutes = flights.reduce((s, f) => s + f.delayMinutes, 0);
-  const yearMiles = yearFlights.reduce((s, f) => s + f.distanceMiles, 0);
-  const yearCo2 = yearFlights.reduce((s, f) => s + f.co2Kg, 0);
-  const rankPercentile = computeRank(yearFlights.length);
-  return { totalFlights, totalMiles, totalCo2Kg, totalFlightMinutes, totalDelayMinutes, rankPercentile, yearFlights: yearFlights.length, yearMiles, yearCo2 };
+  const currentYear = String(new Date().getFullYear());
+
+  // Single pass — accumulate all totals at once instead of 5 separate reduce calls.
+  let totalMiles = 0;
+  let totalCo2Kg = 0;
+  let totalFlightMinutes = 0;
+  let totalDelayMinutes = 0;
+  let yearFlights = 0;
+  let yearMiles = 0;
+  let yearCo2 = 0;
+
+  for (const f of flights) {
+    totalMiles         += f.distanceMiles;
+    totalCo2Kg         += f.co2Kg;
+    totalFlightMinutes += f.durationMinutes;
+    totalDelayMinutes  += f.delayMinutes;
+    if (f.date.startsWith(currentYear)) {
+      yearFlights++;
+      yearMiles += f.distanceMiles;
+      yearCo2   += f.co2Kg;
+    }
+  }
+
+  return {
+    totalFlights: flights.length,
+    totalMiles,
+    totalCo2Kg,
+    totalFlightMinutes,
+    totalDelayMinutes,
+    rankPercentile: computeRank(yearFlights),
+    yearFlights,
+    yearMiles,
+    yearCo2,
+  };
 }
 
 function computeRank(flightsThisYear: number): number {
