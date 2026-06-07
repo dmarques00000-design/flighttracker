@@ -79,10 +79,13 @@ function toDateString(d: Date): string {
 
 /**
  * Request calendar permission and scan the past 365 days.
+ * Uses requestFullCalendarAccessAsync() (iOS 17+) so the correct
+ * NSCalendarsFullAccessUsageDescription string is shown and the
+ * legacy permission deprecation warning is avoided.
  * Throws if permission is denied.
  */
 export async function scanCalendarForFlights(): Promise<CalendarFlight[]> {
-  const { status } = await Calendar.requestCalendarPermissionsAsync();
+  const { status } = await Calendar.requestFullCalendarAccessAsync();
   if (status !== "granted") {
     throw new Error("PERMISSION_DENIED");
   }
