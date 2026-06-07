@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Support – Logbook</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f7f6f2;
+      --card: #ffffff;
+      --text: #1a1917;
+      --text-sec: #5a5957;
+      --accent: #01696f;
+      --border: #e0ddd8;
+      --radius: 12px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #171614;
+        --card: #1c1b19;
+        --text: #cdccca;
+        --text-sec: #797876;
+        --accent: #4f98a3;
+        --border: #2e2d2b;
+      }
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      padding: 0 16px 80px;
+    }
+    header {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 48px 0 32px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 40px;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 24px;
+      text-decoration: none;
+    }
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: var(--accent);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .logo-icon svg { display: block; }
+    .logo-name {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    header h1 {
+      font-size: clamp(26px, 5vw, 36px);
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+    header p { font-size: 14px; color: var(--text-sec); }
+    main { max-width: 720px; margin: 0 auto; }
+    section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      margin-bottom: 20px;
+    }
+    h2 {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    h2 .icon {
+      width: 32px;
+      height: 32px;
+      background: color-mix(in oklab, var(--accent) 12%, var(--card));
+      border: 1px solid color-mix(in oklab, var(--accent) 20%, var(--border));
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    p { font-size: 15px; color: var(--text-sec); margin-bottom: 12px; }
+    p:last-child { margin-bottom: 0; }
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 10px 0 0;
+    }
+    ul li {
+      font-size: 15px;
+      color: var(--text-sec);
+      padding: 10px 0 10px 20px;
+      position: relative;
+      border-bottom: 1px solid var(--border);
+    }
+    ul li:last-child { border-bottom: none; }
+    ul li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 18px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .contact-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: color-mix(in oklab, var(--accent) 8%, var(--card));
+      border: 1px solid color-mix(in oklab, var(--accent) 20%, var(--border));
+      border-radius: 10px;
+      padding: 18px 20px;
+      margin-top: 4px;
+    }
+    .contact-card-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--accent);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .contact-card-text { display: flex; flex-direction: column; gap: 2px; }
+    .contact-card-label { font-size: 12px; color: var(--text-sec); font-weight: 500; letter-spacing: 0.3px; text-transform: uppercase; }
+    .contact-card-value { font-size: 15px; font-weight: 600; color: var(--text); }
+    .contact-card-value a { color: var(--accent); }
+    .highlight {
+      background: color-mix(in oklab, var(--accent) 8%, var(--card));
+      border: 1px solid color-mix(in oklab, var(--accent) 20%, var(--border));
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-size: 14px;
+      color: var(--text-sec);
+      margin-top: 12px;
+    }
+    footer {
+      max-width: 720px;
+      margin: 40px auto 0;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-sec);
+    }
+    footer a { color: var(--text-sec); }
+    footer a:hover { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17.8 19.2L16 11l3.5-3.5C21 6 21 4 19 4s-2 1-3.5 2.5L8 10 .8 8.2c-.9-.2-.9-1.4 0-1.6l18-5a1 1 0 0 1 1.2 1.2l-5 18c-.2.9-1.4.9-1.6 0z"/>
+        </svg>
+      </div>
+      <span class="logo-name">Logbook</span>
+    </div>
+    <h1>Support</h1>
+    <p>Logbook &nbsp;&middot;&nbsp; Flight Tracker &amp; Logbook App &nbsp;&middot;&nbsp; Version 1.0</p>
+  </header>
+
+  <main>
+
+    <section>
+      <h2>
+        <span class="icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </span>
+        Frequently Asked Questions
+      </h2>
+      <ul>
+        <li><strong>How do I add a flight?</strong> &mdash; Tap the <strong>+</strong> button on the main screen and enter your flight code and date. Logbook will look up the details automatically.</li>
+        <li><strong>Can I import flights from my calendar?</strong> &mdash; Yes. Go to <strong>Settings &rarr; Calendar Sync</strong> to scan your iOS Calendar for events containing flight codes.</li>
+        <li><strong>Can I import boarding passes?</strong> &mdash; Yes. Tap <strong>Scan Boarding Pass</strong> on the add-flight screen to scan a PDF or image from your files.</li>
+        <li><strong>How do I delete a flight?</strong> &mdash; Open the flight detail view and scroll to the bottom, or swipe left on the flight in the list.</li>
+        <li><strong>Is my data backed up?</strong> &mdash; If you are signed in, your data is synced to your account and restored automatically if you reinstall the app.</li>
+        <li><strong>Does Logbook work offline?</strong> &mdash; You can view your existing logbook offline. Adding new flights or enriching flight data requires an internet connection.</li>
+        <li><strong>How do I delete my account?</strong> &mdash; Go to <strong>Profile &rarr; Delete Account &amp; Data</strong>. Deletion is immediate and irreversible.</li>
+        <li><strong>Why does the app ask for calendar access?</strong> &mdash; Only when you use the Calendar Sync feature. Logbook reads your calendar on-device to look for flight codes; your calendar data is never sent to our servers.</li>
+        <li><strong>Why does the app ask for camera access?</strong> &mdash; Only when you scan a boarding pass. The camera is never used in the background.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>
+        <span class="icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+          </svg>
+        </span>
+        Contact Support
+      </h2>
+      <p>Can't find an answer above? Send us an email and we'll get back to you within 2 business days.</p>
+      <div class="contact-card">
+        <div class="contact-card-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+          </svg>
+        </div>
+        <div class="contact-card-text">
+          <span class="contact-card-label">Email</span>
+          <span class="contact-card-value"><a href="mailto:diogo.marques@catapult-agency.com">diogo.marques@catapult-agency.com</a></span>
+        </div>
+      </div>
+      <div class="highlight">When reporting a bug, please include your iOS version, device model, and a brief description of the steps to reproduce the issue.</div>
+    </section>
+
+    <section>
+      <h2>
+        <span class="icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+          </svg>
+        </span>
+        Legal
+      </h2>
+      <p>
+        <a href="privacy.html">Privacy Policy</a> &nbsp;&middot;&nbsp;
+        <a href="terms-of-use.html">Terms of Use</a>
+      </p>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>&copy; 2026 Diogo Marques &mdash; Logbook &nbsp;&middot;&nbsp; <a href="privacy.html">Privacy</a> &nbsp;&middot;&nbsp; <a href="terms-of-use.html">Terms</a></p>
+  </footer>
+
+</body>
+</html>
