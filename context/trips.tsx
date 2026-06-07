@@ -127,8 +127,11 @@ export function TripsProvider({ children }: { children: ReactNode }) {
   }, [isLoggedIn, profile.id, persistLocal]);
 
   const updateTrip = useCallback(async (id: string, title: string, flightIds: string[], coverUri?: string) => {
+    // Capture snapshot and current status before applying optimistic update.
+    let snapshot: Trip[] = [];
     let currentStatus: TripStatus | undefined;
     setTrips((prev) => {
+      snapshot = prev;
       const next = prev.map((t) => {
         if (t.id !== id) return t;
         currentStatus = t.status;
@@ -139,20 +142,27 @@ export function TripsProvider({ children }: { children: ReactNode }) {
     });
     if (isLoggedIn && profile.id) {
       try {
-        await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
+        const res = await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId: profile.id, title, flightIds, coverUri, status: currentStatus }),
         });
+        if (!res.ok) throw new Error(`PATCH /api/trips/${id} => ${res.status}`);
       } catch (err) {
-        console.warn("[TripsContext] Update failed:", err);
+        console.warn("[TripsContext] Update failed, reverting:", err);
+        setTrips(snapshot);
+        persistLocal(snapshot);
+        throw err;
       }
     }
   }, [isLoggedIn, profile.id, persistLocal]);
 
   const toggleStar = useCallback(async (id: string) => {
+    // Capture snapshot before applying optimistic update.
+    let snapshot: Trip[] = [];
     let newStarred = false;
     setTrips((prev) => {
+      snapshot = prev;
       const next = prev.map((t) => {
         if (t.id !== id) return t;
         newStarred = !t.starred;
@@ -163,32 +173,43 @@ export function TripsProvider({ children }: { children: ReactNode }) {
     });
     if (isLoggedIn && profile.id) {
       try {
-        await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
+        const res = await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId: profile.id, starred: newStarred }),
         });
+        if (!res.ok) throw new Error(`PATCH /api/trips/${id} (star) => ${res.status}`);
       } catch (err) {
-        console.warn("[TripsContext] Star toggle failed:", err);
+        console.warn("[TripsContext] Star toggle failed, reverting:", err);
+        setTrips(snapshot);
+        persistLocal(snapshot);
+        throw err;
       }
     }
   }, [isLoggedIn, profile.id, persistLocal]);
 
   const setTripStatus = useCallback(async (id: string, status: TripStatus) => {
+    // Capture snapshot before applying optimistic update.
+    let snapshot: Trip[] = [];
     setTrips((prev) => {
+      snapshot = prev;
       const next = prev.map((t) => t.id === id ? { ...t, status } : t);
       persistLocal(next);
       return next;
     });
     if (isLoggedIn && profile.id) {
       try {
-        await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
+        const res = await fetch(`${API_BASE}/api/trips/${encodeURIComponent(id)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId: profile.id, status }),
         });
+        if (!res.ok) throw new Error(`PATCH /api/trips/${id} (status) => ${res.status}`);
       } catch (err) {
-        console.warn("[TripsContext] Status update failed:", err);
+        console.warn("[TripsContext] Status update failed, reverting:", err);
+        setTrips(snapshot);
+        persistLocal(snapshot);
+        throw err;
       }
     }
   }, [isLoggedIn, profile.id, persistLocal]);
