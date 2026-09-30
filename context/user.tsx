@@ -76,15 +76,6 @@ export interface LoginParams {
 
 const UserContext = createContext<UserContextType | null>(null);
 
-function isPrivateRelayEmail(email: string): boolean {
-  return email.toLowerCase().endsWith("@privaterelay.appleid.com");
-}
-
-async function silentUpsert(_profile: UserProfile): Promise<void> {
-  // Server sessions are persisted locally. We intentionally do not silently
-  // re-authenticate or send a client-supplied user ID on app launch.
-}
-
 async function checkAppleCredentialState(userId: string): Promise<boolean> {
   if (Platform.OS !== "ios") return true;
   try {
@@ -173,6 +164,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
             // Mark hydrated even on revocation so the deep-link gate unblocks.
             setIsHydrated(true);
             await AsyncStorage.removeItem(AUTH_KEY);
+            await clearAuthSession();
             return;
           }
         }
