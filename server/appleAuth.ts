@@ -1,4 +1,5 @@
 import {
+  createHash,
   createHmac,
   createPublicKey,
   createVerify,
@@ -110,7 +111,7 @@ export async function verifyAppleIdentityToken(
     throw new Error("Apple identity token has an invalid issue time.");
   }
 
-  const expectedNonce = createHmac("sha256", "").update(rawNonce).digest("hex");
+  const expectedNonce = createHash("sha256").update(rawNonce).digest("hex");
   const suppliedNonce = claims.nonce ?? "";
   if (suppliedNonce.length !== expectedNonce.length || !timingSafeEqual(Buffer.from(suppliedNonce), Buffer.from(expectedNonce))) {
     throw new Error("Apple identity token nonce mismatch.");
