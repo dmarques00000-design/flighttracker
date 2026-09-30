@@ -20,6 +20,7 @@ import Svg, { Path, Circle, Defs, RadialGradient, Stop, Rect } from "react-nativ
 import Constants from "expo-constants";
 import { useUser } from "@/context/user";
 import * as AppleAuthentication from "expo-apple-authentication";
+import * as Crypto from "expo-crypto";
 
 // ─── Legal URLs ───────────────────────────────────────────────────────────────
 // Both must be publicly accessible before account creation (App Store Review §5.1.1).
@@ -189,44 +190,36 @@ export default function AuthScreen() {
 
   async function handleAppleSignIn() {
     try {
+      const rawNonce = Crypto.randomUUID();
+      const hashedNonce = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        rawNonce,
+      );
+
       const cred = await AppleAuthentication.signInAsync({
         requestedScopes: [
           AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
+        nonce: hashedNonce,
       });
+
+      if (!cred.identityToken) {
+        throw new Error("Apple did not return an identity token.");
+      }
 
       const fullName = [
         cred.fullName?.givenName ?? "",
         cred.fullName?.familyName ?? "",
       ].filter(Boolean).join(" ").trim();
 
-      /**
-       * Apple only provides cred.email on the very first sign-in.
-       * On every subsequent login it is null.
-       *
-       * Resolution order:
-       *   1. cred.email          — real address or private relay, present on first sign-in only.
-       *   2. profile.email       — cached from the previous session if this is a returning Apple user.
-       *   3. synthetic fallback  — "<cred.user>@privaterelay.appleid.com"
-       *                           cred.user is Apple's stable opaque sub — always present and
-       *                           unique per user per app, so this is both deterministic and
-       *                           collision-free across all users.
-       *
-       * We must NEVER fall back to a single shared hardcoded address —
-       * that causes a UNIQUE constraint collision on the second Apple user
-       * who hides their email.
-       */
-      const userEmail =
-        cred.email ??
-        (profile.provider === "apple" && profile.email ? profile.email : null) ??
-        `${cred.user}@privaterelay.appleid.com`;
 
       await login({
-        id: cred.user,
-        name: fullName || userEmail.split("@")[0],
-        email: userEmail,
+        name: fullName,
+        email: cred.email ?? "",
         provider: "apple",
+        appleIdentityToken: cred.identityToken,
+        appleNonce: rawNonce,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
