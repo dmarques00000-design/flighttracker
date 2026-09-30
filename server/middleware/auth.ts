@@ -9,7 +9,16 @@ declare global {
   }
 }
 
+const PUBLIC_API_PATHS = new Set([
+  "/auth/upsert",
+  "/flights/lookup",
+  "/flights/search",
+  "/percentile",
+]);
+
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (PUBLIC_API_PATHS.has(req.path)) return next();
+
   const authorization = req.header("authorization");
   if (!authorization?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Authentication required" });
