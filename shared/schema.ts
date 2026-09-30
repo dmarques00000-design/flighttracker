@@ -28,7 +28,7 @@ import { z } from "zod";
 // already the PRIMARY KEY. Email is stored as metadata only.
 //
 // A partial unique index (see bottom of this file) still enforces uniqueness
-// for real (non-relay) email addresses so Google/email-provider sign-in
+// for real (non-relay) email addresses so duplicate accounts
 // cannot produce duplicate rows.
 
 export const users = pgTable("users", {
