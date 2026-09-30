@@ -4,7 +4,9 @@
  * `timeoutMs` milliseconds (default: 10 000 ms).
  *
  * Usage:
- *   import { fetchWithTimeout } from "@/lib/fetch";
+ *   import { getAuthSession } from "@/lib/auth-session";
+
+import { fetchWithTimeout } from "@/lib/fetch";
  *   const res = await fetchWithTimeout(url, { method: "POST", body: ... });
  *
  * On timeout the underlying AbortController aborts the request so the TCP
@@ -24,7 +26,16 @@ export async function fetchWithTimeout(
   callerSignal?.addEventListener("abort", () => controller.abort());
 
   try {
-    const response = await fetch(input, { ...rest, signal: controller.signal });
+    const authSession = await getAuthSession();
+    const headers = new Headers(rest.headers);
+    if (authSession && !headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${authSession}`);
+    }
+    const response = await fetch(input, {
+      ...rest,
+      headers,
+      signal: controller.signal,
+    });
     return response;
   } catch (err) {
     if (controller.signal.aborted) {
