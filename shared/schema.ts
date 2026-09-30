@@ -13,7 +13,7 @@ import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // ─── Users ────────────────────────────────────────────────────────────────────
-// Populated on first Google / Apple sign-in via POST /api/auth/upsert
+// Populated on first Apple sign-in via POST /api/auth/upsert
 //
 // EMAIL UNIQUENESS NOTE
 // ---------------------
@@ -24,7 +24,7 @@ import { z } from "zod";
 // signing in from a second device may receive a DIFFERENT relay address for
 // the same Apple ID. A blanket UNIQUE on email would cause a collision.
 //
-// The stable identity key is `id` (Google sub / Apple user ID), which is
+// The stable identity key is `id` (Apple user ID), which is
 // already the PRIMARY KEY. Email is stored as metadata only.
 //
 // A partial unique index (see bottom of this file) still enforces uniqueness
@@ -32,11 +32,11 @@ import { z } from "zod";
 // cannot produce duplicate rows.
 
 export const users = pgTable("users", {
-  id:         varchar("id", { length: 128 }).primaryKey(), // Google sub / Apple user id
+  id:         varchar("id", { length: 128 }).primaryKey(), // Apple user id
   email:      text("email"),   // nullable: Apple Hide My Email may give no usable address
   name:       text("name"),
   avatarUrl:  text("avatar_url"),
-  provider:   varchar("provider", { length: 16 }).notNull().default("google"), // 'google' | 'apple'
+  provider:   varchar("provider", { length: 16 }).notNull().default("apple"), // 'apple'
   createdAt:  timestamp("created_at").notNull().default(sql`now()`),
   updatedAt:  timestamp("updated_at").notNull().default(sql`now()`),
 });
