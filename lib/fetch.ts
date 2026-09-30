@@ -1,3 +1,5 @@
+import { getAuthSession } from "@/lib/auth-session";
+
 /**
  * fetchWithTimeout — drop-in wrapper around fetch() that aborts and throws
  * a TypeError('Request timed out') if the server does not respond within
