@@ -111,7 +111,8 @@ export async function verifyAppleIdentityToken(
   }
 
   const expectedNonce = createHmac("sha256", "").update(rawNonce).digest("hex");
-  if (!claims.nonce || !timingSafeEqual(Buffer.from(claims.nonce), Buffer.from(expectedNonce))) {
+  const suppliedNonce = claims.nonce ?? "";
+  if (suppliedNonce.length !== expectedNonce.length || !timingSafeEqual(Buffer.from(suppliedNonce), Buffer.from(expectedNonce))) {
     throw new Error("Apple identity token nonce mismatch.");
   }
 
