@@ -149,8 +149,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
         try {
           const parsed = JSON.parse(profileRaw);
           const { passportNumber, passportExpiry, ...safe } = parsed;
-          restoredProfile = { ...DEFAULT_PROFILE, ...safe };
-          setProfile(restoredProfile);
+          const nextProfile: UserProfile = { ...DEFAULT_PROFILE, ...safe };
+          restoredProfile = nextProfile;
+          setProfile(nextProfile);
         } catch {}
       }
 
