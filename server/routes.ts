@@ -226,7 +226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Flights and trips are cascade-deleted via FK constraints in the schema.
   // Required by Apple App Store guideline 5.1.1.
   app.delete("/api/users/:id", writeLimiter, async (req, res) => {
-    const { id } = req.params;
+    const id = String(req.params.id);
     if (req.authUserId !== id) return res.status(403).json({ error: "Forbidden" });
     console.log(`[Route] DELETE /api/users/${id}`);
     try {
@@ -419,7 +419,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Trips: update a trip (title, flightIds, coverUri, starred, status) ───────────────
   app.patch("/api/trips/:id", writeLimiter, async (req, res) => {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const rest = { ...(req.body ?? {}) };
     delete rest.userId;
     const userId = req.authUserId!;
@@ -437,7 +437,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Trips: delete a trip ──────────────────────────────────────────────────────────────────
   app.delete("/api/trips/:id", writeLimiter, async (req, res) => {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const userId = req.authUserId!;
     console.log(`[Route] DELETE /api/trips/${id}`);
     try {
