@@ -12,7 +12,7 @@ export interface UserProfile {
   id: string;
   name: string;
   email: string;
-  provider: "google" | "apple" | "email" | "";
+  provider: "apple" | "email" | "";
   avatarUrl: string;
   homeCityCode: string;
   nationality: string;
@@ -67,7 +67,7 @@ export interface LoginParams {
   id: string;
   name: string;
   email: string;
-  provider: "google" | "apple" | "email";
+  provider: "apple" | "email";
   avatarUrl?: string;
 }
 
