@@ -7,6 +7,7 @@ import {
 } from "@/utils/notifications";
 import { API_BASE } from "@/constants/api";
 import { fetchWithTimeout } from "@/lib/fetch";
+import { clearAuthSession, getAuthSession, setAuthSession } from "@/lib/auth-session";
 
 export interface UserProfile {
   id: string;
@@ -64,11 +65,13 @@ interface UserContextType {
 }
 
 export interface LoginParams {
-  id: string;
+  id?: string;
   name: string;
-  email: string;
+  email?: string;
   provider: "apple" | "email";
   avatarUrl?: string;
+  appleIdentityToken?: string;
+  appleNonce?: string;
 }
 
 const UserContext = createContext<UserContextType | null>(null);
@@ -77,25 +80,9 @@ function isPrivateRelayEmail(email: string): boolean {
   return email.toLowerCase().endsWith("@privaterelay.appleid.com");
 }
 
-async function silentUpsert(profile: UserProfile): Promise<void> {
-  if (!profile.id) return;
-  try {
-    // Short timeout — this is a background best-effort sync, not user-blocking.
-    await fetchWithTimeout(`${API_BASE}/api/auth/upsert`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id:        profile.id,
-        email:     profile.email || null,
-        name:      profile.name,
-        avatarUrl: profile.avatarUrl,
-        provider:  profile.provider,
-      }),
-      timeoutMs: 5_000,
-    });
-  } catch {
-    // Network unavailable or timed out at launch — not fatal.
-  }
+async function silentUpsert(_profile: UserProfile): Promise<void> {
+  // Server sessions are persisted locally. We intentionally do not silently
+  // re-authenticate or send a client-supplied user ID on app launch.
 }
 
 async function checkAppleCredentialState(userId: string): Promise<boolean> {
@@ -176,7 +163,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
         } catch {}
       }
 
-      if (authRaw === "true" && restoredProfile) {
+      const authSession = await getAuthSession();
+
+      if (authRaw === "true" && restoredProfile && authSession) {
         if (restoredProfile.provider === "apple" && restoredProfile.id) {
           const stillAuthorized = await checkAppleCredentialState(restoredProfile.id);
           if (!stillAuthorized) {
@@ -189,7 +178,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
         }
 
         setIsLoggedIn(true);
-        silentUpsert(restoredProfile);
+      } else if (authRaw === "true") {
+        await AsyncStorage.removeItem(AUTH_KEY);
+        await clearAuthSession();
       }
 
       if (notifPrefsRaw) {
@@ -248,56 +239,81 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setProfile(DEFAULT_PROFILE);
     setIsLoggedIn(false);
     await AsyncStorage.multiRemove([STORAGE_KEY, AUTH_KEY, NOTIF_PREFS_KEY]);
+    await clearAuthSession();
   }
 
   async function login(params: LoginParams) {
-    const { id, name, email, provider, avatarUrl } = params;
+    const {
+      id,
+      name,
+      email,
+      provider,
+      avatarUrl,
+      appleIdentityToken,
+      appleNonce,
+    } = params;
 
-    const resolvedName = (provider === "apple" && !name.trim())
-      ? profile.name
-      : name.trim();
+    const payload =
+      provider === "apple"
+        ? {
+            provider: "apple" as const,
+            identityToken: appleIdentityToken,
+            nonce: appleNonce,
+            name: name.trim().slice(0, 200),
+          }
+        : {
+            provider: "email" as const,
+            id,
+            name: name.trim().slice(0, 200),
+            email: email?.trim() || null,
+          };
 
-    const resolvedEmail = (provider === "apple" && isPrivateRelayEmail(email))
-      ? ""
-      : email.trim();
-
-    // 10 s timeout — user is actively waiting on the sign-in screen.
     const res = await fetchWithTimeout(`${API_BASE}/api/auth/upsert`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id,
-        email:     resolvedEmail || null,
-        name:      resolvedName,
-        avatarUrl,
-        provider,
-      }),
+      body: JSON.stringify(payload),
       timeoutMs: 10_000,
     });
+
     if (!res.ok) {
       const body = await res.text().catch(() => "(no body)");
       throw new Error(`[UserContext] /api/auth/upsert failed ${res.status}: ${body}`);
     }
 
-    // Derive initials only when we have a real name to work from.
-    // Apple only provides the user's name on the FIRST authorization — every
-    // subsequent login sends an empty string. If resolvedName is blank and
-    // a cached value already exists, keep the cached value so the avatar
-    // never regresses to "?" after re-login.
-    const derivedInitials = resolvedName
-      ? resolvedName.split(" ").filter(Boolean).map((p) => p[0].toUpperCase()).slice(0, 2).join("")
-      : resolvedEmail[0]?.toUpperCase() ?? "";
+    const result = (await res.json()) as {
+      sessionToken: string;
+      user: {
+        id: string;
+        name: string | null;
+        email: string | null;
+        provider: "apple" | "email";
+        avatarUrl: string | null;
+      };
+    };
 
-    const avatarInitials = derivedInitials || profile.avatarInitials || "?";
+    await setAuthSession(result.sessionToken);
+
+    const resolvedName =
+      result.user.name?.trim() ||
+      name.trim() ||
+      result.user.email?.split("@")[0] ||
+      "User";
+
+    const derivedInitials = resolvedName
+      .split(" ")
+      .filter(Boolean)
+      .map((part) => part[0].toUpperCase())
+      .slice(0, 2)
+      .join("");
 
     const updated: UserProfile = {
       ...profile,
-      id,
+      id: result.user.id,
       name: resolvedName,
-      email: resolvedEmail,
-      provider,
-      avatarUrl: avatarUrl ?? "",
-      avatarInitials,
+      email: result.user.email ?? "",
+      provider: result.user.provider,
+      avatarUrl: result.user.avatarUrl ?? avatarUrl ?? "",
+      avatarInitials: derivedInitials || profile.avatarInitials || "?",
     };
 
     setProfile(updated);
@@ -311,6 +327,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   async function logout() {
     setIsLoggedIn(false);
     await AsyncStorage.removeItem(AUTH_KEY);
+    await clearAuthSession();
   }
 
   function dismissPrompt() {
