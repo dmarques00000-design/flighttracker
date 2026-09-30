@@ -4,7 +4,7 @@ import { lookupFlight, lookupFlightsByAirport } from "./storage";
 import { upsertUser, getUserById, deleteUser } from "./userStorage";
 import { getFlightsByUser, createFlight, deleteFlight, updateFlight, DuplicateFlightError } from "./flightStorage";
 import { getTripsByUser, createTrip, updateTrip, deleteTrip } from "./tripStorage";
-import { insertUserSchema, insertFlightSchema, insertTripSchema } from "../shared/schema";
+import { insertFlightSchema, insertTripSchema } from "../shared/schema";
 import { authLimiter, writeLimiter, readLimiter } from "./middleware/security";
 import { requireAuth } from "./middleware/auth";
 import { createSessionToken, verifyAppleIdentityToken } from "./appleAuth";
