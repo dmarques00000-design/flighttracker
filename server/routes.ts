@@ -210,7 +210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public endpoints are explicitly exempted in the middleware.
   app.use("/api", requireAuth);
   app.get("/api/users/:id", readLimiter, async (req, res) => {
-    const { id } = req.params;
+    const id = String(req.params.id);
     if (req.authUserId !== id) return res.status(403).json({ error: "Forbidden" });
     try {
       const user = await getUserById(id);
@@ -277,7 +277,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Flights: update a flight ──────────────────────────────────────────────────────────────
   app.patch("/api/flights/:id", writeLimiter, async (req, res) => {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const rest = { ...(req.body ?? {}) };
     delete rest.userId;
     const userId = req.authUserId!;
@@ -295,7 +295,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Flights: delete a flight ──────────────────────────────────────────────────────────────
   app.delete("/api/flights/:id", writeLimiter, async (req, res) => {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const userId = req.authUserId!;
     console.log(`[Route] DELETE /api/flights/${id}`);
     try {
