@@ -20,6 +20,7 @@ import Svg, { Path, Circle, Defs, RadialGradient, Stop, Rect } from "react-nativ
 import Constants from "expo-constants";
 import { useUser } from "@/context/user";
 import * as AppleAuthentication from "expo-apple-authentication";
+import * as Crypto from "expo-crypto";
 
 // ─── Legal URLs ───────────────────────────────────────────────────────────────
 // Both must be publicly accessible before account creation (App Store Review §5.1.1).
@@ -32,20 +33,6 @@ const TERMS_URL          = "https://dmarques00000-design.github.io/flighttracker
 // Set SHOW_TEST_ACCOUNT=true in eas.json dev/preview env; absent in production.
 const SHOW_TEST_ACCOUNT: boolean =
   Constants.expoConfig?.extra?.showTestAccount === true;
-
-// ─── Google Sign-In lazy loader ──────────────────────────────────────────────
-type GoogleSigninType = typeof import("@react-native-google-signin/google-signin");
-let _googleModule: GoogleSigninType | null = null;
-function getGoogleSignin(): GoogleSigninType | null {
-  if (_googleModule) return _googleModule;
-  try { _googleModule = require("@react-native-google-signin/google-signin"); return _googleModule; } catch { return null; }
-}
-function isExpoGo(): boolean {
-  try { const C = require("expo-constants").default; return C.executionEnvironment === "storeClient"; } catch { return false; }
-}
-
-const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "";
-const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? "";
 
 const TEST_USER = { id: "test-user-001", name: "Diogo Marques", email: "diogo.test@logbook.app" };
 
@@ -181,20 +168,9 @@ export default function AuthScreen() {
   const [appleAvailable, setApple] = useState(false);
 
   useEffect(() => {
-    if (!isExpoGo()) {
-      const g = getGoogleSignin();
-      if (g) {
-        const config: Record<string, unknown> = {
-          iosClientId: GOOGLE_IOS_CLIENT_ID,
-        };
-        if (GOOGLE_WEB_CLIENT_ID) {
-          config.webClientId = GOOGLE_WEB_CLIENT_ID;
-          config.offlineAccess = true;
-        }
-        g.GoogleSignin.configure(config as any);
-      }
+    if (Platform.OS === "ios") {
+      AppleAuthentication.isAvailableAsync().then(setApple);
     }
-    if (Platform.OS === "ios") AppleAuthentication.isAvailableAsync().then(setApple);
   }, []);
 
   async function handleTestLogin() {
@@ -214,44 +190,36 @@ export default function AuthScreen() {
 
   async function handleAppleSignIn() {
     try {
+      const rawNonce = Crypto.randomUUID();
+      const hashedNonce = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        rawNonce,
+      );
+
       const cred = await AppleAuthentication.signInAsync({
         requestedScopes: [
           AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
+        nonce: hashedNonce,
       });
+
+      if (!cred.identityToken) {
+        throw new Error("Apple did not return an identity token.");
+      }
 
       const fullName = [
         cred.fullName?.givenName ?? "",
         cred.fullName?.familyName ?? "",
       ].filter(Boolean).join(" ").trim();
 
-      /**
-       * Apple only provides cred.email on the very first sign-in.
-       * On every subsequent login it is null.
-       *
-       * Resolution order:
-       *   1. cred.email          — real address or private relay, present on first sign-in only.
-       *   2. profile.email       — cached from the previous session if this is a returning Apple user.
-       *   3. synthetic fallback  — "<cred.user>@privaterelay.appleid.com"
-       *                           cred.user is Apple's stable opaque sub — always present and
-       *                           unique per user per app, so this is both deterministic and
-       *                           collision-free across all users.
-       *
-       * We must NEVER fall back to a single shared hardcoded address —
-       * that causes a UNIQUE constraint collision on the second Apple user
-       * who hides their email.
-       */
-      const userEmail =
-        cred.email ??
-        (profile.provider === "apple" && profile.email ? profile.email : null) ??
-        `${cred.user}@privaterelay.appleid.com`;
 
       await login({
-        id: cred.user,
-        name: fullName || userEmail.split("@")[0],
-        email: userEmail,
+        name: fullName,
+        email: cred.email ?? "",
         provider: "apple",
+        appleIdentityToken: cred.identityToken,
+        appleNonce: rawNonce,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
@@ -260,38 +228,7 @@ export default function AuthScreen() {
     }
   }
 
-  async function handleGoogleSignIn() {
-    if (isExpoGo()) {
-      Alert.alert("Not available in Expo Go", "Use the Test Account for now.");
-      return;
-    }
-    if (!GOOGLE_WEB_CLIENT_ID) {
-      Alert.alert("Setup required", "Add EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID to your .env file.");
-      return;
-    }
-    const g = getGoogleSignin();
-    if (!g) { Alert.alert("Error", "Google Sign In module could not be loaded."); return; }
-    const { GoogleSignin, statusCodes } = g;
-    try {
-      await GoogleSignin.hasPlayServices();
-      const userInfo   = await GoogleSignin.signIn();
-      const googleUser = (userInfo as any).data?.user ?? (userInfo as any).user;
-      if (!googleUser) throw new Error("No user data returned from Google.");
-      await login({
-        id: googleUser.id,
-        name: googleUser.name ?? googleUser.email.split("@")[0],
-        email: googleUser.email,
-        provider: "google",
-        avatarUrl: googleUser.photo ?? "",
-      });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
-    } catch (e: any) {
-      if (e.code === statusCodes.SIGN_IN_CANCELLED || e.code === statusCodes.IN_PROGRESS) return;
-      if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) Alert.alert("Google Sign In", "Google Play Services not available.");
-      else Alert.alert("Google Sign In failed", e.message ?? "An error occurred.");
-    }
-  }
+
 
   function handleGuest() { Haptics.selectionAsync(); router.back(); }
 
@@ -367,13 +304,6 @@ export default function AuthScreen() {
               </Pressable>
             )}
 
-            <Pressable onPress={handleGoogleSignIn} style={({ pressed }) => [s.socialBtn, { opacity: pressed ? 0.85 : 1 }]}>
-              <BlurView intensity={22} tint="dark" style={s.socialBlur}>
-                <View style={[StyleSheet.absoluteFill, s.socialTintLight]} />
-                <View style={s.googleG}><Text style={s.googleGText}>G</Text></View>
-                <Text style={[s.socialLabel, { color: "#fff" }]}>Continue with Google</Text>
-              </BlurView>
-            </Pressable>
           </Animated.View>
 
           {/*
@@ -432,8 +362,6 @@ const s = StyleSheet.create({
   socialTint:  { backgroundColor: "rgba(10,18,60,0.55)", borderRadius: 14 },
   socialTintLight: { backgroundColor: "rgba(20,30,80,0.50)", borderRadius: 14 },
   socialLabel: { fontSize: 15, color: "#FFFFFF", fontFamily: "DMSans_700Bold" },
-  googleG:     { width: 24, height: 24, borderRadius: 12, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
-  googleGText: { fontSize: 14, fontFamily: "DMSans_700Bold", color: "#4285F4" },
   guestLink:   { fontSize: 13, color: "rgba(255,255,255,0.38)", fontFamily: "DMSans_400Regular" },
 
   // ── Legal consent — App Store §5.1.1(g) ──────────────────────────────────

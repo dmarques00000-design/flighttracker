@@ -4,8 +4,11 @@ import { lookupFlight, lookupFlightsByAirport } from "./storage";
 import { upsertUser, getUserById, deleteUser } from "./userStorage";
 import { getFlightsByUser, createFlight, deleteFlight, updateFlight, DuplicateFlightError } from "./flightStorage";
 import { getTripsByUser, createTrip, updateTrip, deleteTrip } from "./tripStorage";
-import { insertUserSchema, insertFlightSchema, insertTripSchema } from "../shared/schema";
+import { insertFlightSchema, insertTripSchema } from "../shared/schema";
 import { authLimiter, writeLimiter, readLimiter } from "./middleware/security";
+import { requireAuth } from "./middleware/auth";
+import { createSessionToken, verifyAppleIdentityToken } from "./appleAuth";
+import { z } from "zod";
 
 // ─── Empirical annual flights-per-person CDF ──────────────────────────────────────────────────
 const CDF: [number, number][] = [
@@ -136,26 +139,79 @@ async function createNotionFeedbackEntry(payload: {
 
 export async function registerRoutes(app: Express): Promise<Server> {
 
-  // ── Auth: upsert user on social sign-in ──────────────────────────────────────────
+  // ── Auth: verify Apple identity and create a server session ───────────────────────
   app.post("/api/auth/upsert", authLimiter, async (req, res) => {
-    console.log("[Route] POST /api/auth/upsert body:", req.body);
-    const parsed = insertUserSchema.safeParse(req.body);
+    const body = req.body ?? {};
+    const parsed = z.object({
+      provider: z.enum(["apple", "email"]),
+      identityToken: z.string().min(100).optional(),
+      nonce: z.string().min(8).optional(),
+      name: z.string().max(200).optional().default(""),
+      id: z.string().max(128).optional(),
+      email: z.string().email().optional().nullable(),
+    }).safeParse(body);
+
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.flatten() });
     }
+
     try {
-      const user = await upsertUser(parsed.data);
-      return res.json(user);
+      let userId: string;
+      let email: string | null = null;
+      let provider: "apple" | "email" = parsed.data.provider;
+
+      if (parsed.data.provider === "apple") {
+        if (!parsed.data.identityToken || !parsed.data.nonce) {
+          return res.status(400).json({ error: "Apple identity token and nonce are required" });
+        }
+
+        const claims = await verifyAppleIdentityToken(
+          parsed.data.identityToken,
+          parsed.data.nonce,
+        );
+
+        userId = claims.sub;
+        email = typeof claims.email === "string" ? claims.email : null;
+      } else {
+        // Development-only test account. It cannot be used in production.
+        if (
+          process.env.NODE_ENV === "production" ||
+          process.env.ALLOW_TEST_AUTH !== "true" ||
+          parsed.data.id !== "test-user-001"
+        ) {
+          return res.status(401).json({ error: "Test authentication is disabled" });
+        }
+        userId = "test-user-001";
+        email = parsed.data.email ?? "diogo.test@logbook.app";
+      }
+
+      const user = await upsertUser({
+        id: userId,
+        email,
+        name: parsed.data.name?.trim().slice(0, 200) || null,
+        avatarUrl: null,
+        provider,
+      });
+
+      return res.json({
+        sessionToken: createSessionToken(user.id),
+        user,
+      });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Upsert failed";
-      console.error("[Route] upsertUser error:", err);
-      return res.status(500).json({ error: msg });
+      const msg = err instanceof Error ? err.message : "Authentication failed";
+      console.error("[Route] Apple authentication failed:", msg);
+      return res.status(401).json({ error: "Apple authentication failed" });
     }
   });
 
   // ── Auth: get user by id ─────────────────────────────────────────────────────
+
+  // All routes below authentication require a verified server session.
+  // Public endpoints are explicitly exempted in the middleware.
+  app.use("/api", requireAuth);
   app.get("/api/users/:id", readLimiter, async (req, res) => {
-    const { id } = req.params;
+    const id = String(req.params.id);
+    if (req.authUserId !== id) return res.status(403).json({ error: "Forbidden" });
     try {
       const user = await getUserById(id);
       if (!user) return res.status(404).json({ error: "User not found" });
@@ -170,7 +226,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Flights and trips are cascade-deleted via FK constraints in the schema.
   // Required by Apple App Store guideline 5.1.1.
   app.delete("/api/users/:id", writeLimiter, async (req, res) => {
-    const { id } = req.params;
+    const id = String(req.params.id);
+    if (req.authUserId !== id) return res.status(403).json({ error: "Forbidden" });
     console.log(`[Route] DELETE /api/users/${id}`);
     try {
       const deleted = await deleteUser(id);
@@ -185,7 +242,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Flights: list all flights for a user ──────────────────────────────────────────
   app.get("/api/users/:userId/flights", readLimiter, async (req, res) => {
-    const { userId } = req.params;
+    const userId = req.authUserId!;
+    if (req.params.userId !== userId) return res.status(403).json({ error: "Forbidden" });
     console.log(`[Route] GET /api/users/${userId}/flights`);
     try {
       const userFlights = await getFlightsByUser(userId);
@@ -205,7 +263,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ error: parsed.error.flatten() });
     }
     try {
-      const flight = await createFlight(parsed.data);
+      const flight = await createFlight({ ...parsed.data, userId: req.authUserId! });
       return res.status(201).json(flight);
     } catch (err) {
       if (err instanceof DuplicateFlightError) {
@@ -219,9 +277,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Flights: update a flight ──────────────────────────────────────────────────────────────
   app.patch("/api/flights/:id", writeLimiter, async (req, res) => {
-    const { id } = req.params;
-    const { userId, ...rest } = req.body ?? {};
-    if (!userId) return res.status(400).json({ error: "userId is required" });
+    const id = String(req.params.id);
+    const rest = { ...(req.body ?? {}) };
+    delete rest.userId;
+    const userId = req.authUserId!;
     console.log(`[Route] PATCH /api/flights/${id}`);
     try {
       const updated = await updateFlight(id, userId, rest);
@@ -236,9 +295,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Flights: delete a flight ──────────────────────────────────────────────────────────────
   app.delete("/api/flights/:id", writeLimiter, async (req, res) => {
-    const { id } = req.params;
-    const userId = req.query.userId as string | undefined;
-    if (!userId) return res.status(400).json({ error: "userId query param is required" });
+    const id = String(req.params.id);
+    const userId = req.authUserId!;
     console.log(`[Route] DELETE /api/flights/${id}`);
     try {
       const ok = await deleteFlight(id, userId);
@@ -329,7 +387,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Trips: list all trips for a user ──────────────────────────────────────────────
   app.get("/api/users/:userId/trips", readLimiter, async (req, res) => {
-    const { userId } = req.params;
+    const userId = req.authUserId!;
+    if (req.params.userId !== userId) return res.status(403).json({ error: "Forbidden" });
     console.log(`[Route] GET /api/users/${userId}/trips`);
     try {
       const userTrips = await getTripsByUser(userId);
@@ -349,7 +408,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ error: parsed.error.flatten() });
     }
     try {
-      const trip = await createTrip(parsed.data);
+      const trip = await createTrip({ ...parsed.data, userId: req.authUserId! });
       return res.status(201).json(trip);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Create failed";
@@ -360,9 +419,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Trips: update a trip (title, flightIds, coverUri, starred, status) ───────────────
   app.patch("/api/trips/:id", writeLimiter, async (req, res) => {
-    const { id } = req.params;
-    const { userId, ...rest } = req.body ?? {};
-    if (!userId) return res.status(400).json({ error: "userId is required" });
+    const id = String(req.params.id);
+    const rest = { ...(req.body ?? {}) };
+    delete rest.userId;
+    const userId = req.authUserId!;
     console.log(`[Route] PATCH /api/trips/${id}`);
     try {
       const updated = await updateTrip(id, userId, rest);
@@ -377,9 +437,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Trips: delete a trip ──────────────────────────────────────────────────────────────────
   app.delete("/api/trips/:id", writeLimiter, async (req, res) => {
-    const { id } = req.params;
-    const userId = req.query.userId as string | undefined;
-    if (!userId) return res.status(400).json({ error: "userId query param is required" });
+    const id = String(req.params.id);
+    const userId = req.authUserId!;
     console.log(`[Route] DELETE /api/trips/${id}`);
     try {
       const ok = await deleteTrip(id, userId);

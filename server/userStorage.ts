@@ -10,7 +10,7 @@ function isPrivateRelayEmail(email: string | null | undefined): boolean {
 /**
  * Upsert a user record on social sign-in.
  *
- * Identity key: `id` (Google sub / Apple user ID) — never `email`.
+ * Identity key: `id` (Apple user ID) — never `email`.
  *
  * Email update rules:
  *  - If the incoming email is a private relay address, keep whatever is

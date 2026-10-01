@@ -1,4 +1,5 @@
 import { fetch } from "expo/fetch";
+import { getAuthSession } from "@/lib/auth-session";
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 /**
@@ -32,9 +33,13 @@ export async function apiRequest(
   const baseUrl = getApiUrl();
   const url = new URL(route, baseUrl);
 
+  const authSession = await getAuthSession();
+  const headers: Record<string, string> = data ? { "Content-Type": "application/json" } : {};
+  if (authSession) headers.Authorization = `Bearer ${authSession}`;
+
   const res = await fetch(url.toString(), {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -52,8 +57,13 @@ export const getQueryFn: <T>(options: {
     const baseUrl = getApiUrl();
     const url = new URL(queryKey.join("/") as string, baseUrl);
 
+    const authSession = await getAuthSession();
+    const headers: Record<string, string> = {};
+    if (authSession) headers.Authorization = `Bearer ${authSession}`;
+
     const res = await fetch(url.toString(), {
       credentials: "include",
+      headers,
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

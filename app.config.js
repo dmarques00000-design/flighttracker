@@ -8,28 +8,12 @@
 // EAS builds:
 //   Store secrets with:
 //     eas secret:create --scope project --name APPLE_TEAM_ID --value <id> --environment production
-//     eas secret:create --scope project --name GOOGLE_IOS_URL_SCHEME --value <scheme> --environment production
-//   Both variables must exist in every EAS environment that produces
+// //   Both variables must exist in every EAS environment that produces
 //   an iOS build. A missing value throws at config-evaluation time so
 //   the build fails fast with an actionable message instead of
 //   silently embedding a placeholder and failing at codesign/archive.
 
 const IS_PRODUCTION = process.env.EAS_BUILD_PROFILE === "production";
-
-// GOOGLE_IOS_URL_SCHEME
-// Required for production; a placeholder is acceptable in dev/preview
-// because the Google Sign-In redirect only needs to work in real builds.
-const googleIosUrlScheme = IS_PRODUCTION
-  ? (() => {
-      const v = process.env.GOOGLE_IOS_URL_SCHEME;
-      if (!v)
-        throw new Error(
-          "[app.config.js] GOOGLE_IOS_URL_SCHEME is not set.\n" +
-          "Run: eas secret:create --scope project --name GOOGLE_IOS_URL_SCHEME --value <your-value> --environment production"
-        );
-      return v;
-    })()
-  : process.env.GOOGLE_IOS_URL_SCHEME || "com.googleusercontent.apps.placeholder";
 
 // APPLE_TEAM_ID
 // Required in every environment that builds an iOS binary.
@@ -135,7 +119,7 @@ export default {
       // ---------------------------------------------------------------------------
       NSPrivacyCollectedDataTypes: [
         {
-          // Email address — account creation / sign-in (Apple, Google, email).
+          // Email address — account creation / Apple Sign In.
           // Stored server-side linked to the user record.
           NSPrivacyCollectedDataType: "NSPrivacyCollectedDataTypeEmailAddress",
           NSPrivacyCollectedDataTypeLinked: true,
@@ -291,12 +275,6 @@ export default {
     "expo-apple-authentication",
     "expo-calendar",
     "expo-document-picker",
-    [
-      "@react-native-google-signin/google-signin",
-      {
-        iosUrlScheme: googleIosUrlScheme,
-      },
-    ],
     // Widget extension — reads Swift sources from targets/logbook-widget/
     [
       "@bacons/apple-targets",
