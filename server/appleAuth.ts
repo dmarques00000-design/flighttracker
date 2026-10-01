@@ -82,6 +82,11 @@ export async function verifyAppleIdentityToken(
   const claims = parseJwtPart<AppleClaims>(encodedPayload);
 
   if (header.alg !== "ES256" || !header.kid) {
+    console.error("[AppleAuth] Unsupported token header:", {
+      alg: header.alg ?? null,
+      kid: header.kid ?? null,
+      tokenParts: parts.length,
+    });
     throw new Error("Unsupported Apple identity token.");
   }
 
