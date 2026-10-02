@@ -9,6 +9,7 @@ import { authLimiter, writeLimiter, readLimiter } from "./middleware/security";
 import { requireAuth } from "./middleware/auth";
 import { createSessionToken, verifyAppleIdentityToken } from "./appleAuth";
 import { z } from "zod";
+import { migrateGuestData } from "./guestMigration";
 
 // ─── Empirical annual flights-per-person CDF ──────────────────────────────────────────────────
 const CDF: [number, number][] = [
@@ -201,6 +202,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const msg = err instanceof Error ? err.message : "Authentication failed";
       console.error("[Route] Apple authentication failed:", msg);
       return res.status(401).json({ error: "Apple authentication failed" });
+    }
+  });
+
+  // ── Guest data migration ─────────────────────────────────────────────────────
+  // Moves pre-auth local data into the authenticated account in one transaction.
+  app.post("/api/auth/migrate-guest-data", writeLimiter, async (req, res) => {
+    const parsed = z.object({
+      flights: z.array(z.object({
+        id: z.string().max(128).optional(),
+        flightCode: z.string().max(64).nullable().optional(),
+        date: z.string().max(10).optional(),
+        airline: z.string().max(200).nullable().optional(),
+        airlineCode: z.string().max(16).nullable().optional(),
+        departureAirport: z.string().max(4).optional(),
+        arrivalAirport: z.string().max(4).optional(),
+        departureCity: z.string().max(200).nullable().optional(),
+        arrivalCity: z.string().max(200).nullable().optional(),
+        departureTime: z.string().max(5).nullable().optional(),
+        arrivalTime: z.string().max(5).nullable().optional(),
+        durationMinutes: z.number().nullable().optional(),
+        distanceMiles: z.number().nullable().optional(),
+        co2Kg: z.number().nullable().optional(),
+        status: z.string().max(16).nullable().optional(),
+        delayMinutes: z.number().nullable().optional(),
+        aircraft: z.string().max(200).nullable().optional(),
+        addedAt: z.string().optional(),
+        isMock: z.boolean().optional(),
+        tailNumber: z.string().max(64).nullable().optional(),
+        departureTerminal: z.string().max(64).nullable().optional(),
+        arrivalTerminal: z.string().max(64).nullable().optional(),
+        departureGate: z.string().max(64).nullable().optional(),
+        arrivalGate: z.string().max(64).nullable().optional(),
+      }).passthrough()).max(500),
+      trips: z.array(z.object({
+        id: z.string().max(128).optional(),
+        title: z.string().max(200).optional(),
+        flightIds: z.array(z.string().max(128)).optional(),
+        createdAt: z.string().optional(),
+        coverUri: z.string().max(2048).nullable().optional(),
+        starred: z.boolean().optional(),
+        status: z.string().max(16).optional(),
+      }).passthrough()).max(200),
+    }).safeParse(req.body ?? {});
+
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
+
+    try {
+      const result = await migrateGuestData(
+        req.authUserId!,
+        parsed.data.flights,
+        parsed.data.trips,
+      );
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Guest data migration failed";
+      console.error("[Route] guest data migration failed:", err);
+      return res.status(500).json({ error: msg });
     }
   });
 
