@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE } from "@/constants/api";
 import { useUser } from "@/context/user";
 import { fetchWithTimeout } from "@/lib/fetch";
+import { tripsStorageKey } from "@/lib/local-data";
 
 export type TripStatus = "planned" | "upcoming" | "completed";
 
@@ -54,9 +55,18 @@ export function TripsProvider({ children }: { children: ReactNode }) {
           console.warn("[TripsContext] API fetch failed, falling back to local:", err);
         }
       }
-      const raw = await AsyncStorage.getItem(LOCAL_KEY);
-      if (!cancelled && raw) {
-        try { setTrips(JSON.parse(raw) as Trip[]); } catch { setTrips([]); }
+      const storageKey = tripsStorageKey(isLoggedIn && profile.id ? profile.id : undefined);
+      const raw = await AsyncStorage.getItem(storageKey);
+      if (!cancelled) {
+        if (raw) {
+          try {
+            setTrips(JSON.parse(raw) as Trip[]);
+          } catch {
+            setTrips([]);
+          }
+        } else {
+          setTrips([]);
+        }
       }
       if (!cancelled) setIsLoading(false);
     }
@@ -66,8 +76,9 @@ export function TripsProvider({ children }: { children: ReactNode }) {
 
   // Always persist locally so trips survive app restarts when the API is unreachable.
   const persistLocal = useCallback(async (updated: Trip[]) => {
-    await AsyncStorage.setItem(LOCAL_KEY, JSON.stringify(updated));
-  }, []);
+    const storageKey = tripsStorageKey(isLoggedIn && profile.id ? profile.id : undefined);
+    await AsyncStorage.setItem(storageKey, JSON.stringify(updated));
+  }, [isLoggedIn, profile.id]);
 
   const addTrip = useCallback(async (title: string, flightIds: string[], coverUri?: string) => {
     if (isLoggedIn && profile.id) {
