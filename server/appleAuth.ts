@@ -31,6 +31,8 @@ type Jwk = {
   crv?: string;
   x?: string;
   y?: string;
+  n?: string;
+  e?: string;
 };
 
 let cachedAppleKeys: { expiresAt: number; keys: Jwk[] } | null = null;
@@ -81,7 +83,7 @@ export async function verifyAppleIdentityToken(
   const header = parseJwtPart<{ alg?: string; kid?: string }>(encodedHeader);
   const claims = parseJwtPart<AppleClaims>(encodedPayload);
 
-  if (header.alg !== "ES256" || !header.kid) {
+  if (header.alg !== "RS256" || !header.kid) {
     console.error("[AppleAuth] Unsupported token header:", {
       alg: header.alg ?? null,
       kid: header.kid ?? null,
@@ -92,14 +94,17 @@ export async function verifyAppleIdentityToken(
 
   const key = (await getAppleKeys()).find((candidate) => candidate.kid === header.kid);
   if (!key) throw new Error("Apple signing key not found.");
+  if (key.kty !== "RSA" || !key.n || !key.e) {
+    throw new Error("Unsupported Apple signing key.");
+  }
 
   const publicKey = createPublicKey({ key, format: "jwk" });
-  const verifier = createVerify("sha256");
-  verifier.update(`${encodedHeader}.${encodedPayload}`);
+  const verifier = createVerify("RSA-SHA256");
+  verifier.update(encodedHeader + "." + encodedPayload);
   verifier.end();
 
   const validSignature = verifier.verify(
-    { key: publicKey, dsaEncoding: "ieee-p1363" },
+    publicKey,
     base64urlDecode(encodedSignature),
   );
 
