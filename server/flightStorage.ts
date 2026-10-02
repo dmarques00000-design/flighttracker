@@ -76,11 +76,19 @@ export async function updateFlight(
   userId: string,
   data: Partial<InsertFlight>,
 ): Promise<Flight | undefined> {
-  const [updated] = await db
-    .update(flights)
-    .set({ ...data, updatedAt: new Date() })
-    .where(and(eq(flights.id, id), eq(flights.userId, userId)))
-    .returning();
+  try {
+    const [updated] = await db
+      .update(flights)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(flights.id, id), eq(flights.userId, userId)))
+      .returning();
 
-  return updated;
+    return updated;
+  } catch (err) {
+    const dbError = err as { code?: string; constraint?: string };
+    if (dbError.code === "23505" && dbError.constraint === "flights_user_flight_code_date_unique") {
+      throw new DuplicateFlightError();
+    }
+    throw err;
+  }
 }
