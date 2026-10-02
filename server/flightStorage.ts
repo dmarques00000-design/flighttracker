@@ -46,8 +46,18 @@ export async function createFlight(data: InsertFlight): Promise<Flight> {
     if (existing) throw new DuplicateFlightError();
   }
 
-  const [created] = await db.insert(flights).values(data).returning();
-  return created;
+  try {
+    const [created] = await db.insert(flights).values(data).returning();
+    return created;
+  } catch (err) {
+    // The pre-insert check above is only a fast path. The database unique index
+    // is the authoritative guard for concurrent inserts.
+    const dbError = err as { code?: string; constraint?: string };
+    if (dbError.code === "23505" && dbError.constraint === "flights_user_flight_code_date_unique") {
+      throw new DuplicateFlightError();
+    }
+    throw err;
+  }
 }
 
 /** Delete a flight by id. Only deletes if it belongs to the given userId (safety check). */
