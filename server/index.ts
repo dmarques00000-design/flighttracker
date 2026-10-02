@@ -1,4 +1,7 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+
+dotenv.config({ path: ".env.local" });
+dotenv.config();
 import express from "express";
 import { Pool } from "pg";
 import type { Request, Response, NextFunction } from "express";
