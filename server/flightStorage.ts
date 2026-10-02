@@ -54,11 +54,10 @@ export async function createFlight(data: InsertFlight): Promise<Flight> {
 export async function deleteFlight(id: string, userId: string): Promise<boolean> {
   const result = await db
     .delete(flights)
-    .where(eq(flights.id, id))
-    .returning({ id: flights.id, userId: flights.userId });
+    .where(and(eq(flights.id, id), eq(flights.userId, userId)))
+    .returning({ id: flights.id });
 
-  const deleted = result.find((r) => r.userId === userId);
-  return !!deleted;
+  return result.length > 0;
 }
 
 /** Update an existing flight. Returns the updated row or undefined if not found. */
@@ -70,9 +69,8 @@ export async function updateFlight(
   const [updated] = await db
     .update(flights)
     .set({ ...data, updatedAt: new Date() })
-    .where(eq(flights.id, id))
+    .where(and(eq(flights.id, id), eq(flights.userId, userId)))
     .returning();
 
-  if (!updated || updated.userId !== userId) return undefined;
   return updated;
 }
