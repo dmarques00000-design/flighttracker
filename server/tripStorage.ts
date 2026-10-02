@@ -1,6 +1,6 @@
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, inArray } from "drizzle-orm";
 import { db } from "./db";
-import { trips, type InsertTrip, type TripRow } from "../shared/schema";
+import { flights, trips, type InsertTrip, type TripRow } from "../shared/schema";
 
 /** Serialise flightIds array to/from the JSON text column. */
 function serialise(row: TripRow) {
@@ -22,8 +22,24 @@ export async function getTripsByUser(userId: string) {
   return rows.map(serialise);
 }
 
+
+async function assertFlightOwnership(flightIds: string[], userId: string): Promise<void> {
+  if (flightIds.length === 0) return;
+
+  const rows = await db
+    .select({ id: flights.id })
+    .from(flights)
+    .where(and(inArray(flights.id, flightIds), eq(flights.userId, userId)));
+
+  if (rows.length !== new Set(flightIds).size) {
+    throw new Error("One or more flights do not belong to this user.");
+  }
+}
+
 /** Insert a new trip. Returns the created row with flightIds as an array. */
 export async function createTrip(data: InsertTrip) {
+  await assertFlightOwnership(data.flightIds ?? [], data.userId);
+
   const [created] = await db
     .insert(trips)
     .values({
@@ -40,6 +56,10 @@ export async function updateTrip(
   userId: string,
   data: Partial<Omit<InsertTrip, "id" | "userId">>,
 ) {
+  if (Array.isArray(data.flightIds)) {
+    await assertFlightOwnership(data.flightIds, userId);
+  }
+
   const payload: Record<string, unknown> = { ...data, updatedAt: new Date() };
   if (Array.isArray(data.flightIds)) {
     payload.flightIds = JSON.stringify(data.flightIds);
@@ -47,10 +67,9 @@ export async function updateTrip(
   const [updated] = await db
     .update(trips)
     .set(payload)
-    .where(eq(trips.id, id))
+    .where(and(eq(trips.id, id), eq(trips.userId, userId)))
     .returning();
-  if (!updated || updated.userId !== userId) return undefined;
-  return serialise(updated);
+  return updated ? serialise(updated) : undefined;
 }
 
 /** Delete a trip by id. Only deletes if it belongs to the given userId. */
