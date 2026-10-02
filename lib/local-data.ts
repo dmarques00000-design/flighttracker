@@ -2,6 +2,11 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export const LEGACY_FLIGHTS_KEY = "@logbook_flights";
 export const LEGACY_TRIPS_KEY = "@logbook_trips";
+export const LEGACY_PROFILE_KEY = "@flighttracker_user_profile";
+
+export function profileStorageKey(userId: string): string {
+  return LEGACY_PROFILE_KEY + ":" + userId;
+}
 
 export function flightsStorageKey(userId?: string): string {
   return userId ? LEGACY_FLIGHTS_KEY + ":" + userId : LEGACY_FLIGHTS_KEY;
