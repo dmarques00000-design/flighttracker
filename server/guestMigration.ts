@@ -1,33 +1,33 @@
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "./db";
 import { flights, trips } from "../shared/schema";
 
 type GuestFlight = {
   id?: string;
-  flightCode?: string;
+  flightCode?: string | null;
   date?: string;
-  airline?: string;
-  airlineCode?: string;
+  airline?: string | null;
+  airlineCode?: string | null;
   departureAirport?: string;
   arrivalAirport?: string;
-  departureCity?: string;
-  arrivalCity?: string;
-  departureTime?: string;
-  arrivalTime?: string;
+  departureCity?: string | null;
+  arrivalCity?: string | null;
+  departureTime?: string | null;
+  arrivalTime?: string | null;
   durationMinutes?: number;
   distanceMiles?: number;
   co2Kg?: number;
   status?: string;
   delayMinutes?: number;
-  aircraft?: string;
+  aircraft?: string | null;
   addedAt?: string;
   verified?: boolean;
   isMock?: boolean;
-  tailNumber?: string;
-  departureTerminal?: string;
-  arrivalTerminal?: string;
-  departureGate?: string;
-  arrivalGate?: string;
+  tailNumber?: string | null;
+  departureTerminal?: string | null;
+  arrivalTerminal?: string | null;
+  departureGate?: string | null;
+  arrivalGate?: string | null;
 };
 
 type GuestTrip = {
