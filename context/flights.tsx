@@ -4,6 +4,7 @@ import { API_BASE } from "@/constants/api";
 import { useUser } from "@/context/user";
 import { writeWidgetData } from "@/utils/widgetData";
 import { fetchWithTimeout } from "@/lib/fetch";
+import { flightsStorageKey } from "@/lib/local-data";
 
 export interface Flight {
   id: string;
@@ -146,13 +147,21 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
           console.warn("[FlightsContext] API fetch failed, falling back to local storage:", err);
         }
       }
-      // Guest / offline / timeout fallback
-      const raw = await AsyncStorage.getItem(LOCAL_STORAGE_KEY);
-      if (!cancelled && raw) {
-        try {
-          const parsed = JSON.parse(raw) as Flight[];
-          setFlights(parsed.map((f) => ({ ...f, verified: f.verified ?? false, isMock: f.isMock ?? false })));
-        } catch { setFlights([]); }
+      // Guest / offline / timeout fallback. Logged-in users only read their
+      // own account-scoped cache, never the legacy global key.
+      const storageKey = flightsStorageKey(isLoggedIn && profile.id ? profile.id : undefined);
+      const raw = await AsyncStorage.getItem(storageKey);
+      if (!cancelled) {
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw) as Flight[];
+            setFlights(parsed.map((f) => ({ ...f, verified: f.verified ?? false, isMock: f.isMock ?? false })));
+          } catch {
+            setFlights([]);
+          }
+        } else {
+          setFlights([]);
+        }
       }
       if (!cancelled) setIsLoading(false);
     }
@@ -162,8 +171,9 @@ export function FlightsProvider({ children }: { children: ReactNode }) {
 
   // ── Persist locally for both guest mode and as offline fallback for logged-in users ──
   const persistLocal = useCallback(async (updated: Flight[]) => {
-    await AsyncStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-  }, []);
+    const storageKey = flightsStorageKey(isLoggedIn && profile.id ? profile.id : undefined);
+    await AsyncStorage.setItem(storageKey, JSON.stringify(updated));
+  }, [isLoggedIn, profile.id]);
 
   // ── Add flight ──────────────────────────────────────────────────────────────────────────────────────
   const addFlight = useCallback(async (data: Omit<Flight, "id" | "addedAt">) => {

@@ -8,6 +8,7 @@ import {
 import { API_BASE } from "@/constants/api";
 import { fetchWithTimeout } from "@/lib/fetch";
 import { clearAuthSession, getAuthSession, setAuthSession } from "@/lib/auth-session";
+import { clearLegacyGuestData, profileStorageKey, readLegacyGuestData } from "@/lib/local-data";
 
 export interface UserProfile {
   id: string;
@@ -228,10 +229,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
       throw new Error(`[UserContext] DELETE /api/users/${userId} failed ${res.status}: ${body}`);
     }
 
-    // Step 3: clear local state only after both steps have succeeded.
+    // Step 3: clear all local data owned by this account only after the
+    // backend deletion succeeds.
     setProfile(DEFAULT_PROFILE);
     setIsLoggedIn(false);
-    await AsyncStorage.multiRemove([STORAGE_KEY, AUTH_KEY, NOTIF_PREFS_KEY]);
+    await AsyncStorage.multiRemove([
+      STORAGE_KEY,
+      profileStorageKey(userId),
+      AUTH_KEY,
+      NOTIF_PREFS_KEY,
+      "@logbook_flights:" + userId,
+      "@logbook_trips:" + userId,
+    ]);
+    await clearLegacyGuestData();
     await clearAuthSession();
   }
 
@@ -286,6 +296,26 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
     await setAuthSession(result.sessionToken);
 
+    // Migrate pre-auth guest data before exposing the authenticated state to
+    // the data providers. The server performs the merge transactionally.
+    const guestData = await readLegacyGuestData();
+    if (guestData.flights.length > 0 || guestData.trips.length > 0) {
+      const migrationRes = await fetchWithTimeout(API_BASE + "/api/auth/migrate-guest-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(guestData),
+        timeoutMs: 15_000,
+      });
+
+      if (!migrationRes.ok) {
+        const body = await migrationRes.text().catch(() => "(no body)");
+        await clearAuthSession();
+        throw new Error("[UserContext] guest data migration failed " + migrationRes.status + ": " + body);
+      }
+
+      await clearLegacyGuestData();
+    }
+
     const resolvedName =
       result.user.name?.trim() ||
       name.trim() ||
@@ -299,8 +329,28 @@ export function UserProvider({ children }: { children: ReactNode }) {
       .slice(0, 2)
       .join("");
 
+    let existingAccountProfile: UserProfile | null = null;
+    const accountProfileRaw = await AsyncStorage.getItem(profileStorageKey(result.user.id));
+    if (accountProfileRaw) {
+      try {
+        const parsed = JSON.parse(accountProfileRaw);
+        existingAccountProfile = { ...DEFAULT_PROFILE, ...parsed, id: result.user.id };
+      } catch {}
+    }
+
+    const legacyProfileRaw = await AsyncStorage.getItem(STORAGE_KEY);
+    let legacyProfile: UserProfile | null = null;
+    if (!existingAccountProfile && legacyProfileRaw) {
+      try {
+        const parsed = JSON.parse(legacyProfileRaw);
+        if (!parsed.id || parsed.id === result.user.id) {
+          legacyProfile = { ...DEFAULT_PROFILE, ...parsed };
+        }
+      } catch {}
+    }
+
     const updated: UserProfile = {
-      ...profile,
+      ...(existingAccountProfile ?? legacyProfile ?? DEFAULT_PROFILE),
       id: result.user.id,
       name: resolvedName,
       email: result.user.email ?? "",
@@ -312,14 +362,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setProfile(updated);
     setIsLoggedIn(true);
     await AsyncStorage.multiSet([
-      [STORAGE_KEY, JSON.stringify(updated)],
+      [profileStorageKey(result.user.id), JSON.stringify(updated)],
       [AUTH_KEY, "true"],
     ]);
+    await AsyncStorage.removeItem(STORAGE_KEY);
   }
 
   async function logout() {
     setIsLoggedIn(false);
-    await AsyncStorage.removeItem(AUTH_KEY);
+    setProfile(DEFAULT_PROFILE);
+    await AsyncStorage.multiRemove([STORAGE_KEY, AUTH_KEY]);
     await clearAuthSession();
   }
 
