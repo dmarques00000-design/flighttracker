@@ -287,6 +287,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!updated) return res.status(404).json({ error: "Flight not found or unauthorised" });
       return res.json(updated);
     } catch (err) {
+      if (err instanceof DuplicateFlightError) {
+        return res.status(409).json({ error: err.message, code: "DUPLICATE_FLIGHT" });
+      }
       const msg = err instanceof Error ? err.message : "Update failed";
       console.error("[Route] updateFlight error:", err);
       return res.status(500).json({ error: msg });
