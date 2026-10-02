@@ -205,6 +205,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Auth: get user by id ─────────────────────────────────────────────────────
+
+  // All routes below authentication require a verified server session.
+  // Public endpoints are explicitly exempted in the middleware.
+  app.use("/api", requireAuth);
+
   // ── Guest data migration ─────────────────────────────────────────────────────
   // Moves pre-auth local data into the authenticated account in one transaction.
   app.post("/api/auth/migrate-guest-data", writeLimiter, async (req, res) => {
@@ -264,11 +270,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ── Auth: get user by id ─────────────────────────────────────────────────────
-
-  // All routes below authentication require a verified server session.
-  // Public endpoints are explicitly exempted in the middleware.
-  app.use("/api", requireAuth);
   app.get("/api/users/:id", readLimiter, async (req, res) => {
     const id = String(req.params.id);
     if (req.authUserId !== id) return res.status(403).json({ error: "Forbidden" });
