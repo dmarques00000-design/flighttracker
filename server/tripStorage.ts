@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { db } from "./db";
 import { trips, type InsertTrip, type TripRow } from "../shared/schema";
 
@@ -57,7 +57,7 @@ export async function updateTrip(
 export async function deleteTrip(id: string, userId: string): Promise<boolean> {
   const result = await db
     .delete(trips)
-    .where(eq(trips.id, id))
-    .returning({ id: trips.id, userId: trips.userId });
-  return result.some((r) => r.userId === userId);
+    .where(and(eq(trips.id, id), eq(trips.userId, userId)))
+    .returning({ id: trips.id });
+  return result.length > 0;
 }
