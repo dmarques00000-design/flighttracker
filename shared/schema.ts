@@ -114,6 +114,11 @@ export const flights = pgTable("flights", {
 export const insertFlightSchema = createInsertSchema(flights).omit({ createdAt: true, updatedAt: true });
 export const selectFlightSchema = createSelectSchema(flights);
 export type InsertFlight = z.infer<typeof insertFlightSchema>;
+// Database uniqueness note:
+// Real flights are unique per user + flightCode + date. The partial unique
+// index is applied by scripts/migrations/add_unique_flight_index.sql so mock
+// flights and flights without a flight code retain the existing semantics.
+
 export type Flight      = typeof flights.$inferSelect;
 
 // ─── Trips ────────────────────────────────────────────────────────────────────
