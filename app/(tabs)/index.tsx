@@ -410,7 +410,7 @@ function FlightRow({ flight, isUpcoming, today }: { flight: Flight; isUpcoming: 
 
 // ── Burger menu items — order matches user spec ───────────────────────────────
 const MENU_ITEMS = [
-  { id: "wallet",        icon: "wallet-outline",        label: "Link Apple Wallet", sub: "Import boarding passes" },
+  { id: "import-boarding-passes", icon: "scan-outline", label: "Import Boarding Passes", sub: "Scan or pick a boarding pass" },
   { id: "share",         icon: "share-social-outline",  label: "Year Recap",        sub: "Share your year in the air" },
   { id: "monthly-recap", icon: "calendar-outline",      label: "Month Recap",       sub: "Share your month in the air" },
   { id: "passport",      icon: "earth-outline",         label: "Travel Passport",   sub: "Countries & airports visited" },
@@ -629,7 +629,7 @@ export default function HomeScreen() {
   function handleMenuSelect(id: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (id === "passport")           router.push("/passport");
-    else if (id === "wallet")        router.push("/wallet-import");
+    else if (id === "import-boarding-passes") router.push("/import-boarding-passes");
     else if (id === "monthly-recap") router.push("/monthly-recap");
     else if (id === "share")         router.push("/share");
     else if (id === "add")           router.push("/add-flight");
