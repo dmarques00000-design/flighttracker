@@ -65,8 +65,8 @@ export async function getUserById(id: string): Promise<User | undefined> {
 
 /**
  * Permanently delete a user and all their data.
- * Flights and trips are removed automatically via ON DELETE CASCADE
- * on the FK constraints defined in shared/schema.ts.
+ * Flights and trips are explicitly removed in the same database transaction
+ * before the user row is deleted. This does not depend on FK cascade settings.
  * Returns true if a row was deleted, false if the user was not found.
  */
 export async function deleteUser(id: string): Promise<boolean> {
