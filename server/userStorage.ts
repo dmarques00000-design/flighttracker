@@ -75,16 +75,16 @@ export async function deleteUser(id: string): Promise<boolean> {
     // is a high-stakes operation, so delete every account-owned table
     // explicitly inside one transaction. If any step fails, none of the
     // account data is partially deleted.
+    // Delete child records first so this remains correct even if the live
+    // database does not have the expected ON DELETE CASCADE constraint.
+    await tx.delete(trips).where(eq(trips.userId, id));
+    await tx.delete(flights).where(eq(flights.userId, id));
+
     const deleted = await tx
       .delete(users)
       .where(eq(users.id, id))
       .returning({ id: users.id });
 
-    if (deleted.length === 0) return false;
-
-    await tx.delete(trips).where(eq(trips.userId, id));
-    await tx.delete(flights).where(eq(flights.userId, id));
-
-    return true;
+    return deleted.length > 0;
   });
 }
