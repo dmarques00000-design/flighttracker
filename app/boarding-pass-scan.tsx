@@ -173,7 +173,7 @@ export default function BoardingPassScanScreen() {
 
       Vibration.vibrate(100);
       const encoded = encodeURIComponent(JSON.stringify(parsed.flights));
-      router.replace(`/wallet-import?scanned=${encoded}`);
+      router.replace(`/import-boarding-passes?scanned=${encoded}`);
     } catch {
       Alert.alert("Error", "Failed to scan the image. Please try again.");
     }
@@ -241,7 +241,7 @@ function CameraScanner({ C, insets, onGallery }: { C: any; insets: any; onGaller
     setScanned(true);
     Vibration.vibrate(100);
     const encoded = encodeURIComponent(JSON.stringify(result.flights));
-    router.replace(`/wallet-import?scanned=${encoded}`);
+    router.replace(`/import-boarding-passes?scanned=${encoded}`);
   }
 
   async function handleGalleryFromCamera() {

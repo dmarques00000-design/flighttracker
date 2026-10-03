@@ -502,28 +502,20 @@ export default function AddFlightScreen() {
               Import
             </Text>
             <View style={{ flexDirection: "row", gap: 10 }}>
-              {/* Apple Wallet */}
+              {/* Boarding Passes */}
               <Pressable
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  router.push("/wallet-import");
+                  router.push("/import-boarding-passes");
                 }}
-                style={({ pressed }) => [{
-                  flex: 1,
-                  flexDirection: "row", alignItems: "center", gap: 10,
-                  backgroundColor: C.card,
-                  borderRadius: 14, borderWidth: 1, borderColor: C.border,
-                  paddingHorizontal: 14, paddingVertical: 14,
-                  opacity: pressed ? 0.8 : 1,
-                  transform: [{ scale: pressed ? 0.97 : 1 }],
-                }]}
+                style={({ pressed }) => [{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14, paddingVertical: 14, opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
               >
                 <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="wallet-outline" size={17} color={C.accent} />
+                  <Ionicons name="scan-outline" size={17} color={C.accent} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, color: C.text, fontFamily: "DMSans_700Bold" }}>Wallet</Text>
-                  <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 1 }}>Boarding pass</Text>
+                  <Text style={{ fontSize: 13, color: C.text, fontFamily: "DMSans_700Bold" }}>Boarding Passes</Text>
+                  <Text style={{ fontSize: 11, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 1 }}>Scan or pick a pass</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={14} color={C.textMuted} />
               </Pressable>

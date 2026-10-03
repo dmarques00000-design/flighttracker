@@ -1,37 +1,28 @@
 /**
- * wallet-import.tsx
+ * import-boarding-passes.tsx
  * Boarding pass import screen.
  *
  * Import methods:
- *  1. Scan Boarding Pass  → camera (boarding-pass-scan.tsx) → BCBP barcode
- *  2. Pick from Gallery   → image picker → scanFromURLAsync → BCBP barcode
- *  3. Import from Wallet  → document picker → .pkpass file → pkpassParser
- *  4. Share from Wallet   → iOS share sheet → fileUri param → pkpassParser
+ *  1. Scan Boarding Pass → camera scanner → BCBP barcode
+ *  2. Pick from Gallery  → image picker → BCBP barcode
  *
- * All paths converge at mergePasses() → flight enrichment → addFlight()
+ * Both import methods converge here and then flow through flight enrichment
+ * and addFlight().
  */
 import React, { useState, useEffect } from "react";
 import {
-  View,
-  Text,
-  Pressable,
-  ScrollView,
-  Platform,
-  ActivityIndicator,
-  Alert,
+  View, Text, Pressable, ScrollView, ActivityIndicator, Alert,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import * as DocumentPicker from "expo-document-picker";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { useColors } from "@/constants/colors";
 import { useFlights } from "@/context/flights";
 import { apiRequest } from "@/lib/query-client";
 import { parseBCBP } from "@/utils/bcbpParser";
-import { parsePkpassFile } from "@/utils/pkpassParser";
 import type { BCBPFlight } from "@/utils/bcbpParser";
 
 // Lazy-load expo-camera for scanFromURLAsync (native module)
@@ -55,7 +46,7 @@ interface ScannedPass extends BCBPFlight {
   arrivalTime: string;
   aircraft: string;
   /** source lets us show a subtle badge on the card */
-  source?: "camera" | "gallery" | "pkpass" | "wallet-share";
+  source?: "camera" | "gallery";
 }
 
 // ─── PassCard ─────────────────────────────────────────────────────────────────
@@ -77,10 +68,8 @@ function PassCard({
   const isUpcoming = pass.date >= new Date().toISOString().substring(0, 10);
 
   const sourceBadge: Record<string, { icon: string; label: string }> = {
-    pkpass:        { icon: "wallet-outline",  label: "Wallet" },
     gallery:       { icon: "images-outline",  label: "Gallery" },
     camera:        { icon: "scan-outline",    label: "Scan" },
-    "wallet-share": { icon: "share-outline",   label: "Shared" },
   };
   const badge = pass.source ? sourceBadge[pass.source] : null;
 
@@ -169,11 +158,11 @@ function PassCard({
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
-export default function WalletImportScreen() {
+export default function ImportBoardingPassesScreen() {
   const C = useColors();
   const insets = useSafeAreaInsets();
   const { flights, addFlight } = useFlights();
-  const params = useLocalSearchParams<{ scanned?: string; fileUri?: string }>();
+  const params = useLocalSearchParams<{ scanned?: string }>();
 
   const [passes, setPasses] = useState<ScannedPass[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -195,44 +184,6 @@ export default function WalletImportScreen() {
     }
   }, [params.scanned]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Receive .pkpass file shared from Apple Wallet (iOS share sheet) ───────
-  useEffect(() => {
-    if (!params.fileUri) return;
-    handleImportFromUri(decodeURIComponent(params.fileUri));
-  }, [params.fileUri]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Import a .pkpass directly from a known URI (share-sheet path) ─────────
-  async function handleImportFromUri(uri: string) {
-    setImportState("scanning");
-    const parseResult = await parsePkpassFile(uri);
-    setImportState("idle");
-
-    if (!parseResult.ok) {
-      Alert.alert(
-        "Could Not Read Pass",
-        parseResult.error + "\n\nMake sure you shared a valid boarding pass .pkpass file from Apple Wallet."
-      );
-      return;
-    }
-
-    const bcbpFlights: BCBPFlight[] = parseResult.flights.map((f) => ({
-      flightCode:       f.flightCode,
-      airlineCode:      f.airlineCode,
-      flightNumber:     f.flightNumber,
-      departureAirport: f.departureAirport,
-      arrivalAirport:   f.arrivalAirport,
-      date:             f.date,
-      seat:             f.seat,
-      boardingGroup:    f.boardingGroup,
-      passengerName:    f.passengerName,
-      bookingRef:       f.bookingRef,
-    }));
-
-    mergePasses(bcbpFlights, "wallet-share");
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }
-
-  // ── Shared helper: merge new BCBPFlights into state ───────────────────────
   function mergePasses(decoded: BCBPFlight[], source?: ScannedPass["source"]) {
     const newPasses: ScannedPass[] = decoded.map((f, i) => ({
       ...f,
@@ -259,65 +210,6 @@ export default function WalletImportScreen() {
       });
       return next;
     });
-  }
-
-  // ── .pkpass file picker ───────────────────────────────────────────────────
-  async function handlePickPkpass() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    let result;
-    try {
-      result = await DocumentPicker.getDocumentAsync({
-        type: Platform.OS === "ios"
-          ? ["com.apple.pkpass", "public.data"]
-          : ["application/octet-stream", "*/*"],
-        copyToCacheDirectory: true,
-        multiple: false,
-      });
-    } catch {
-      Alert.alert("Error", "Could not open file picker. Please try again.");
-      return;
-    }
-
-    if (result.canceled || !result.assets?.[0]) return;
-
-    const asset = result.assets[0];
-    const name = asset.name ?? asset.uri ?? "";
-    if (!name.toLowerCase().endsWith(".pkpass") && !name.toLowerCase().endsWith(".pkpass)")) {
-      Alert.alert(
-        "Wrong File Type",
-        "Please select a .pkpass boarding pass file. You can export it by tapping Share on a pass in Apple Wallet."
-      );
-      return;
-    }
-
-    setImportState("scanning");
-    const parseResult = await parsePkpassFile(asset.uri);
-    setImportState("idle");
-
-    if (!parseResult.ok) {
-      Alert.alert(
-        "Could Not Read Pass",
-        parseResult.error + "\n\nMake sure you're selecting a boarding pass .pkpass file exported from Apple Wallet."
-      );
-      return;
-    }
-
-    const bcbpFlights: BCBPFlight[] = parseResult.flights.map((f) => ({
-      flightCode:       f.flightCode,
-      airlineCode:      f.airlineCode,
-      flightNumber:     f.flightNumber,
-      departureAirport: f.departureAirport,
-      arrivalAirport:   f.arrivalAirport,
-      date:             f.date,
-      seat:             f.seat,
-      boardingGroup:    f.boardingGroup,
-      passengerName:    f.passengerName,
-      bookingRef:       f.bookingRef,
-    }));
-
-    mergePasses(bcbpFlights, "pkpass");
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }
 
   // ── Gallery picker ───────────────────────────────────────────────────────
@@ -488,7 +380,7 @@ export default function WalletImportScreen() {
         <Pressable onPress={() => router.back()} style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }} hitSlop={10}>
           <Ionicons name="chevron-back" size={22} color={C.text} />
         </Pressable>
-        <Text style={{ fontSize: 17, color: C.text, fontFamily: "DMSans_700Bold" }}>Link Apple Wallet</Text>
+        <Text style={{ fontSize: 17, color: C.text, fontFamily: "DMSans_700Bold" }}>Import Boarding Passes</Text>
         <View style={{ width: 36 }} />
       </View>
 
@@ -510,25 +402,21 @@ export default function WalletImportScreen() {
         {/* ── IDLE / EMPTY STATE ── */}
         {importState === "idle" && !hasPasses && (
           <Animated.View entering={FadeIn.duration(300)} style={{ alignItems: "center", paddingTop: 40 }}>
-            {/* Icon */}
             <View style={{ width: 90, height: 90, borderRadius: 26, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
-              <Ionicons name="wallet-outline" size={44} color={C.accent} />
+              <Ionicons name="airplane-outline" size={44} color={C.accent} />
             </View>
-
             <Text style={{ fontSize: 22, color: C.text, fontFamily: "DMSans_700Bold", textAlign: "center", marginBottom: 12 }}>
-              Import from Apple Wallet
+              Import Boarding Passes
             </Text>
             <Text style={{ fontSize: 15, color: C.textSec, fontFamily: "DMSans_400Regular", textAlign: "center", lineHeight: 22, marginBottom: 28 }}>
-              Pick a boarding pass file from your device, scan the barcode directly, or choose a boarding pass photo from your library.
+              Scan a boarding pass barcode or choose a boarding pass image from your gallery.
             </Text>
-
-            {/* Feature list */}
-            <View style={{ width: "100%", gap: 12, marginBottom: 32 }}>
+            <View style={{ width: "100%", gap: 12, marginBottom: 28 }}>
               {[
-                { icon: "wallet-outline",        text: "Share a pass from Wallet → tap ··· → Share → Logbook" },
-                { icon: "shield-checkmark-outline", text: "100% private — decoded on-device, nothing uploaded" },
-                { icon: "time-outline",           text: "Works with old passes too — build your full flight history" },
-                { icon: "flash-outline",          text: "Real flight data enriched automatically via API" },
+                { icon: "scan-outline", text: "Scan the barcode on your boarding pass" },
+                { icon: "images-outline", text: "Pick a boarding pass image from your gallery" },
+                { icon: "checkmark-circle-outline", text: "Choose exactly which flights you want to add" },
+                { icon: "flash-outline", text: "Flight details are enriched automatically when possible" },
               ].map((item) => (
                 <View key={item.icon} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                   <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: C.accentDim, alignItems: "center", justifyContent: "center" }}>
@@ -538,53 +426,15 @@ export default function WalletImportScreen() {
                 </View>
               ))}
             </View>
-
-            {/* How-to hint */}
-            <View style={{ width: "100%", flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: C.accentDim, borderRadius: 12, padding: 14, marginBottom: 28, borderWidth: 1, borderColor: C.accent + "33" }}>
-              <Ionicons name="information-circle-outline" size={16} color={C.accent} style={{ marginTop: 1 }} />
-              <Text style={{ flex: 1, fontSize: 13, color: C.text, fontFamily: "DMSans_400Regular", lineHeight: 20 }}>
-                <Text style={{ fontFamily: "DMSans_700Bold" }}>How to share from Wallet:{"\n"}</Text>
-                Open Wallet → tap a boarding pass → tap ··· (top-right) → Share → tap Logbook. The pass imports automatically.
-              </Text>
-            </View>
-
-            {/* Primary: .pkpass file */}
             <Pressable
-              onPress={handlePickPkpass}
-              style={({ pressed }) => [{
-                flexDirection: "row", alignItems: "center",
-                backgroundColor: C.accent, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30,
-                width: "100%", justifyContent: "center", marginBottom: 12,
-              }, { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/boarding-pass-scan"); }}
+              style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: C.accent, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30, width: "100%", marginBottom: 12 }, { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
             >
-              <Ionicons name="wallet-outline" size={20} color={C.white} style={{ marginRight: 10 }} />
-              <Text style={{ fontSize: 16, color: C.white, fontFamily: "DMSans_700Bold" }}>Import .pkpass File</Text>
+              <Ionicons name="scan-outline" size={20} color={C.white} style={{ marginRight: 10 }} />
+              <Text style={{ fontSize: 16, color: C.white, fontFamily: "DMSans_700Bold" }}>Scan Boarding Pass</Text>
             </Pressable>
-
-            {/* Secondary: Camera scan */}
-            <Pressable
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                router.push("/boarding-pass-scan");
-              }}
-              style={({ pressed }) => [{
-                flexDirection: "row", alignItems: "center", justifyContent: "center",
-                backgroundColor: C.card, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30,
-                width: "100%", borderWidth: 1, borderColor: C.border, marginBottom: 12,
-              }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
-            >
-              <Ionicons name="scan-outline" size={20} color={C.accent} style={{ marginRight: 10 }} />
-              <Text style={{ fontSize: 16, color: C.accent, fontFamily: "DMSans_700Bold" }}>Scan Barcode</Text>
-            </Pressable>
-
-            {/* Tertiary: Gallery */}
-            <Pressable
-              onPress={handlePickFromGallery}
-              style={({ pressed }) => [{
-                flexDirection: "row", alignItems: "center", justifyContent: "center",
-                backgroundColor: C.card, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30,
-                width: "100%", borderWidth: 1, borderColor: C.border,
-              }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
+            <Pressable onPress={handlePickFromGallery}
+              style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: C.card, paddingHorizontal: 28, paddingVertical: 16, borderRadius: 30, width: "100%", borderWidth: 1, borderColor: C.border }, { opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] }]}
             >
               <Ionicons name="images-outline" size={20} color={C.accent} style={{ marginRight: 10 }} />
               <Text style={{ fontSize: 16, color: C.accent, fontFamily: "DMSans_700Bold" }}>Pick from Gallery</Text>
@@ -596,39 +446,15 @@ export default function WalletImportScreen() {
         {importState === "idle" && hasPasses && (
           <Animated.View entering={FadeIn.duration(250)}>
             {/* Add more buttons */}
-            <View style={{ flexDirection: "row", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-              <Pressable
-                onPress={handlePickPkpass}
-                style={({ pressed }) => [{
-                  flex: 1, minWidth: 90, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
-                  paddingVertical: 11, borderRadius: 12,
-                  backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-                }, { opacity: pressed ? 0.8 : 1 }]}
-              >
-                <Ionicons name="wallet-outline" size={15} color={C.accent} />
-                <Text style={{ fontSize: 12, color: C.accent, fontFamily: "DMSans_700Bold" }}>.pkpass</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  router.push("/boarding-pass-scan");
-                }}
-                style={({ pressed }) => [{
-                  flex: 1, minWidth: 90, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
-                  paddingVertical: 11, borderRadius: 12,
-                  backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-                }, { opacity: pressed ? 0.8 : 1 }]}
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
+              <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push("/boarding-pass-scan"); }}
+                style={({ pressed }) => [{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 11, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border }, { opacity: pressed ? 0.8 : 1 }]}
               >
                 <Ionicons name="scan-outline" size={15} color={C.accent} />
                 <Text style={{ fontSize: 12, color: C.accent, fontFamily: "DMSans_700Bold" }}>Scan More</Text>
               </Pressable>
-              <Pressable
-                onPress={handlePickFromGallery}
-                style={({ pressed }) => [{
-                  flex: 1, minWidth: 90, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
-                  paddingVertical: 11, borderRadius: 12,
-                  backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-                }, { opacity: pressed ? 0.8 : 1 }]}
+              <Pressable onPress={handlePickFromGallery}
+                style={({ pressed }) => [{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 11, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border }, { opacity: pressed ? 0.8 : 1 }]}
               >
                 <Ionicons name="images-outline" size={15} color={C.accent} />
                 <Text style={{ fontSize: 12, color: C.accent, fontFamily: "DMSans_700Bold" }}>Gallery</Text>
@@ -646,6 +472,9 @@ export default function WalletImportScreen() {
                     {selectedCount} selected to import
                   </Text>
                 )}
+                <Text style={{ fontSize: 10.5, color: C.textMuted, fontFamily: "DMSans_400Regular", marginTop: 5 }}>
+                  Scan a boarding pass barcode or choose a boarding pass image from your gallery.
+                </Text>
               </View>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
                 <Pressable onPress={selectAll} hitSlop={8}>
@@ -721,7 +550,7 @@ export default function WalletImportScreen() {
                   borderWidth: 1, borderColor: C.border,
                 }, { opacity: pressed ? 0.8 : 1 }]}
               >
-                <Ionicons name="wallet-outline" size={16} color={C.accent} />
+                <Ionicons name="scan-outline" size={16} color={C.accent} />
                 <Text style={{ fontSize: 15, color: C.accent, fontFamily: "DMSans_700Bold" }}>Import More</Text>
               </Pressable>
               <Pressable
