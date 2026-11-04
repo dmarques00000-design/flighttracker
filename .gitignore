@@ -46,3 +46,9 @@ server_dist/
 
 expo-env.d.ts
 # @end expo-cli
+# Local/generated files (never commit)
+.neon
+ios/.xcode.env.local
+ios/Pods/
+ios/build/
+targets/LogbookWidget/generated.entitlements
