@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "./db";
-import { users, type InsertUser, type User } from "../shared/schema";
+import { users, flights, trips, type InsertUser, type User } from "../shared/schema";
 
 /** Apple private relay addresses must never overwrite a real stored email. */
 function isPrivateRelayEmail(email: string | null | undefined): boolean {
@@ -65,14 +65,26 @@ export async function getUserById(id: string): Promise<User | undefined> {
 
 /**
  * Permanently delete a user and all their data.
- * Flights and trips are removed automatically via ON DELETE CASCADE
- * on the FK constraints defined in shared/schema.ts.
+ * Flights and trips are explicitly removed in the same database transaction
+ * before the user row is deleted. This does not depend on FK cascade settings.
  * Returns true if a row was deleted, false if the user was not found.
  */
 export async function deleteUser(id: string): Promise<boolean> {
-  const deleted = await db
-    .delete(users)
-    .where(eq(users.id, id))
-    .returning({ id: users.id });
-  return deleted.length > 0;
+  return db.transaction(async (tx) => {
+    // Do not rely solely on the database's FK cascade here. Account deletion
+    // is a high-stakes operation, so delete every account-owned table
+    // explicitly inside one transaction. If any step fails, none of the
+    // account data is partially deleted.
+    // Delete child records first so this remains correct even if the live
+    // database does not have the expected ON DELETE CASCADE constraint.
+    await tx.delete(trips).where(eq(trips.userId, id));
+    await tx.delete(flights).where(eq(flights.userId, id));
+
+    const deleted = await tx
+      .delete(users)
+      .where(eq(users.id, id))
+      .returning({ id: users.id });
+
+    return deleted.length > 0;
+  });
 }
